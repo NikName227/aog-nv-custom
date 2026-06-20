@@ -97,6 +97,7 @@ namespace AgOpenGPS
             this.deleteContourPathsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.webcamToolStrip = new System.Windows.Forms.ToolStripMenuItem();
             this.offsetFixToolStrip = new System.Windows.Forms.ToolStripMenuItem();
+            this.mapAppToolStripMenu = new System.Windows.Forms.ToolStripMenuItem();
             this.panelSim = new System.Windows.Forms.TableLayoutPanel();
             this.btnSimSetSpeedToZero = new System.Windows.Forms.Button();
             this.btnSimReverseDirection = new System.Windows.Forms.Button();
@@ -948,7 +949,8 @@ namespace AgOpenGPS
             this.SmoothABtoolStripMenu,
             this.deleteContourPathsToolStripMenuItem,
             this.webcamToolStrip,
-            this.offsetFixToolStrip});
+            this.offsetFixToolStrip,
+            this.mapAppToolStripMenu});
             this.toolStripDropDownButton4.Font = new System.Drawing.Font("Tahoma", 24F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.toolStripDropDownButton4.Image = global::AgOpenGPS.Properties.Resources.SpecialFunctions;
             this.toolStripDropDownButton4.ImageScaling = System.Windows.Forms.ToolStripItemImageScaling.None;
@@ -1069,7 +1071,15 @@ namespace AgOpenGPS
             this.offsetFixToolStrip.Size = new System.Drawing.Size(450, 70);
             this.offsetFixToolStrip.Text = "Offset Fix";
             this.offsetFixToolStrip.Click += new System.EventHandler(this.offsetFixToolStrip_Click);
-            // 
+            //
+            // mapAppToolStripMenu
+            //
+            this.mapAppToolStripMenu.Image = global::AgOpenGPS.Properties.Resources.MappingOn;
+            this.mapAppToolStripMenu.Name = "mapAppToolStripMenu";
+            this.mapAppToolStripMenu.Size = new System.Drawing.Size(450, 70);
+            this.mapAppToolStripMenu.Text = "Map App";
+            this.mapAppToolStripMenu.Click += new System.EventHandler(this.mapAppToolStripMenu_Click);
+            //
             // panelSim
             // 
             this.panelSim.Anchor = System.Windows.Forms.AnchorStyles.Bottom;
@@ -3020,6 +3030,7 @@ namespace AgOpenGPS
         public System.Windows.Forms.ToolStripMenuItem steerChartStripMenu;
         private System.Windows.Forms.ToolStripMenuItem webcamToolStrip;
         private System.Windows.Forms.ToolStripMenuItem offsetFixToolStrip;
+        private System.Windows.Forms.ToolStripMenuItem mapAppToolStripMenu;
         private System.Windows.Forms.TableLayoutPanel panelNavigation;
         public System.Windows.Forms.Button btn2D;
         public System.Windows.Forms.Button btn3D;

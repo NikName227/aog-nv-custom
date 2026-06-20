@@ -44,6 +44,8 @@ namespace AgOpenGPS
             lblPoints.Text = gStr.gsPoints + ":";
             labelBackground.Text = gStr.gsBackground;
 
+            // Boundary-tracing tool keeps Bing (reliable imagery for drawing the
+            // boundary over). The App Map source applies to FormMapApp, not here.
             gMapControl.MapProvider = GMapProviders.BingHybridMap;
             gMapControl.ShowCenter = false;
             gMapControl.DragButton = MouseButtons.Left;

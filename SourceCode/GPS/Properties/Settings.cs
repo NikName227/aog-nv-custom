@@ -31,6 +31,12 @@ namespace AgOpenGPS.Properties
         public Size setWindow_MapBndSize = new Size(1022, 742);
         public Size setWindow_BingMapSize = new Size(965, 700);
         public int setWindow_BingZoom = 15;
+
+        // ===== APP MAP (background map source) =====
+        // 0 = Default (Bing, as in AOG), 1 = Google satellite, 2 = Custom WMS (default: DGU Geoportal)
+        public int setMap_appMapMode = 0;
+        public string setMap_customWmsUrl = "https://geoportal.dgu.hr/services/inspire/orthophoto_2023_2024/wms";
+
         public Point setWindow_QuickABLocation = new Point(100, 100);
         public Size setWindow_gridSize = new Size(400, 400);
         public Point setWindow_gridLocation = new Point(20, 20);

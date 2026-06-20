@@ -2159,6 +2159,13 @@ namespace AgOpenGPS
                 form.ShowDialog(this);
             }
         }
+        private void mapAppToolStripMenu_Click(object sender, EventArgs e)
+        {
+            using (var form = new FormMapApp(this))
+            {
+                form.ShowDialog(this);
+            }
+        }
         private void correctionToolStrip_Click(object sender, EventArgs e)
         {
             //check if window already exists
