@@ -37,6 +37,7 @@
             this.label3 = new System.Windows.Forms.Label();
             this.label2 = new System.Windows.Forms.Label();
             this.btnFromKML = new System.Windows.Forms.Button();
+            this.btnFromShapeFile = new System.Windows.Forms.Button();
             this.btnFromISOXML = new System.Windows.Forms.Button();
             this.label1 = new System.Windows.Forms.Label();
             this.btnJobOpen = new System.Windows.Forms.Button();
@@ -62,31 +63,33 @@
             this.tableLayoutPanel1.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Absolute, 23F));
             this.tableLayoutPanel1.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 50F));
             this.tableLayoutPanel1.Controls.Add(this.btnAgShareBulkUpload, 2, 4);
-            this.tableLayoutPanel1.Controls.Add(this.btnJobAgShare, 0, 4);
-            this.tableLayoutPanel1.Controls.Add(this.btnEasyDrive, 0, 5);
+            this.tableLayoutPanel1.Controls.Add(this.btnJobAgShare, 0, 5);
+            this.tableLayoutPanel1.Controls.Add(this.btnEasyDrive, 0, 6);
             this.tableLayoutPanel1.Controls.Add(this.label5, 1, 5);
             this.tableLayoutPanel1.Controls.Add(this.label4, 1, 3);
             this.tableLayoutPanel1.Controls.Add(this.label3, 1, 2);
             this.tableLayoutPanel1.Controls.Add(this.label2, 1, 1);
             this.tableLayoutPanel1.Controls.Add(this.btnFromKML, 0, 1);
+            this.tableLayoutPanel1.Controls.Add(this.btnFromShapeFile, 0, 2);
             this.tableLayoutPanel1.Controls.Add(this.btnFromISOXML, 0, 0);
             this.tableLayoutPanel1.Controls.Add(this.label1, 1, 0);
             this.tableLayoutPanel1.Controls.Add(this.btnJobOpen, 2, 2);
             this.tableLayoutPanel1.Controls.Add(this.btnJobClose, 2, 0);
             this.tableLayoutPanel1.Controls.Add(this.btnInField, 2, 1);
             this.tableLayoutPanel1.Controls.Add(this.btnJobResume, 2, 3);
-            this.tableLayoutPanel1.Controls.Add(this.btnFromExisting, 0, 2);
-            this.tableLayoutPanel1.Controls.Add(this.btnJobNew, 0, 3);
+            this.tableLayoutPanel1.Controls.Add(this.btnFromExisting, 0, 3);
+            this.tableLayoutPanel1.Controls.Add(this.btnJobNew, 0, 4);
             this.tableLayoutPanel1.Location = new System.Drawing.Point(9, 7);
             this.tableLayoutPanel1.Name = "tableLayoutPanel1";
-            this.tableLayoutPanel1.RowCount = 6;
-            this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 16.66F));
-            this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 16.66F));
-            this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 16.66F));
-            this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 16.66F));
-            this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 16.66F));
-            this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 16.7F));
-            this.tableLayoutPanel1.Size = new System.Drawing.Size(605, 555);
+            this.tableLayoutPanel1.RowCount = 7;
+            this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 14.28F));
+            this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 14.28F));
+            this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 14.28F));
+            this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 14.28F));
+            this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 14.28F));
+            this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 14.28F));
+            this.tableLayoutPanel1.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 14.32F));
+            this.tableLayoutPanel1.Size = new System.Drawing.Size(605, 648);
             this.tableLayoutPanel1.TabIndex = 106;
             // 
             // btnAgShareBulkUpload
@@ -190,6 +193,29 @@
             this.btnFromKML.TextImageRelation = System.Windows.Forms.TextImageRelation.ImageBeforeText;
             this.btnFromKML.UseVisualStyleBackColor = false;
             this.btnFromKML.Click += new System.EventHandler(this.btnFromKML_Click);
+            //
+            // btnFromShapeFile
+            //
+            this.btnFromShapeFile.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(240)))), ((int)(((byte)(248)))), ((int)(((byte)(255)))));
+            this.btnFromShapeFile.Cursor = System.Windows.Forms.Cursors.Hand;
+            this.btnFromShapeFile.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.btnFromShapeFile.FlatAppearance.BorderColor = System.Drawing.Color.FromArgb(((int)(((byte)(100)))), ((int)(((byte)(149)))), ((int)(((byte)(237)))));
+            this.btnFromShapeFile.FlatAppearance.MouseOverBackColor = System.Drawing.Color.FromArgb(((int)(((byte)(227)))), ((int)(((byte)(242)))), ((int)(((byte)(253)))));
+            this.btnFromShapeFile.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnFromShapeFile.Font = new System.Drawing.Font("Tahoma", 16F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.btnFromShapeFile.ForeColor = System.Drawing.Color.Black;
+            this.btnFromShapeFile.Image = global::AgOpenGPS.Properties.Resources.ShapeFile;
+            this.btnFromShapeFile.ImageAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            this.btnFromShapeFile.Margin = new System.Windows.Forms.Padding(6, 5, 6, 5);
+            this.btnFromShapeFile.Name = "btnFromShapeFile";
+            this.btnFromShapeFile.Padding = new System.Windows.Forms.Padding(15, 0, 0, 0);
+            this.btnFromShapeFile.Size = new System.Drawing.Size(279, 83);
+            this.btnFromShapeFile.TabIndex = 92;
+            this.btnFromShapeFile.Text = "Shape File";
+            this.btnFromShapeFile.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            this.btnFromShapeFile.TextImageRelation = System.Windows.Forms.TextImageRelation.ImageBeforeText;
+            this.btnFromShapeFile.UseVisualStyleBackColor = false;
+            this.btnFromShapeFile.Click += new System.EventHandler(this.btnFromShapeFile_Click);
             // 
             // btnFromISOXML
             // 
@@ -377,7 +403,7 @@
             this.lblResumeField.BackColor = System.Drawing.Color.Transparent;
             this.lblResumeField.Font = new System.Drawing.Font("Tahoma", 15.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.lblResumeField.ForeColor = System.Drawing.Color.Black;
-            this.lblResumeField.Location = new System.Drawing.Point(9, 594);
+            this.lblResumeField.Location = new System.Drawing.Point(9, 687);
             this.lblResumeField.Name = "lblResumeField";
             this.lblResumeField.Size = new System.Drawing.Size(468, 28);
             this.lblResumeField.TabIndex = 106;
@@ -390,7 +416,7 @@
             this.lblAgShareCloudLoad.BackColor = System.Drawing.Color.Transparent;
             this.lblAgShareCloudLoad.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Italic, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.lblAgShareCloudLoad.ForeColor = System.Drawing.Color.SteelBlue;
-            this.lblAgShareCloudLoad.Location = new System.Drawing.Point(9, 566);
+            this.lblAgShareCloudLoad.Location = new System.Drawing.Point(9, 659);
             this.lblAgShareCloudLoad.Name = "lblAgShareCloudLoad";
             this.lblAgShareCloudLoad.Size = new System.Drawing.Size(468, 20);
             this.lblAgShareCloudLoad.TabIndex = 116;
@@ -407,7 +433,7 @@
             this.btnDeleteAB.Font = new System.Drawing.Font("Tahoma", 12F, System.Drawing.FontStyle.Bold);
             this.btnDeleteAB.ForeColor = System.Drawing.SystemColors.ButtonFace;
             this.btnDeleteAB.Image = global::AgOpenGPS.Properties.Resources.Cancel64;
-            this.btnDeleteAB.Location = new System.Drawing.Point(486, 581);
+            this.btnDeleteAB.Location = new System.Drawing.Point(486, 674);
             this.btnDeleteAB.Name = "btnDeleteAB";
             this.btnDeleteAB.Size = new System.Drawing.Size(129, 57);
             this.btnDeleteAB.TabIndex = 4;
@@ -453,7 +479,7 @@
             // 
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.None;
             this.BackColor = System.Drawing.Color.Gainsboro;
-            this.ClientSize = new System.Drawing.Size(638, 645);
+            this.ClientSize = new System.Drawing.Size(638, 738);
             this.ControlBox = false;
             this.Controls.Add(this.tableLayoutPanel1);
             this.Controls.Add(this.btnDeleteAB);
@@ -488,6 +514,7 @@
         private System.Windows.Forms.Button btnJobNew;
         private System.Windows.Forms.Button btnInField;
         private System.Windows.Forms.Button btnFromKML;
+        private System.Windows.Forms.Button btnFromShapeFile;
         private System.Windows.Forms.Button btnFromISOXML;
         private System.Windows.Forms.Button btnDeleteAB;
         private System.Windows.Forms.Label label1;

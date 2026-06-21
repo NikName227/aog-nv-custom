@@ -319,6 +319,20 @@ namespace AgOpenGPS
             mf.bnd.isOkToAddPoints = false;
         }
 
+        /// <summary>
+        /// Create one AOG field from a KML file programmatically (no UI interaction).
+        /// Used by the Shape File import to reuse the proven KML field pipeline.
+        /// </summary>
+        public void CreateFieldFromKml(string kmlPath, string fieldName)
+        {
+            tboxFieldName.Text = fieldName;
+            fileName = kmlPath;
+
+            FindLatLon(kmlPath);
+            CreateNewField();
+            LoadKMLBoundary(kmlPath, true);
+        }
+
         private void CreateNewField()
         {
             //fill something in

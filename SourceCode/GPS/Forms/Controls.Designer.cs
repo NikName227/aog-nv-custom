@@ -602,6 +602,12 @@ namespace AgOpenGPS
                     using (var form2 = new FormFieldIsoXml(this)) { form2.ShowDialog(this); }
                 }
 
+                if (isShapeImportRequested)
+                {
+                    isShapeImportRequested = false;
+                    using (var form2 = new FormFieldShapeImport(this)) { form2.ShowDialog(this); }
+                }
+
                 // ---- Only log "Opened" if a field was newly opened or changed ----
                 bool openedNewOrChanged =
                     isJobStarted &&

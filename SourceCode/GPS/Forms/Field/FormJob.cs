@@ -254,6 +254,18 @@ namespace AgOpenGPS
             Close();
         }
 
+        private async void btnFromShapeFile_Click(object sender, EventArgs e)
+        {
+            if (mf.isJobStarted)
+            {
+                await mf.FileSaveEverythingBeforeClosingField();
+            }
+            //Controls handler opens FormFieldShapeImport after this dialog closes
+            mf.isShapeImportRequested = true;
+            DialogResult = DialogResult.Ignore;
+            Close();
+        }
+
         private void btnFromExisting_Click(object sender, EventArgs e)
         {
             //back to FormGPS

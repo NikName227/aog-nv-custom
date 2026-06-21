@@ -76,6 +76,9 @@ namespace AgOpenGPS
         public bool isEasyDriveMode;
         public bool isEasyDriveRequested;
 
+        // Set by FormJob "Shape File" button -> Controls opens FormFieldShapeImport
+        public bool isShapeImportRequested;
+
         public string displayFieldName => AppModel.Fields.ActiveField != null ? AppModel.Fields.ActiveField.Name : gStr.gsNone;
 
 
