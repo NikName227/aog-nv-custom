@@ -1,7 +1,6 @@
 ﻿using AgLibrary.Logging;
 using System;
 using System.Globalization;
-using System.Reflection;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -11,7 +10,7 @@ namespace AgIO
     {
         private static Mutex _mutex;
 
-        public static readonly string Version = Assembly.GetEntryAssembly().GetName().Version.ToString(3); // Major.Minor.Patch
+        public static readonly string Version = Application.ProductVersion.Split('+', '-')[0]; // from ProductVersion (e.g. 6.8.5.1), not AssemblyVersion
 
         /// <summary>
         /// The main entry point for the application.
