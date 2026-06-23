@@ -1394,4 +1394,10 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsName" xml:space="preserve">
     <value>Naziv</value>
   </data>
+  <data name="gsPointOnBoundary" xml:space="preserve">
+    <value>točka na granici</value>
+  </data>
+  <data name="gsFreePoint" xml:space="preserve">
+    <value>slobodna točka</value>
+  </data>
 </root>

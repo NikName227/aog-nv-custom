@@ -4704,5 +4704,17 @@ namespace AgOpenGPS.Core.Translations {
                 return ResourceManager.GetString("gsSaved", resourceCulture);
             }
         }
+
+        public static string gsPointOnBoundary {
+            get {
+                return ResourceManager.GetString("gsPointOnBoundary", resourceCulture);
+            }
+        }
+
+        public static string gsFreePoint {
+            get {
+                return ResourceManager.GetString("gsFreePoint", resourceCulture);
+            }
+        }
     }
 }

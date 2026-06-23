@@ -56,6 +56,13 @@ namespace AgOpenGPS
         private int selIndex = -1;
         private int stepPx = 10; // Coarse by default; Fine = 1
 
+        // Add-point button is tri-state: 0 = Off, 1 = on-boundary (new points within 1 m snap to the
+        // boundary), 2 = Free (place anywhere, as before). Editing later moves points freely.
+        private int addStage = 0;
+        private bool AddActive => addStage != 0;
+        private bool AddSnap => addStage == 1;
+        private const double BoundarySnapDist = 1.0; // metres
+
         // Mouse drag state.
         private int dragIndex = -1;
         private bool panning;
@@ -176,6 +183,8 @@ namespace AgOpenGPS
             btnMakeAB.Text = L(gStr.gsABline, "AB line");
             btnMakeBndCurve.Text = L(gStr.gsCurveByBoundary, "Curve by Boundary");
             btnMakeCurve.Text = L(gStr.gsCurve, "Curve");
+            lblAddLegBTxt.Text = L(gStr.gsPointOnBoundary, "point on boundary");
+            lblAddLegFTxt.Text = L(gStr.gsFreePoint, "free point");
             lblPointMode.Text = "";
             lblActiveOp.Text = "";
         }
@@ -369,11 +378,11 @@ namespace AgOpenGPS
             if (mh >= 0) { measureDrag = mh; return; }
 
             int hit = HitTestPoint(e.X, e.Y);
-            if (hit >= 0 && !btnAddPoint.Checked && !btnDeletePoint.Checked)
+            if (hit >= 0 && !AddActive && !btnDeletePoint.Checked)
             {
                 dragIndex = hit; // grab a point to drag
             }
-            else if (!btnAddPoint.Checked && !btnDeletePoint.Checked)
+            else if (!AddActive && !btnDeletePoint.Checked)
             {
                 panning = true; panStartSX = sX; panStartSY = sY; // left-drag empty space = pan
             }
@@ -418,13 +427,15 @@ namespace AgOpenGPS
 
             if (!moved) // a tap
             {
-                if (btnAddPoint.Checked)
+                if (AddActive)
                 {
-                    pts.Add(ScreenToWorld(e.X, e.Y));
+                    vec2 np = ScreenToWorld(e.X, e.Y);
+                    if (AddSnap) np = SnapToBoundary(np, BoundarySnapDist); // on-boundary mode
+                    pts.Add(np);
                     RecomputeAB();
                     UpdateLineButtons();
                     Regenerate();           // new point -> update the line
-                    lblActiveOp.Text = gStr.gsAddPoint;
+                    lblActiveOp.Text = AddSnap ? (gStr.gsPointOnBoundary ?? "point on boundary") : gStr.gsAddPoint;
                 }
                 else if (btnDeletePoint.Checked)
                 {
@@ -486,7 +497,7 @@ namespace AgOpenGPS
         {
             if (pointMode == PointEdit.Off)
             {
-                btnAddPoint.Checked = false;
+                ResetAddStage();
                 btnDeletePoint.Checked = false;
                 SetPointMode(PointEdit.Mark);
             }
@@ -563,26 +574,55 @@ namespace AgOpenGPS
         }
 
         // ── Add / Delete toggles ──────────────────────────────────────────
-        private void btnAddPoint_CheckedChanged(object sender, EventArgs e)
+        // Cycle Off -> on-boundary (orange) -> Free (yellow) -> Off.
+        private void btnAddPoint_Click(object sender, EventArgs e)
         {
-            if (btnAddPoint.Checked)
+            if (!btnAddPoint.Enabled) return;
+            addStage = (addStage + 1) % 3;
+            if (addStage != 0)
             {
                 btnDeletePoint.Checked = false;
                 selIndex = -1; SetPointMode(PointEdit.Off);
-                lblActiveOp.Text = gStr.gsAddPoint;
             }
-            else if (!btnDeletePoint.Checked) lblActiveOp.Text = "";
+            ApplyAddStageVisual();
+            oglSelf.Invalidate();
+        }
+
+        private void ApplyAddStageVisual()
+        {
+            switch (addStage)
+            {
+                case 1: // on-boundary: snap new points to the boundary
+                    btnAddPoint.BackColor = Color.Orange;
+                    lblActiveOp.Text = gStr.gsPointOnBoundary ?? "point on boundary";
+                    break;
+                case 2: // free add (unchanged behaviour)
+                    btnAddPoint.BackColor = Color.Gold;
+                    lblActiveOp.Text = gStr.gsAddPoint;
+                    break;
+                default:
+                    btnAddPoint.BackColor = Color.AliceBlue;
+                    if (!btnDeletePoint.Checked) lblActiveOp.Text = "";
+                    break;
+            }
+        }
+
+        // Turn the Add button fully off (used when another tool takes over).
+        private void ResetAddStage()
+        {
+            addStage = 0;
+            btnAddPoint.BackColor = Color.AliceBlue;
         }
 
         private void btnDeletePoint_CheckedChanged(object sender, EventArgs e)
         {
             if (btnDeletePoint.Checked)
             {
-                btnAddPoint.Checked = false;
+                ResetAddStage();
                 selIndex = -1; SetPointMode(PointEdit.Off);
                 lblActiveOp.Text = gStr.gsDeletePoint;
             }
-            else if (!btnAddPoint.Checked) lblActiveOp.Text = "";
+            else if (!AddActive) lblActiveOp.Text = "";
         }
 
         // ── Satellite background (App-Map) ────────────────────────────────
@@ -783,6 +823,35 @@ namespace AgOpenGPS
             return Math.Sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy));
         }
 
+        // If p is within maxDist of the boundary, return the closest point ON the boundary; else p.
+        private vec2 SnapToBoundary(vec2 p, double maxDist)
+        {
+            double best = maxDist; vec2 res = p;
+            for (int j = 0; j < mf.bnd.bndList.Count; j++)
+            {
+                var f = mf.bnd.bndList[j].fenceLine;
+                for (int i = 0; i < f.Count - 1; i++)
+                {
+                    double cx, cy;
+                    double d = ClosestOnSeg(p.easting, p.northing,
+                        f[i].easting, f[i].northing, f[i + 1].easting, f[i + 1].northing, out cx, out cy);
+                    if (d < best) { best = d; res = new vec2(cx, cy); }
+                }
+            }
+            return res;
+        }
+
+        private static double ClosestOnSeg(double px, double py, double ax, double ay, double bx, double by,
+            out double cx, out double cy)
+        {
+            double dx = bx - ax, dy = by - ay;
+            double len2 = dx * dx + dy * dy;
+            double t = len2 <= 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / len2;
+            t = Math.Max(0, Math.Min(1, t));
+            cx = ax + t * dx; cy = ay + t * dy;
+            return Math.Sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy));
+        }
+
         private void DrawCheckBoxes()
         {
             if (checkBoxes.Count == 0) return;
@@ -876,13 +945,13 @@ namespace AgOpenGPS
         // ── Zoom ──────────────────────────────────────────────────────────
         private void btnZoomIn_Click(object sender, EventArgs e)
         {
-            zoom *= 0.8; if (zoom < 0.05) zoom = 0.05; // 2 deeper steps (0.08→0.064→0.0512) for ~10 cm point nudging
+            zoom *= 0.7; if (zoom < 0.03) zoom = 0.03; // faster step + 2 deeper levels for ~10 cm nudging
             oglSelf.Invalidate();
         }
 
         private void btnZoomOut_Click(object sender, EventArgs e)
         {
-            zoom /= 0.8; if (zoom > 6.0) zoom = 6.0;
+            zoom /= 0.7; if (zoom > 6.0) zoom = 6.0;
             oglSelf.Invalidate();
         }
 
@@ -915,7 +984,7 @@ namespace AgOpenGPS
             tboxName.Enabled = true; // name editable in Browse too (rename active line) and in Build
             if (!build)
             {
-                btnAddPoint.Checked = false; btnDeletePoint.Checked = false;
+                ResetAddStage(); btnDeletePoint.Checked = false;
                 selIndex = -1; pointMode = PointEdit.Off;
                 btnPoint.BackColor = Color.Gainsboro; lblPointMode.Text = "";
             }

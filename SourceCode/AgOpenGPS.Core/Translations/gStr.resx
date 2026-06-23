@@ -1761,4 +1761,10 @@ USE AT OWN RISK.</value>
   <data name="gsSaved" xml:space="preserve">
     <value>Saved</value>
   </data>
+  <data name="gsPointOnBoundary" xml:space="preserve">
+    <value>point on boundary</value>
+  </data>
+  <data name="gsFreePoint" xml:space="preserve">
+    <value>free point</value>
+  </data>
 </root>
