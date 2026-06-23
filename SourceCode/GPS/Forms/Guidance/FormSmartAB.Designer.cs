@@ -54,6 +54,8 @@ namespace AgOpenGPS
             this.btnDeleteLine = new System.Windows.Forms.Button();
             this.btnCancel = new System.Windows.Forms.Button();
             this.btnAccept = new System.Windows.Forms.Button();
+            this.btnNew = new System.Windows.Forms.Button();
+            this.btnEdit = new System.Windows.Forms.Button();
             this.SuspendLayout();
             //
             // oglSelf
@@ -152,7 +154,7 @@ namespace AgOpenGPS
             //
             this.lblName.AutoSize = true;
             this.lblName.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
-            this.lblName.Location = new System.Drawing.Point(684, 556);
+            this.lblName.Location = new System.Drawing.Point(684, 600);
             this.lblName.Name = "lblName";
             this.lblName.Size = new System.Drawing.Size(43, 16);
             this.lblName.TabIndex = 33;
@@ -161,7 +163,7 @@ namespace AgOpenGPS
             // tboxName
             //
             this.tboxName.Font = new System.Drawing.Font("Tahoma", 11.25F);
-            this.tboxName.Location = new System.Drawing.Point(740, 552);
+            this.tboxName.Location = new System.Drawing.Point(740, 596);
             this.tboxName.Name = "tboxName";
             this.tboxName.Size = new System.Drawing.Size(246, 26);
             this.tboxName.TabIndex = 34;
@@ -469,44 +471,73 @@ namespace AgOpenGPS
             this.btnSmoothApply.Text = "Apply";
             this.btnSmoothApply.UseVisualStyleBackColor = true;
             //
-            // btnPrevLine (placeholder)
+            // btnNew
+            //
+            this.btnNew.BackColor = System.Drawing.Color.Honeydew;
+            this.btnNew.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnNew.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.btnNew.Location = new System.Drawing.Point(684, 548);
+            this.btnNew.Name = "btnNew";
+            this.btnNew.Size = new System.Drawing.Size(146, 42);
+            this.btnNew.TabIndex = 40;
+            this.btnNew.Text = "New";
+            this.btnNew.UseVisualStyleBackColor = false;
+            this.btnNew.Click += new System.EventHandler(this.btnNew_Click);
+            //
+            // btnEdit
+            //
+            this.btnEdit.BackColor = System.Drawing.Color.AliceBlue;
+            this.btnEdit.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnEdit.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.btnEdit.Location = new System.Drawing.Point(838, 548);
+            this.btnEdit.Name = "btnEdit";
+            this.btnEdit.Size = new System.Drawing.Size(146, 42);
+            this.btnEdit.TabIndex = 41;
+            this.btnEdit.Text = "Edit";
+            this.btnEdit.UseVisualStyleBackColor = false;
+            this.btnEdit.Click += new System.EventHandler(this.btnEdit_Click);
+            //
+            // btnPrevLine (active-line nav)
             //
             this.btnPrevLine.Enabled = false;
             this.btnPrevLine.Font = new System.Drawing.Font("Tahoma", 14F, System.Drawing.FontStyle.Bold);
-            this.btnPrevLine.Location = new System.Drawing.Point(684, 592);
+            this.btnPrevLine.Location = new System.Drawing.Point(684, 640);
             this.btnPrevLine.Name = "btnPrevLine";
             this.btnPrevLine.Size = new System.Drawing.Size(90, 46);
             this.btnPrevLine.TabIndex = 26;
             this.btnPrevLine.Text = "|◄◄";
             this.btnPrevLine.UseVisualStyleBackColor = true;
+            this.btnPrevLine.Click += new System.EventHandler(this.btnPrevLine_Click);
             //
             // btnDeleteLine (placeholder)
             //
             this.btnDeleteLine.Enabled = false;
             this.btnDeleteLine.Font = new System.Drawing.Font("Tahoma", 12F, System.Drawing.FontStyle.Bold);
-            this.btnDeleteLine.Location = new System.Drawing.Point(790, 592);
+            this.btnDeleteLine.Location = new System.Drawing.Point(790, 640);
             this.btnDeleteLine.Name = "btnDeleteLine";
             this.btnDeleteLine.Size = new System.Drawing.Size(90, 46);
             this.btnDeleteLine.TabIndex = 27;
             this.btnDeleteLine.Text = "Del";
             this.btnDeleteLine.UseVisualStyleBackColor = true;
+            this.btnDeleteLine.Click += new System.EventHandler(this.btnDeleteLine_Click);
             //
             // btnNextLine (placeholder)
             //
             this.btnNextLine.Enabled = false;
             this.btnNextLine.Font = new System.Drawing.Font("Tahoma", 14F, System.Drawing.FontStyle.Bold);
-            this.btnNextLine.Location = new System.Drawing.Point(896, 592);
+            this.btnNextLine.Location = new System.Drawing.Point(896, 640);
             this.btnNextLine.Name = "btnNextLine";
             this.btnNextLine.Size = new System.Drawing.Size(90, 46);
             this.btnNextLine.TabIndex = 28;
             this.btnNextLine.Text = "►►|";
             this.btnNextLine.UseVisualStyleBackColor = true;
+            this.btnNextLine.Click += new System.EventHandler(this.btnNextLine_Click);
             //
             // btnCancel
             //
             this.btnCancel.BackColor = System.Drawing.Color.MistyRose;
             this.btnCancel.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
-            this.btnCancel.Location = new System.Drawing.Point(790, 650);
+            this.btnCancel.Location = new System.Drawing.Point(790, 700);
             this.btnCancel.Name = "btnCancel";
             this.btnCancel.Size = new System.Drawing.Size(90, 50);
             this.btnCancel.TabIndex = 29;
@@ -518,7 +549,7 @@ namespace AgOpenGPS
             //
             this.btnAccept.BackColor = System.Drawing.Color.Honeydew;
             this.btnAccept.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
-            this.btnAccept.Location = new System.Drawing.Point(896, 650);
+            this.btnAccept.Location = new System.Drawing.Point(896, 700);
             this.btnAccept.Name = "btnAccept";
             this.btnAccept.Size = new System.Drawing.Size(90, 50);
             this.btnAccept.TabIndex = 30;
@@ -531,7 +562,7 @@ namespace AgOpenGPS
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.Color.WhiteSmoke;
-            this.ClientSize = new System.Drawing.Size(1000, 712);
+            this.ClientSize = new System.Drawing.Size(1000, 760);
             this.Controls.Add(this.btnZoomIn);
             this.Controls.Add(this.btnZoomOut);
             this.Controls.Add(this.btnSat);
@@ -566,6 +597,8 @@ namespace AgOpenGPS
             this.Controls.Add(this.lblSmoothVal);
             this.Controls.Add(this.btnSmoothUp);
             this.Controls.Add(this.btnSmoothApply);
+            this.Controls.Add(this.btnNew);
+            this.Controls.Add(this.btnEdit);
             this.Controls.Add(this.btnPrevLine);
             this.Controls.Add(this.btnDeleteLine);
             this.Controls.Add(this.btnNextLine);
@@ -626,5 +659,7 @@ namespace AgOpenGPS
         private System.Windows.Forms.Button btnDeleteLine;
         private System.Windows.Forms.Button btnCancel;
         private System.Windows.Forms.Button btnAccept;
+        private System.Windows.Forms.Button btnNew;
+        private System.Windows.Forms.Button btnEdit;
     }
 }

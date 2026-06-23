@@ -35,10 +35,18 @@ namespace AgOpenGPS
         private int aIndex = 0, bIndex = -1;
         private string lastMake; // last line type built ("AB"/"Curve"/"Bnd"), for auto-regenerate
 
-        // Generated tracks (Phase 2): starts as a copy of the field's tracks; the line built from
-        // the current points is kept at genIdx (replaced on re-make). Committed to mf.trk.gArr on Accept.
+        // Tracks (starts as a copy of the field's tracks). Committed to mf.trk.gArr on Accept.
         private readonly List<CTrk> gTemp = new List<CTrk>();
-        private int genIdx = -1;
+        // Control points per track (Phase 2b, option A): remembered for lines created/edited this
+        // session so Edit restores them 1:1; null for lines loaded from the field (derived on Edit).
+        private readonly List<List<vec2>> ctrlPts = new List<List<vec2>>();
+
+        // Phase 2b modes: Browse = show only the active saved line (◄◄/►►/Del); Build = place/edit
+        // points for a New or Edited line.
+        private enum LineMode { Browse, Build }
+        private LineMode mode = LineMode.Build;
+        private int activeIdx = -1; // Browse selection
+        private int workIdx = -1;   // line being built/edited (in gTemp)
 
         // Point edit (arrow-pad), same idea as the geoportal boundary tool.
         private enum PointEdit { Off, Mark, Move }
@@ -71,7 +79,7 @@ namespace AgOpenGPS
             mf.CalculateMinMax();
 
             // start from the field's existing tracks (so Accept keeps them)
-            foreach (var t in mf.trk.gArr) gTemp.Add(new CTrk(t));
+            foreach (var t in mf.trk.gArr) { gTemp.Add(new CTrk(t)); ctrlPts.Add(null); }
 
             redraw.Interval = 250;
             redraw.Tick += (s, e) => oglSelf.Invalidate();
@@ -141,6 +149,10 @@ namespace AgOpenGPS
 
         private void FormSmartAB_Load(object sender, EventArgs e)
         {
+            // Start in Browse if the field already has lines, else in Build (ready for a new line).
+            if (gTemp.Count > 0) { activeIdx = 0; SetMode(LineMode.Browse); }
+            else SetMode(LineMode.Build);
+
             UpdateArrowColors();
             UpdateLineButtons();
             LayoutControls();
@@ -209,7 +221,7 @@ namespace AgOpenGPS
             VehicleDotVisual.DrawVehicleDot(mf.pivotAxlePos.ToGeoCoord());
 
             DrawBuiltLines();
-            DrawPoints();
+            if (mode == LineMode.Build) DrawPoints();
 
             GL.Flush();
             oglSelf.SwapBuffers();
@@ -517,18 +529,126 @@ namespace AgOpenGPS
         // 0 pts = all off; 2 pts = AB + CurveByBoundary; >2 = Curve only.
         private void UpdateLineButtons()
         {
+            bool build = mode == LineMode.Build;
             int n = pts.Count;
-            btnMakeAB.Enabled = (n == 2);
-            btnMakeBndCurve.Enabled = (n == 2);
-            btnMakeCurve.Enabled = (n > 2);
+            btnMakeAB.Enabled = build && (n == 2);
+            btnMakeBndCurve.Enabled = build && (n == 2);
+            btnMakeCurve.Enabled = build && (n > 2);
+        }
+
+        // ── Phase 2b: New / Browse / Edit line management ─────────────────
+        private void SetMode(LineMode m)
+        {
+            mode = m;
+            bool build = m == LineMode.Build;
+            btnAddPoint.Enabled = build;
+            btnDeletePoint.Enabled = build;
+            btnPoint.Enabled = build;
+            tboxName.Enabled = build;
+            if (!build)
+            {
+                btnAddPoint.Checked = false; btnDeletePoint.Checked = false;
+                selIndex = -1; pointMode = PointEdit.Off;
+                btnPoint.BackColor = Color.Gainsboro; lblPointMode.Text = "";
+            }
+            UpdateLineButtons();
+            UpdateNavButtons();
+            UpdateArrowColors();
+            oglSelf.Invalidate();
+        }
+
+        private void UpdateNavButtons()
+        {
+            bool has = gTemp.Count > 0;
+            btnPrevLine.Enabled = has;
+            btnNextLine.Enabled = has;
+            btnDeleteLine.Enabled = has;
+            btnEdit.Enabled = has && mode == LineMode.Browse;
+        }
+
+        private void btnNew_Click(object sender, EventArgs e)
+        {
+            pts.Clear(); workIdx = -1; lastMake = null; selIndex = -1;
+            tboxName.Text = "";
+            RecomputeAB();
+            SetMode(LineMode.Build);
+            lblActiveOp.Text = "New line";
+        }
+
+        private void btnEdit_Click(object sender, EventArgs e)
+        {
+            if (activeIdx < 0 || activeIdx >= gTemp.Count) return;
+            workIdx = activeIdx;
+            LoadControlPoints(activeIdx);
+            tboxName.Text = gTemp[activeIdx].name ?? "";
+            SetMode(LineMode.Build);
+            lblActiveOp.Text = "Edit line";
+        }
+
+        private void btnPrevLine_Click(object sender, EventArgs e) => Navigate(-1);
+        private void btnNextLine_Click(object sender, EventArgs e) => Navigate(1);
+
+        private void Navigate(int dir)
+        {
+            if (gTemp.Count == 0) return;
+            if (mode != LineMode.Browse) { SetMode(LineMode.Browse); if (activeIdx < 0) activeIdx = 0; }
+            else
+            {
+                activeIdx += dir;
+                if (activeIdx < 0) activeIdx = gTemp.Count - 1;
+                if (activeIdx >= gTemp.Count) activeIdx = 0;
+            }
+            UpdateNavButtons();
+            lblActiveOp.Text = (gTemp[activeIdx].name ?? "line") + "  (" + (activeIdx + 1) + "/" + gTemp.Count + ")";
+            oglSelf.Invalidate();
+        }
+
+        private void btnDeleteLine_Click(object sender, EventArgs e)
+        {
+            if (activeIdx < 0 || activeIdx >= gTemp.Count) return;
+            gTemp.RemoveAt(activeIdx); ctrlPts.RemoveAt(activeIdx);
+            workIdx = -1;
+            if (activeIdx >= gTemp.Count) activeIdx = gTemp.Count - 1;
+            if (gTemp.Count == 0) btnNew_Click(null, null);
+            else { UpdateNavButtons(); lblActiveOp.Text = "deleted"; }
+            oglSelf.Invalidate();
+        }
+
+        private void LoadControlPoints(int idx)
+        {
+            pts.Clear();
+            var t = gTemp[idx];
+            if (ctrlPts[idx] != null && ctrlPts[idx].Count >= 2)
+            {
+                pts.AddRange(ctrlPts[idx]);
+            }
+            else if (t.mode == TrackMode.AB)
+            {
+                pts.Add(new vec2(t.ptA.easting, t.ptA.northing));
+                pts.Add(new vec2(t.ptB.easting, t.ptB.northing));
+            }
+            else // sample a few control points from the dense curve
+            {
+                int nC = t.curvePts.Count;
+                int samples = Math.Min(6, Math.Max(3, nC / 30));
+                for (int s = 0; s < samples; s++)
+                {
+                    int k = (samples == 1) ? 0 : (int)((double)s / (samples - 1) * (nC - 1));
+                    pts.Add(new vec2(t.curvePts[k].easting, t.curvePts[k].northing));
+                }
+            }
+            lastMake = (t.mode == TrackMode.AB) ? "AB" : "Curve";
+            RecomputeAB();
+            UpdateLineButtons();
         }
 
         // ── Phase 2: build lines from the free points (reuse AOG generation) ──
-        // Keep one generated track at genIdx; re-make replaces it.
+        // The line built from the current points is kept at workIdx (replaced on re-make);
+        // its control points are remembered for later Edit (option A).
         private void StoreGenerated(CTrk t)
         {
-            if (genIdx >= 0 && genIdx < gTemp.Count) gTemp[genIdx] = t;
-            else { gTemp.Add(t); genIdx = gTemp.Count - 1; }
+            if (workIdx >= 0 && workIdx < gTemp.Count) { gTemp[workIdx] = t; ctrlPts[workIdx] = new List<vec2>(pts); }
+            else { gTemp.Add(t); ctrlPts.Add(new List<vec2>(pts)); workIdx = gTemp.Count - 1; }
             oglSelf.Invalidate();
         }
 
@@ -738,33 +858,33 @@ namespace AgOpenGPS
             }
         }
 
-        // Draw generated tracks (AB dashed, curves as line strips) — like FormABDraw.
+        // Draw only the ACTIVE line (Browse) or the line being built/edited (Build).
         private void DrawBuiltLines()
         {
-            GL.LineStipple(1, 0x0707);
-            for (int i = 0; i < gTemp.Count; i++)
+            int show = (mode == LineMode.Browse) ? activeIdx : workIdx;
+            if (show < 0 || show >= gTemp.Count) return;
+            var t = gTemp[show];
+
+            if (t.mode == TrackMode.AB)
             {
-                var t = gTemp[i];
-                if (t.mode == TrackMode.AB)
-                {
-                    GL.Enable(EnableCap.LineStipple);
-                    GL.LineWidth(i == genIdx ? 8 : 4);
-                    GL.Color3(1.0f, 0.20f, 0.20f);
-                    GL.Begin(PrimitiveType.Lines);
-                    GL.Vertex3(t.ptA.easting - Math.Sin(t.heading) * mf.ABLine.abLength, t.ptA.northing - Math.Cos(t.heading) * mf.ABLine.abLength, 0);
-                    GL.Vertex3(t.ptB.easting + Math.Sin(t.heading) * mf.ABLine.abLength, t.ptB.northing + Math.Cos(t.heading) * mf.ABLine.abLength, 0);
-                    GL.End();
-                    GL.Disable(EnableCap.LineStipple);
-                }
-                else if (t.curvePts.Count > 1)
-                {
-                    GL.LineWidth(i == genIdx ? 5 : 3);
-                    if (t.mode == TrackMode.bndCurve) GL.Color3(0.70f, 0.5f, 0.2f);
-                    else GL.Color3(0.30f, 0.97f, 0.30f);
-                    GL.Begin(PrimitiveType.LineStrip);
-                    foreach (vec3 p in t.curvePts) GL.Vertex3(p.easting, p.northing, 0);
-                    GL.End();
-                }
+                GL.LineStipple(1, 0x0707);
+                GL.Enable(EnableCap.LineStipple);
+                GL.LineWidth(6);
+                GL.Color3(1.0f, 0.20f, 0.20f);
+                GL.Begin(PrimitiveType.Lines);
+                GL.Vertex3(t.ptA.easting - Math.Sin(t.heading) * mf.ABLine.abLength, t.ptA.northing - Math.Cos(t.heading) * mf.ABLine.abLength, 0);
+                GL.Vertex3(t.ptB.easting + Math.Sin(t.heading) * mf.ABLine.abLength, t.ptB.northing + Math.Cos(t.heading) * mf.ABLine.abLength, 0);
+                GL.End();
+                GL.Disable(EnableCap.LineStipple);
+            }
+            else if (t.curvePts.Count > 1)
+            {
+                GL.LineWidth(4);
+                if (t.mode == TrackMode.bndCurve) GL.Color3(0.70f, 0.5f, 0.2f);
+                else GL.Color3(0.30f, 0.97f, 0.30f);
+                GL.Begin(PrimitiveType.LineStrip);
+                foreach (vec3 p in t.curvePts) GL.Vertex3(p.easting, p.northing, 0);
+                GL.End();
             }
         }
 
@@ -779,13 +899,13 @@ namespace AgOpenGPS
         {
             // Apply the typed name to the generated line (works no matter when it was typed).
             string nm = tboxName.Text.Trim();
-            if (nm.Length > 0 && genIdx >= 0 && genIdx < gTemp.Count) gTemp[genIdx].name = nm;
+            if (nm.Length > 0 && workIdx >= 0 && workIdx < gTemp.Count) gTemp[workIdx].name = nm;
 
-            // Commit the generated tracks (existing + new) to the field and save.
+            // Commit the tracks (existing + new/edited) to the field and save.
             mf.trk.gArr.Clear();
             foreach (var t in gTemp) mf.trk.gArr.Add(new CTrk(t));
-            mf.trk.idx = (genIdx >= 0 && genIdx < gTemp.Count) ? genIdx
-                       : (gTemp.Count > 0 ? gTemp.Count - 1 : -1);
+            int sel = (mode == LineMode.Browse) ? activeIdx : workIdx;
+            mf.trk.idx = (sel >= 0 && sel < gTemp.Count) ? sel : (gTemp.Count > 0 ? 0 : -1);
             mf.FileSaveTracks();
             mf.curve.isCurveValid = false;
             mf.ABLine.isABValid = false;
