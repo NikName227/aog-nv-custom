@@ -18,6 +18,7 @@ namespace AgOpenGPS
             this.lblActiveOp = new System.Windows.Forms.Label();
             this.btnZoomIn = new System.Windows.Forms.Button();
             this.btnZoomOut = new System.Windows.Forms.Button();
+            this.btnZoomRestore = new System.Windows.Forms.Button();
             this.btnSat = new System.Windows.Forms.CheckBox();
             this.btnWinFull = new System.Windows.Forms.Button();
             this.btnWinClose = new System.Windows.Forms.Button();
@@ -110,6 +111,18 @@ namespace AgOpenGPS
             this.btnZoomOut.Text = "−";
             this.btnZoomOut.UseVisualStyleBackColor = false;
             this.btnZoomOut.Click += new System.EventHandler(this.btnZoomOut_Click);
+            //
+            // btnZoomRestore (reset zoom + pan to the initial view)
+            //
+            this.btnZoomRestore.BackColor = System.Drawing.Color.White;
+            this.btnZoomRestore.Font = new System.Drawing.Font("Tahoma", 16F, System.Drawing.FontStyle.Bold);
+            this.btnZoomRestore.Location = new System.Drawing.Point(604, 575);
+            this.btnZoomRestore.Name = "btnZoomRestore";
+            this.btnZoomRestore.Size = new System.Drawing.Size(56, 56);
+            this.btnZoomRestore.TabIndex = 4;
+            this.btnZoomRestore.Text = "○";
+            this.btnZoomRestore.UseVisualStyleBackColor = false;
+            this.btnZoomRestore.Click += new System.EventHandler(this.btnZoomRestore_Click);
             //
             // btnSat (over the map, top-right) - placeholder (Phase 3)
             //
@@ -593,6 +606,7 @@ namespace AgOpenGPS
             this.ClientSize = new System.Drawing.Size(1000, 760);
             this.Controls.Add(this.btnZoomIn);
             this.Controls.Add(this.btnZoomOut);
+            this.Controls.Add(this.btnZoomRestore);
             this.Controls.Add(this.btnSat);
             this.Controls.Add(this.btnWinFull);
             this.Controls.Add(this.btnWinClose);
@@ -653,6 +667,7 @@ namespace AgOpenGPS
         private System.Windows.Forms.Label lblActiveOp;
         private System.Windows.Forms.Button btnZoomIn;
         private System.Windows.Forms.Button btnZoomOut;
+        private System.Windows.Forms.Button btnZoomRestore;
         private System.Windows.Forms.CheckBox btnSat;
         private System.Windows.Forms.Button btnWinFull;
         private System.Windows.Forms.Button btnWinClose;

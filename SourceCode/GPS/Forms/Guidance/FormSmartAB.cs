@@ -28,7 +28,8 @@ namespace AgOpenGPS
         private readonly FormGPS mf;
 
         // GL view (persistent): camera distance factor + normalized pan offsets.
-        private double zoom = 2.0, sX = 0, sY = 0;
+        private const double InitZoom = 2.0; // restore target (Zoom-restore button)
+        private double zoom = InitZoom, sX = 0, sY = 0;
 
         // Free points (field easting/northing). A and B = the two FARTHEST-APART points
         // (recomputed on any change), so adding a point can move A/B.
@@ -143,7 +144,8 @@ namespace AgOpenGPS
                 if (kv.Value.X >= 676) kv.Key.Location = new Point(kv.Value.X + dx, kv.Value.Y);
 
             btnSat.Location = new Point(oglSelf.Right - 64, oglSelf.Top + 6);
-            btnZoomIn.Location = new Point(oglSelf.Right - 64, oglSelf.Bottom - 124);
+            btnZoomIn.Location = new Point(oglSelf.Right - 64, oglSelf.Bottom - 186);
+            btnZoomRestore.Location = new Point(oglSelf.Right - 64, oglSelf.Bottom - 124);
             btnZoomOut.Location = new Point(oglSelf.Right - 64, oglSelf.Bottom - 62);
             lblActiveOp.Location = new Point(8, oglSelf.Bottom + 6);
             btnWinClose.Location = new Point(ClientSize.Width - 60, 6);
@@ -191,6 +193,7 @@ namespace AgOpenGPS
 
             // keep the on-map buttons above the GL control
             btnZoomIn.BringToFront();
+            btnZoomRestore.BringToFront();
             btnZoomOut.BringToFront();
             btnSat.BringToFront();
             btnWinFull.BringToFront();
@@ -873,13 +876,20 @@ namespace AgOpenGPS
         // ── Zoom ──────────────────────────────────────────────────────────
         private void btnZoomIn_Click(object sender, EventArgs e)
         {
-            zoom *= 0.8; if (zoom < 0.08) zoom = 0.08; // deeper zoom (was 0.2 → 0.1 → 0.08)
+            zoom *= 0.8; if (zoom < 0.05) zoom = 0.05; // 2 deeper steps (0.08→0.064→0.0512) for ~10 cm point nudging
             oglSelf.Invalidate();
         }
 
         private void btnZoomOut_Click(object sender, EventArgs e)
         {
             zoom /= 0.8; if (zoom > 6.0) zoom = 6.0;
+            oglSelf.Invalidate();
+        }
+
+        // Reset the view (zoom + pan) back to the initial state.
+        private void btnZoomRestore_Click(object sender, EventArgs e)
+        {
+            zoom = InitZoom; sX = 0; sY = 0;
             oglSelf.Invalidate();
         }
 
