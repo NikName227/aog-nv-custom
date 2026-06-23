@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Globalization;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace AgOpenGPS
@@ -61,7 +62,7 @@ namespace AgOpenGPS
         private int addStage = 0;
         private bool AddActive => addStage != 0;
         private bool AddSnap => addStage == 1;
-        private const double BoundarySnapDist = 1.0; // metres
+        private const double BoundarySnapDist = 3.0; // metres
 
         // Mouse drag state.
         private int dragIndex = -1;
@@ -75,6 +76,7 @@ namespace AgOpenGPS
 
         // Phase 3: App-Map satellite background (reuse worldGrid.BingMap) + cadastral parcels.
         private BingMapVisual satVisual;
+        private bool fetchingParcels; // a background parcel WFS fetch is in flight
 
         // Phase 4: boxes where the line deviates from the boundary by > threshold (and < 2 m).
         private readonly List<vec2> checkBoxes = new List<vec2>();
@@ -112,6 +114,9 @@ namespace AgOpenGPS
             this.KeyPreview = true;
             this.KeyDown += (s, e) => { if (e.KeyCode == Keys.Escape) Close(); };
             this.MouseDown += FormDrag_MouseDown;
+            oglSelf.MouseWheel += oglSelf_MouseWheel; // wheel = zoom
+            // wheel events go to the focused control, so grab focus when the mouse is over the map
+            oglSelf.MouseEnter += (s, e) => { if (oglSelf.CanFocus) oglSelf.Focus(); };
         }
 
         // ── Window controls (touch) + layout ──────────────────────────────
@@ -640,11 +645,60 @@ namespace AgOpenGPS
                 oglSelf.MakeCurrent();
                 satVisual = new BingMapVisual(mf.worldGrid.BingMap);
                 lblActiveOp.Text = "Satellite ON";
+                EnsureParcelsLoaded(); // auto-fetch parcels if enabled in Map App
             }
             else
             {
                 satVisual = null;
             }
+            oglSelf.Invalidate();
+        }
+
+        // If the Map-App parcel overlay is enabled but no parcels are loaded yet, fetch them for the
+        // field's bbox in the background (so the user doesn't have to open Map App and wait first).
+        private void EnsureParcelsLoaded()
+        {
+            if (!Properties.Settings.Default.setMap_showParcelsOnMain) return;
+            if (mf.parcels.Segments != null && mf.parcels.Segments.Length >= 2) return; // already have them
+            if (fetchingParcels) return;
+
+            var bb = mf.FieldBoundingBox;
+            if (bb.IsEmpty) return;
+
+            // field bbox corners -> WGS84 lat/lon bbox
+            Wgs84 c0 = mf.AppModel.LocalPlane.ConvertGeoCoordToWgs84(new GeoCoord(bb.MinNorthing, bb.MinEasting));
+            Wgs84 c1 = mf.AppModel.LocalPlane.ConvertGeoCoordToWgs84(new GeoCoord(bb.MaxNorthing, bb.MaxEasting));
+            double minLat = Math.Min(c0.Latitude, c1.Latitude), maxLat = Math.Max(c0.Latitude, c1.Latitude);
+            double minLon = Math.Min(c0.Longitude, c1.Longitude), maxLon = Math.Max(c0.Longitude, c1.Longitude);
+            string wfsUrl = Properties.Settings.Default.setMap_parcelWfsUrl;
+
+            fetchingParcels = true;
+            lblActiveOp.Text = "Loading parcels…";
+            Task.Run(() =>
+            {
+                var parcels = CadastralWfsClient.GetParcels(wfsUrl, minLat, minLon, maxLat, maxLon, out string err);
+                if (!IsHandleCreated) return;
+                BeginInvoke((MethodInvoker)(() => ApplyParcels(parcels, err)));
+            });
+        }
+
+        private void ApplyParcels(System.Collections.Generic.List<CadastralParcel> parcels, string err)
+        {
+            fetchingParcels = false;
+            if (err != null || parcels == null) { lblActiveOp.Text = "Parcels: " + (err ?? "none"); return; }
+
+            var segs = new System.Collections.Generic.List<GeoCoord>();
+            foreach (var p in parcels)
+            {
+                int n = p.Outer.Count;
+                if (n < 3) continue;
+                var ring = new GeoCoord[n];
+                for (int i = 0; i < n; i++)
+                    ring[i] = mf.AppModel.LocalPlane.ConvertWgs84ToGeoCoord(new Wgs84(p.Outer[i].Lat, p.Outer[i].Lng));
+                for (int i = 0; i < n; i++) { segs.Add(ring[i]); segs.Add(ring[(i + 1) % n]); }
+            }
+            mf.parcels.Segments = segs.ToArray();
+            lblActiveOp.Text = parcels.Count + " parcels";
             oglSelf.Invalidate();
         }
 
@@ -748,7 +802,7 @@ namespace AgOpenGPS
             foreach (var p in chk)
             {
                 double d = DistToBoundary(p);
-                if (d > thr && d < 2.0) checkBoxes.Add(p);
+                if (d > thr && d < 3.0) checkBoxes.Add(p); // ignore the far side of the field (> 3 m)
             }
             lblActiveOp.Text = checkBoxes.Count + " spots > " + cm + " cm off boundary";
             oglSelf.Invalidate();
@@ -945,13 +999,22 @@ namespace AgOpenGPS
         // ── Zoom ──────────────────────────────────────────────────────────
         private void btnZoomIn_Click(object sender, EventArgs e)
         {
-            zoom *= 0.7; if (zoom < 0.03) zoom = 0.03; // faster step + 2 deeper levels for ~10 cm nudging
+            zoom *= 0.7; if (zoom < 0.02) zoom = 0.02; // faster step + deep levels for ~10 cm nudging
             oglSelf.Invalidate();
         }
 
         private void btnZoomOut_Click(object sender, EventArgs e)
         {
             zoom /= 0.7; if (zoom > 6.0) zoom = 6.0;
+            oglSelf.Invalidate();
+        }
+
+        // Mouse wheel zooms about the same factor as the +/- buttons.
+        private void oglSelf_MouseWheel(object sender, MouseEventArgs e)
+        {
+            if (e.Delta > 0) zoom *= 0.7; else zoom /= 0.7;
+            if (zoom < 0.02) zoom = 0.02;
+            if (zoom > 6.0) zoom = 6.0;
             oglSelf.Invalidate();
         }
 
