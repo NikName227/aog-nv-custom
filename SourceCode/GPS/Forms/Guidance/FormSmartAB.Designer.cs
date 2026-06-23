@@ -51,6 +51,8 @@ namespace AgOpenGPS
             this.lblCheck = new System.Windows.Forms.Label();
             this.tboxCheckCm = new System.Windows.Forms.TextBox();
             this.btnCheck = new System.Windows.Forms.Button();
+            this.btnCheckUp = new System.Windows.Forms.Button();
+            this.btnCheckDown = new System.Windows.Forms.Button();
             this.lblSmoot = new System.Windows.Forms.Label();
             this.btnSmoothDown = new System.Windows.Forms.Button();
             this.btnSmoothUp = new System.Windows.Forms.Button();
@@ -473,27 +475,51 @@ namespace AgOpenGPS
             //
             this.lblCheck.AutoSize = false;
             this.lblCheck.Font = new System.Drawing.Font("Tahoma", 9.75F);
-            this.lblCheck.Location = new System.Drawing.Point(684, 432);
+            this.lblCheck.Location = new System.Drawing.Point(684, 430);
             this.lblCheck.Name = "lblCheck";
-            this.lblCheck.Size = new System.Drawing.Size(300, 16);
+            this.lblCheck.Size = new System.Drawing.Size(300, 14);
             this.lblCheck.TabIndex = 18;
             this.lblCheck.Text = "Check boundary outline";
             //
             // tboxCheckCm (placeholder)
             //
             this.tboxCheckCm.Font = new System.Drawing.Font("Tahoma", 12F);
-            this.tboxCheckCm.Location = new System.Drawing.Point(684, 450);
+            this.tboxCheckCm.Location = new System.Drawing.Point(684, 447);
             this.tboxCheckCm.Name = "tboxCheckCm";
-            this.tboxCheckCm.Size = new System.Drawing.Size(70, 26);
+            this.tboxCheckCm.ReadOnly = true; // informational; value set with the up/down arrows
+            this.tboxCheckCm.Size = new System.Drawing.Size(54, 26);
             this.tboxCheckCm.TabIndex = 19;
             this.tboxCheckCm.Text = "10";
+            this.tboxCheckCm.TextAlign = System.Windows.Forms.HorizontalAlignment.Center;
+            //
+            // btnCheckUp (+5 cm)
+            //
+            this.btnCheckUp.Font = new System.Drawing.Font("Tahoma", 14F, System.Drawing.FontStyle.Bold);
+            this.btnCheckUp.Location = new System.Drawing.Point(742, 444);
+            this.btnCheckUp.Name = "btnCheckUp";
+            this.btnCheckUp.Size = new System.Drawing.Size(48, 34);
+            this.btnCheckUp.TabIndex = 201;
+            this.btnCheckUp.Text = "▲";
+            this.btnCheckUp.UseVisualStyleBackColor = true;
+            this.btnCheckUp.Click += new System.EventHandler(this.btnCheckUp_Click);
+            //
+            // btnCheckDown (-5 cm)
+            //
+            this.btnCheckDown.Font = new System.Drawing.Font("Tahoma", 14F, System.Drawing.FontStyle.Bold);
+            this.btnCheckDown.Location = new System.Drawing.Point(794, 444);
+            this.btnCheckDown.Name = "btnCheckDown";
+            this.btnCheckDown.Size = new System.Drawing.Size(48, 34);
+            this.btnCheckDown.TabIndex = 202;
+            this.btnCheckDown.Text = "▼";
+            this.btnCheckDown.UseVisualStyleBackColor = true;
+            this.btnCheckDown.Click += new System.EventHandler(this.btnCheckDown_Click);
             //
             // btnCheck (placeholder)
             //
             this.btnCheck.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
-            this.btnCheck.Location = new System.Drawing.Point(762, 450);
+            this.btnCheck.Location = new System.Drawing.Point(846, 444);
             this.btnCheck.Name = "btnCheck";
-            this.btnCheck.Size = new System.Drawing.Size(110, 28);
+            this.btnCheck.Size = new System.Drawing.Size(108, 34);
             this.btnCheck.TabIndex = 20;
             this.btnCheck.Text = "Check (cm)";
             this.btnCheck.UseVisualStyleBackColor = true;
@@ -683,6 +709,8 @@ namespace AgOpenGPS
             this.Controls.Add(this.lblCheck);
             this.Controls.Add(this.tboxCheckCm);
             this.Controls.Add(this.btnCheck);
+            this.Controls.Add(this.btnCheckUp);
+            this.Controls.Add(this.btnCheckDown);
             this.Controls.Add(this.lblSmoot);
             this.Controls.Add(this.btnSmoothDown);
             this.Controls.Add(this.lblSmoothVal);
@@ -747,6 +775,8 @@ namespace AgOpenGPS
         private System.Windows.Forms.Label lblCheck;
         private System.Windows.Forms.TextBox tboxCheckCm;
         private System.Windows.Forms.Button btnCheck;
+        private System.Windows.Forms.Button btnCheckUp;
+        private System.Windows.Forms.Button btnCheckDown;
         private System.Windows.Forms.Label lblSmoot;
         private System.Windows.Forms.Button btnSmoothDown;
         private System.Windows.Forms.Button btnSmoothUp;

@@ -1,4 +1,5 @@
 using AgLibrary.Logging;
+using AgOpenGPS.Controls;
 using AgOpenGPS.Core.DrawLib;
 using AgOpenGPS.Core.Models;
 using AgOpenGPS.Core.Translations;
@@ -78,8 +79,9 @@ namespace AgOpenGPS
         private BingMapVisual satVisual;
         private bool fetchingParcels; // a background parcel WFS fetch is in flight
 
-        // Phase 4: boxes where the line deviates from the boundary by > threshold (and < 2 m).
+        // Phase 4: boxes where the line deviates from the boundary by > threshold (and < 3 m).
         private readonly List<vec2> checkBoxes = new List<vec2>();
+        private int checkCm = 10; // Check threshold (cm), changed with the up/down arrows (5..200, step 5)
 
         // Phase 5: smoothing. smoothVal -1 = off ("--"); smoothLine = preview overlay.
         private int smoothVal = -1;
@@ -117,6 +119,8 @@ namespace AgOpenGPS
             oglSelf.MouseWheel += oglSelf_MouseWheel; // wheel = zoom
             // wheel events go to the focused control, so grab focus when the mouse is over the map
             oglSelf.MouseEnter += (s, e) => { if (oglSelf.CanFocus) oglSelf.Focus(); };
+            // tapping the Name field pops up the AOG on-screen keyboard
+            tboxName.Click += (s, e) => tboxName.ShowKeyboard(this);
         }
 
         // ── Window controls (touch) + layout ──────────────────────────────
@@ -782,8 +786,7 @@ namespace AgOpenGPS
             if (show < 0 || show >= gTemp.Count) { lblActiveOp.Text = "No line"; oglSelf.Invalidate(); return; }
             if (mf.bnd.bndList.Count == 0) { lblActiveOp.Text = "No boundary"; oglSelf.Invalidate(); return; }
 
-            double cm;
-            if (!double.TryParse(tboxCheckCm.Text.Trim(), out cm) || cm <= 0) cm = 10;
+            int cm = checkCm;
             double thr = cm / 100.0;
 
             // If a smoothed preview is showing, check that instead of the raw line.
@@ -806,6 +809,19 @@ namespace AgOpenGPS
             }
             lblActiveOp.Text = checkBoxes.Count + " spots > " + cm + " cm off boundary";
             oglSelf.Invalidate();
+        }
+
+        // Check threshold is set with the arrows: +/- 5 cm, range 5..200 cm.
+        private void btnCheckUp_Click(object sender, EventArgs e)
+        {
+            checkCm = Math.Min(200, checkCm + 5);
+            tboxCheckCm.Text = checkCm.ToString();
+        }
+
+        private void btnCheckDown_Click(object sender, EventArgs e)
+        {
+            checkCm = Math.Max(5, checkCm - 5);
+            tboxCheckCm.Text = checkCm.ToString();
         }
 
         private List<vec2> LinePoints(CTrk t)
