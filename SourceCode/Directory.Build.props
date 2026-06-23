@@ -10,4 +10,14 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
+  <!-- NV custom release version, applied to ALL apps (AgOpenGPS, AgIO, AgDiag, ModSim,
+       GPS_Out, Updater): 6.8.5 upstream base + .1 my release number.
+       Only FileVersion/InformationalVersion (drives Application.ProductVersion);
+       AssemblyVersion is left at default on purpose so user settings are not reset. -->
+  <PropertyGroup>
+    <FileVersion>6.8.5.1</FileVersion>
+    <InformationalVersion>6.8.5.1</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
 </Project>
