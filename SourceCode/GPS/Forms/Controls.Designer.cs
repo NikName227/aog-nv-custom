@@ -461,6 +461,22 @@ namespace AgOpenGPS
             this.Activate();
         }
 
+        // Smart AB: enhanced AB/curve builder (new window). Works without a boundary too
+        // (free points), so unlike btnABDraw it does not require a boundary first.
+        private void btnSmartAB_Click(object sender, EventArgs e)
+        {
+            if (ct.isContourBtnOn) { if (ct.isContourBtnOn) btnContour.PerformClick(); }
+
+            if (flp1.Visible) flp1.Visible = false;
+
+            using (var form = new FormSmartAB(this))
+            {
+                form.ShowDialog(this);
+            }
+
+            PanelUpdateRightAndBottom();
+        }
+
         private void btnABDraw_Click(object sender, EventArgs e)
         {
             if (bnd.bndList.Count == 0)
@@ -938,7 +954,15 @@ namespace AgOpenGPS
                 }
                 else if (result == DialogResult.Yes)
                 {
-                    new FormMap(this).Show(this);
+                    if (isGeoportalBoundaryRequested)
+                    {
+                        isGeoportalBoundaryRequested = false;
+                        new FormGeoportalBoundary(this).Show(this);
+                    }
+                    else
+                    {
+                        new FormMap(this).Show(this);
+                    }
                 }
             }
 

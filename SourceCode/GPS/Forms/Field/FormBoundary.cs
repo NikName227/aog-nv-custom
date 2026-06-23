@@ -433,6 +433,16 @@ namespace AgOpenGPS
             isClosing = true;
         }
 
+        private void btnGeoportal_Click(object sender, EventArgs e)
+        {
+            panelMain.Visible = false;
+            panelChoose.Visible = false;
+            panelKML.Visible = false;
+            isClosing = true;
+            //Controls routes DialogResult.Yes to FormGeoportalBoundary when this flag is set
+            mf.isGeoportalBoundaryRequested = true;
+        }
+
         private void btnBuildBoundaryFromTracks_Click(object sender, EventArgs e)
         {
             if (mf.bnd.bndList.Count > 0)

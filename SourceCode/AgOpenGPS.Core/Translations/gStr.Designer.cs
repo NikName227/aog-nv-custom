@@ -4392,5 +4392,287 @@ namespace AgOpenGPS.Core.Translations {
                 return ResourceManager.GetString("gsFileResult", resourceCulture);
             }
         }
+
+        public static string gsBoundaryFromGeoportal {
+            get {
+                return ResourceManager.GetString("gsBoundaryFromGeoportal", resourceCulture);
+            }
+        }
+
+        public static string gsCadastralParcels {
+            get {
+                return ResourceManager.GetString("gsCadastralParcels", resourceCulture);
+            }
+        }
+
+        public static string gsRefreshParcels {
+            get {
+                return ResourceManager.GetString("gsRefreshParcels", resourceCulture);
+            }
+        }
+
+        public static string gsGoToPosition {
+            get {
+                return ResourceManager.GetString("gsGoToPosition", resourceCulture);
+            }
+        }
+
+        public static string gsMarkParcel {
+            get {
+                return ResourceManager.GetString("gsMarkParcel", resourceCulture);
+            }
+        }
+
+        public static string gsClearSelection {
+            get {
+                return ResourceManager.GetString("gsClearSelection", resourceCulture);
+            }
+        }
+
+        public static string gsLoadingParcels {
+            get {
+                return ResourceManager.GetString("gsLoadingParcels", resourceCulture);
+            }
+        }
+
+        public static string gsParcels {
+            get {
+                return ResourceManager.GetString("gsParcels", resourceCulture);
+            }
+        }
+
+        public static string gsParcelsHidden {
+            get {
+                return ResourceManager.GetString("gsParcelsHidden", resourceCulture);
+            }
+        }
+
+        public static string gsParcelsError {
+            get {
+                return ResourceManager.GetString("gsParcelsError", resourceCulture);
+            }
+        }
+
+        public static string gsBackgroundMap {
+            get {
+                return ResourceManager.GetString("gsBackgroundMap", resourceCulture);
+            }
+        }
+
+        public static string gsMapSource {
+            get {
+                return ResourceManager.GetString("gsMapSource", resourceCulture);
+            }
+        }
+
+        public static string gsMapSourceDefault {
+            get {
+                return ResourceManager.GetString("gsMapSourceDefault", resourceCulture);
+            }
+        }
+
+        public static string gsCustomWmsDgu {
+            get {
+                return ResourceManager.GetString("gsCustomWmsDgu", resourceCulture);
+            }
+        }
+
+        public static string gsWmsUrl {
+            get {
+                return ResourceManager.GetString("gsWmsUrl", resourceCulture);
+            }
+        }
+
+        public static string gsParcel {
+            get {
+                return ResourceManager.GetString("gsParcel", resourceCulture);
+            }
+        }
+
+        public static string gsParcelWfsUrl {
+            get {
+                return ResourceManager.GetString("gsParcelWfsUrl", resourceCulture);
+            }
+        }
+
+        public static string gsApplyAndClose {
+            get {
+                return ResourceManager.GetString("gsApplyAndClose", resourceCulture);
+            }
+        }
+
+        public static string gsUpdatingBackground {
+            get {
+                return ResourceManager.GetString("gsUpdatingBackground", resourceCulture);
+            }
+        }
+
+        public static string gsLoadingImagery {
+            get {
+                return ResourceManager.GetString("gsLoadingImagery", resourceCulture);
+            }
+        }
+
+        public static string gsBackgroundRemoved {
+            get {
+                return ResourceManager.GetString("gsBackgroundRemoved", resourceCulture);
+            }
+        }
+
+        public static string gsBackgroundSet {
+            get {
+                return ResourceManager.GetString("gsBackgroundSet", resourceCulture);
+            }
+        }
+
+        public static string gsAreaTooLarge {
+            get {
+                return ResourceManager.GetString("gsAreaTooLarge", resourceCulture);
+            }
+        }
+
+        public static string gsOpenFieldFirst {
+            get {
+                return ResourceManager.GetString("gsOpenFieldFirst", resourceCulture);
+            }
+        }
+
+        public static string gsMakeBoundary {
+            get {
+                return ResourceManager.GetString("gsMakeBoundary", resourceCulture);
+            }
+        }
+
+        public static string gsSaveBoundary {
+            get {
+                return ResourceManager.GetString("gsSaveBoundary", resourceCulture);
+            }
+        }
+
+        public static string gsSelectParcelsFirst {
+            get {
+                return ResourceManager.GetString("gsSelectParcelsFirst", resourceCulture);
+            }
+        }
+
+        public static string gsBoundaryReady {
+            get {
+                return ResourceManager.GetString("gsBoundaryReady", resourceCulture);
+            }
+        }
+
+        public static string gsBoundarySaved {
+            get {
+                return ResourceManager.GetString("gsBoundarySaved", resourceCulture);
+            }
+        }
+
+        public static string gsApplyBoundaryQ {
+            get {
+                return ResourceManager.GetString("gsApplyBoundaryQ", resourceCulture);
+            }
+        }
+
+        public static string gsReplaceOuterOpt {
+            get {
+                return ResourceManager.GetString("gsReplaceOuterOpt", resourceCulture);
+            }
+        }
+
+        public static string gsNewFieldOpt {
+            get {
+                return ResourceManager.GetString("gsNewFieldOpt", resourceCulture);
+            }
+        }
+
+        public static string gsStartFixOutsideWarning {
+            get {
+                return ResourceManager.GetString("gsStartFixOutsideWarning", resourceCulture);
+            }
+        }
+
+        public static string gsAddBridge {
+            get {
+                return ResourceManager.GetString("gsAddBridge", resourceCulture);
+            }
+        }
+
+        public static string gsBridgeClickFirst {
+            get {
+                return ResourceManager.GetString("gsBridgeClickFirst", resourceCulture);
+            }
+        }
+
+        public static string gsBridgeClickSecond {
+            get {
+                return ResourceManager.GetString("gsBridgeClickSecond", resourceCulture);
+            }
+        }
+
+        public static string gsBridgeAdded {
+            get {
+                return ResourceManager.GetString("gsBridgeAdded", resourceCulture);
+            }
+        }
+
+        public static string gsMarkPoint {
+            get {
+                return ResourceManager.GetString("gsMarkPoint", resourceCulture);
+            }
+        }
+
+        public static string gsMovePoint {
+            get {
+                return ResourceManager.GetString("gsMovePoint", resourceCulture);
+            }
+        }
+
+        public static string gsFine {
+            get {
+                return ResourceManager.GetString("gsFine", resourceCulture);
+            }
+        }
+
+        public static string gsCoarse {
+            get {
+                return ResourceManager.GetString("gsCoarse", resourceCulture);
+            }
+        }
+
+        public static string gsStep {
+            get {
+                return ResourceManager.GetString("gsStep", resourceCulture);
+            }
+        }
+
+        public static string gsAddPoint {
+            get {
+                return ResourceManager.GetString("gsAddPoint", resourceCulture);
+            }
+        }
+
+        public static string gsDeletePoint {
+            get {
+                return ResourceManager.GetString("gsDeletePoint", resourceCulture);
+            }
+        }
+
+        public static string gsUndo {
+            get {
+                return ResourceManager.GetString("gsUndo", resourceCulture);
+            }
+        }
+
+        public static string gsSmartAB {
+            get {
+                return ResourceManager.GetString("gsSmartAB", resourceCulture);
+            }
+        }
+
+        public static string gsActiveOperation {
+            get {
+                return ResourceManager.GetString("gsActiveOperation", resourceCulture);
+            }
+        }
     }
 }

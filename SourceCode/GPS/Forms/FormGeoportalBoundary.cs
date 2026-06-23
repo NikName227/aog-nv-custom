@@ -1,0 +1,1041 @@
+using AgLibrary.Logging;
+using AgOpenGPS.Core.Models;
+using AgOpenGPS.Core.Translations;
+using GMap.NET;
+using GMap.NET.WindowsForms;
+using NetTopologySuite.Geometries;
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+
+namespace AgOpenGPS
+{
+    /// <summary>
+    /// Phase 1: show DGU ortophoto (WMS base) + cadastral parcels (WFS vector) over the map.
+    /// Phase 2: click-select parcels (mark mode), highlight + selected count/area.
+    /// Boundary creation from the selection comes in phase 3.
+    /// GUI is in English; Croatian comes from the gStr translation map (gStr.hr.resx).
+    /// </summary>
+    public partial class FormGeoportalBoundary : Form
+    {
+        private readonly FormGPS mf;
+
+        private readonly GMapOverlay parcelOverlay = new GMapOverlay("parcels");
+        private readonly GMapOverlay vehicleOverlay = new GMapOverlay("vehicle");
+        private VehicleMarker vehicleMarker;
+
+        private readonly Timer refreshTimer = new Timer();   // debounce map moves
+        private readonly Timer vehicleTimer = new Timer();   // vehicle marker
+        private bool fetching;
+        private bool isLoading;
+
+        // Parcels currently displayed (for hit-test) + selected parcels kept by a stable
+        // geometry key so the selection survives re-fetches on pan/zoom.
+        private List<CadastralParcel> parcels = new List<CadastralParcel>();
+        private readonly Dictionary<string, CadastralParcel> selected = new Dictionary<string, CadastralParcel>();
+
+        // Boundary built from the union of selected parcels (WGS84 outer ring) + its preview.
+        private readonly GMapOverlay madeOverlay = new GMapOverlay("made");
+        private List<Wgs84> madeRing;
+
+        // Phase 4: edit the made boundary's vertices (one draggable handle per vertex).
+        private readonly GMapOverlay editOverlay = new GMapOverlay("bedit");
+        private readonly List<CornerMarker> madeMarkers = new List<CornerMarker>();
+        private int selVertex = -1;   // selected boundary vertex (index into madeRing), -1 = none
+        private int dragVertex = -1;  // boundary vertex being dragged with the mouse
+        private readonly List<List<Wgs84>> undoStack = new List<List<Wgs84>>(); // last 3 ring states
+
+        // Bridges connect non-adjacent parcels into one polygon. Each bridge is a quad with
+        // 4 draggable corner handles; "Add bridge" drops one in the view center to position.
+        private readonly GMapOverlay bridgeOverlay = new GMapOverlay("bridges");
+        private readonly List<BridgeRect> bridgeRects = new List<BridgeRect>();
+        private BridgeRect dragRect;
+        private int dragCorner = -1;
+
+        // Point-edit (touch arrow-pad): select a bridge corner, then nudge it with the arrows.
+        // OFF = arrows pan the map; Mark = waiting to pick a point; Move = a point is selected.
+        private enum PointEdit { Off, Mark, Move }
+        private PointEdit pointMode = PointEdit.Off;
+        private BridgeRect selRect;
+        private CornerMarker selMarker;
+        private int selCorner = -1;
+        private int stepPx = 20; // Coarse by default; Fine = 5
+
+        private class BridgeRect
+        {
+            public readonly List<PointLatLng> Corners = new List<PointLatLng>(4);
+            public GMapPolygon Poly;
+            public readonly List<CornerMarker> Markers = new List<CornerMarker>(4);
+        }
+
+        // Round handle, big enough for touch. White/orange normally, green when selected.
+        private class CornerMarker : GMapMarker
+        {
+            public bool Selected;
+            public CornerMarker(PointLatLng pos) : base(pos) { }
+            public override void OnRender(System.Drawing.Graphics g)
+            {
+                const float r = 9f;
+                var fill = Selected ? System.Drawing.Brushes.LimeGreen : System.Drawing.Brushes.White;
+                g.FillEllipse(fill, LocalPosition.X - r, LocalPosition.Y - r, 2 * r, 2 * r);
+                var color = Selected ? System.Drawing.Color.Green : System.Drawing.Color.OrangeRed;
+                using (var pen = new System.Drawing.Pen(color, 2.5f))
+                    g.DrawEllipse(pen, LocalPosition.X - r, LocalPosition.Y - r, 2 * r, 2 * r);
+            }
+        }
+
+        // Borderless-window drag (same idea as the main window).
+        [DllImport("user32.dll")] private static extern bool ReleaseCapture();
+        [DllImport("user32.dll")] private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
+        private const int WM_NCLBUTTONDOWN = 0xA1, HTCAPTION = 0x2;
+
+        public FormGeoportalBoundary(Form callingForm)
+        {
+            mf = callingForm as FormGPS;
+            InitializeComponent();
+            LocalizeText();
+
+            refreshTimer.Interval = 700;
+            refreshTimer.Tick += (s, e) => { refreshTimer.Stop(); RefreshParcels(); };
+
+            vehicleTimer.Interval = 600;
+            vehicleTimer.Tick += vehicleTimer_Tick;
+
+            this.KeyPreview = true;
+            this.KeyDown += (s, e) => { if (e.KeyCode == Keys.Escape) Close(); };
+            this.MouseDown += FormDrag_MouseDown;
+        }
+
+        // English is the Designer default; pull localized text from gStr so HR (and other
+        // languages) show translated strings when the app language changes.
+        private void LocalizeText()
+        {
+            this.Text = gStr.gsBoundaryFromGeoportal;
+            chkParcels.Text = gStr.gsCadastralParcels;
+            btnRefresh.Text = gStr.gsRefreshParcels;
+            btnGoToPos.Text = gStr.gsGoToPosition;
+            chkMarkParcel.Text = gStr.gsMarkParcel;
+            btnAddBridge.Text = gStr.gsAddBridge;
+            btnClearSel.Text = gStr.gsClearSelection;
+            btnMakeBoundary.Text = gStr.gsMakeBoundary;
+            btnSaveBoundary.Text = gStr.gsSaveBoundary;
+            btnFine.Text = gStr.gsFine;
+            btnCoarse.Text = gStr.gsCoarse;
+            btnAddPoint.Text = gStr.gsAddPoint;
+            btnDeletePoint.Text = gStr.gsDeletePoint;
+            btnUndo.Text = gStr.gsUndo;
+            lblPointMode.Text = "";
+        }
+
+        private void FormGeoportalBoundary_Load(object sender, EventArgs e)
+        {
+            isLoading = true;
+
+            // Base map = same WMS as the App Map window (configurable there)
+            string wmsUrl = Properties.Settings.Default.setMap_customWmsUrl;
+            GeoportalWmsProvider.Instance.SetBaseUrl(
+                string.IsNullOrWhiteSpace(wmsUrl) ? GeoportalWmsProvider.DefaultBaseUrl : wmsUrl);
+            gMapControl.MapProvider = GeoportalWmsProvider.Instance;
+
+            gMapControl.Position = new PointLatLng(
+                mf.AppModel.CurrentLatLon.Latitude,
+                mf.AppModel.CurrentLatLon.Longitude);
+
+            int zoom = Properties.Settings.Default.setWindow_BingZoom;
+            if (zoom < 15) zoom = 16;
+            if (zoom > 16) zoom = 16;
+            gMapControl.Zoom = zoom;
+            gMapControl.ShowCenter = false;
+            gMapControl.DragButton = MouseButtons.Left;
+
+            gMapControl.Overlays.Add(parcelOverlay);
+            gMapControl.Overlays.Add(bridgeOverlay);
+            gMapControl.Overlays.Add(madeOverlay);
+            gMapControl.Overlays.Add(editOverlay);
+            gMapControl.Overlays.Add(vehicleOverlay);
+
+            vehicleMarker = new VehicleMarker(new PointLatLng(
+                mf.AppModel.CurrentLatLon.Latitude,
+                mf.AppModel.CurrentLatLon.Longitude));
+            vehicleOverlay.Markers.Add(vehicleMarker);
+            vehicleTimer.Start();
+
+            // Re-fetch parcels after the user pans/zooms (debounced)
+            gMapControl.OnPositionChanged += p => DebounceRefresh();
+            gMapControl.OnMapZoomChanged += () => DebounceRefresh();
+            gMapControl.MouseClick += gMap_MouseClick;
+            gMapControl.MouseDown += gMap_MouseDown;
+            gMapControl.MouseMove += gMap_MouseMove;
+            gMapControl.MouseUp += gMap_MouseUp;
+
+            // Two-finger pan if this GMap build/device supports it (properties may be absent).
+            TrySetBool(gMapControl, "MultiTouchEnabled", true);
+            TrySetBool(gMapControl, "TouchEnabled", true);
+
+            UpdateArrowColors();
+
+            UpdateSelInfo();
+            isLoading = false;
+        }
+
+        private void FormGeoportalBoundary_Shown(object sender, EventArgs e)
+        {
+            // keep the on-map buttons above the map
+            btnZoomIn.BringToFront();
+            btnZoomOut.BringToFront();
+            btnWinFull.BringToFront();
+            btnWinClose.BringToFront();
+
+            // WMS tiles often don't render until the view changes - nudge once.
+            ForceMapRefresh();
+            RefreshParcels();
+        }
+
+        private void ForceMapRefresh()
+        {
+            int z = (int)gMapControl.Zoom;
+            if (z > gMapControl.MinZoom) gMapControl.Zoom = z - 1;
+            gMapControl.Zoom = z;
+            gMapControl.ReloadMap();
+        }
+
+        private void DebounceRefresh()
+        {
+            if (isLoading) return;
+            refreshTimer.Stop();
+            refreshTimer.Start();
+        }
+
+        // ── Parcels (WFS vector) ──────────────────────────────────────────
+        private void RefreshParcels()
+        {
+            if (fetching || !chkParcels.Checked) return;
+
+            var area = gMapControl.ViewArea;
+            double minLat = area.LocationRightBottom.Lat;
+            double maxLat = area.LocationTopLeft.Lat;
+            double minLon = area.LocationTopLeft.Lng;
+            double maxLon = area.LocationRightBottom.Lng;
+
+            fetching = true;
+            lblStatus.Text = gStr.gsLoadingParcels;
+
+            string wfsUrl = Properties.Settings.Default.setMap_parcelWfsUrl;
+            Task.Run(() =>
+            {
+                var fetched = CadastralWfsClient.GetParcels(wfsUrl, minLat, minLon, maxLat, maxLon, out string err);
+                if (IsHandleCreated)
+                    BeginInvoke((MethodInvoker)(() => OnParcelsFetched(fetched, err)));
+            });
+        }
+
+        private void OnParcelsFetched(List<CadastralParcel> fetched, string err)
+        {
+            fetching = false;
+
+            if (err != null)
+            {
+                lblStatus.Text = gStr.gsParcelsError + ": " + err;
+                Log.EventWriter("Geoportal WFS error " + err);
+                return;
+            }
+
+            parcels = fetched;
+            RenderParcels();
+            lblStatus.Text = parcels.Count + " " + gStr.gsParcels + ".";
+        }
+
+        // Stable key for a parcel (3765 centroid, 0.1 m) so a re-fetched parcel keeps its
+        // selection state.
+        private static string KeyOf(CadastralParcel p)
+        {
+            if (p?.Geom3765 == null) return null;
+            var c = p.Geom3765.Centroid;
+            return ((long)Math.Round(c.X * 10)) + "_" + ((long)Math.Round(c.Y * 10));
+        }
+
+        private void RenderParcels()
+        {
+            parcelOverlay.Polygons.Clear();
+
+            foreach (var p in parcels)
+            {
+                if (p.Outer.Count < 3) continue;
+                bool isSel = KeyOf(p) is string k && selected.ContainsKey(k);
+                var poly = new GMapPolygon(p.Outer, "parcel")
+                {
+                    Fill = new SolidBrush(isSel
+                        ? Color.FromArgb(70, Color.Gold)
+                        : Color.FromArgb(20, Color.DeepSkyBlue)),
+                    Stroke = isSel
+                        ? new Pen(Color.Gold, 2.6f)
+                        : new Pen(Color.DeepSkyBlue, 1.5f)
+                };
+                parcelOverlay.Polygons.Add(poly);
+            }
+
+            gMapControl.Invalidate();
+        }
+
+        private void gMap_MouseClick(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left) return;
+
+            // Add-point mode: a tap inserts a new vertex on the nearest boundary segment.
+            if (btnAddPoint.Checked && madeRing != null)
+            {
+                InsertBoundaryPoint(e.X, e.Y);
+                return;
+            }
+
+            // Delete-point mode: a tap on a vertex removes it.
+            if (btnDeletePoint.Checked && madeRing != null)
+            {
+                if (HitTestVertex(e.X, e.Y, out int dv)) DeleteVertexAt(dv);
+                return;
+            }
+
+            if (HitTestCorner(e.X, e.Y, out var hitRect, out int hitCorner))
+            {
+                // In point-edit mode a click on a handle selects it for the arrow-pad.
+                if (pointMode != PointEdit.Off) SelectCorner(hitRect, hitCorner);
+                return;
+            }
+            if (HitTestVertex(e.X, e.Y, out int hitVertex))
+            {
+                if (pointMode != PointEdit.Off) SelectVertex(hitVertex);
+                return;
+            }
+
+            if (!chkMarkParcel.Checked) return;
+
+            PointLatLng pt = gMapControl.FromLocalToLatLng(e.X, e.Y);
+            foreach (var p in parcels)
+            {
+                if (!CadastralWfsClient.Contains(p, pt.Lat, pt.Lng)) continue;
+
+                string k = KeyOf(p);
+                if (k == null) continue;
+                if (selected.ContainsKey(k)) selected.Remove(k);
+                else selected[k] = p;
+
+                InvalidateMadeBoundary(); // selection changed -> the built boundary is stale
+                RenderParcels();
+                UpdateSelInfo();
+                return; // toggle only the topmost hit
+            }
+        }
+
+        private void UpdateSelInfo()
+        {
+            double areaM2 = 0;
+            foreach (var p in selected.Values)
+                if (p.Geom3765 != null) areaM2 += p.Geom3765.Area;
+
+            lblSelInfo.Text = gStr.gsSelected + ": " + selected.Count +
+                "  ·  " + (areaM2 / 10000.0).ToString("F2") + " ha";
+        }
+
+        private void chkMarkParcel_CheckedChanged(object sender, EventArgs e)
+        {
+            if (chkMarkParcel.Checked) { btnAddPoint.Checked = false; btnDeletePoint.Checked = false; }
+            // In mark mode left-click selects parcels, so pan with the right button.
+            UpdateDragButton();
+            lblStatus.Text = chkMarkParcel.Checked
+                ? gStr.gsMarkParcel + " — " + gStr.gsCadastralParcels
+                : "";
+        }
+
+        // ── Bridge: a draggable 4-corner quad to connect non-adjacent parcels ──
+        private void btnAddBridge_Click(object sender, EventArgs e)
+        {
+            var area = gMapControl.ViewArea;
+            double cLat = (area.LocationTopLeft.Lat + area.LocationRightBottom.Lat) / 2.0;
+            double cLon = (area.LocationTopLeft.Lng + area.LocationRightBottom.Lng) / 2.0;
+            double hLat = (area.LocationTopLeft.Lat - area.LocationRightBottom.Lat) * 0.15;
+            double hLon = (area.LocationRightBottom.Lng - area.LocationTopLeft.Lng) * 0.15;
+
+            var rect = new BridgeRect();
+            rect.Corners.Add(new PointLatLng(cLat + hLat, cLon - hLon)); // top-left
+            rect.Corners.Add(new PointLatLng(cLat + hLat, cLon + hLon)); // top-right
+            rect.Corners.Add(new PointLatLng(cLat - hLat, cLon + hLon)); // bottom-right
+            rect.Corners.Add(new PointLatLng(cLat - hLat, cLon - hLon)); // bottom-left
+
+            BuildRectVisuals(rect);
+            bridgeRects.Add(rect);
+            InvalidateMadeBoundary();
+            gMapControl.Invalidate();
+            lblStatus.Text = gStr.gsBridgeAdded;
+        }
+
+        private void BuildRectVisuals(BridgeRect rect)
+        {
+            rect.Poly = new GMapPolygon(new List<PointLatLng>(rect.Corners), "bridge")
+            {
+                Fill = new SolidBrush(Color.FromArgb(60, Color.Orange)),
+                Stroke = new Pen(Color.Orange, 2f)
+            };
+            bridgeOverlay.Polygons.Add(rect.Poly);
+
+            foreach (var c in rect.Corners)
+            {
+                var m = new CornerMarker(c);
+                rect.Markers.Add(m);
+                bridgeOverlay.Markers.Add(m);
+            }
+        }
+
+        private void RedrawRect(BridgeRect rect)
+        {
+            rect.Poly.Points.Clear();
+            rect.Poly.Points.AddRange(rect.Corners);
+            gMapControl.UpdatePolygonLocalPosition(rect.Poly);
+        }
+
+        // Find a bridge corner handle near a screen point (touch-friendly radius).
+        private bool HitTestCorner(int x, int y, out BridgeRect rect, out int corner)
+        {
+            foreach (var r in bridgeRects)
+            {
+                for (int i = 0; i < r.Corners.Count; i++)
+                {
+                    GPoint sp = gMapControl.FromLatLngToLocal(r.Corners[i]);
+                    if (Math.Abs(sp.X - x) <= 16 && Math.Abs(sp.Y - y) <= 16)
+                    {
+                        rect = r; corner = i; return true;
+                    }
+                }
+            }
+            rect = null; corner = -1; return false;
+        }
+
+        private void gMap_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left) return;
+            if (btnAddPoint.Checked || btnDeletePoint.Checked) return; // tap modes; don't drag-grab
+            if (HitTestCorner(e.X, e.Y, out var r, out int c))
+            {
+                dragRect = r; dragCorner = c;
+                gMapControl.CanDragMap = false; // don't pan while dragging a corner
+                return;
+            }
+            if (HitTestVertex(e.X, e.Y, out int vi))
+            {
+                dragVertex = vi;
+                PushUndo();
+                gMapControl.CanDragMap = false;
+            }
+        }
+
+        private void gMap_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (dragRect != null)
+            {
+                PointLatLng pt = gMapControl.FromLocalToLatLng(e.X, e.Y);
+                dragRect.Corners[dragCorner] = pt;
+                dragRect.Markers[dragCorner].Position = pt;
+                gMapControl.UpdateMarkerLocalPosition(dragRect.Markers[dragCorner]);
+                RedrawRect(dragRect);
+                InvalidateMadeBoundary();
+                gMapControl.Invalidate();
+            }
+            else if (dragVertex >= 0)
+            {
+                PointLatLng pt = gMapControl.FromLocalToLatLng(e.X, e.Y);
+                madeMarkers[dragVertex].Position = pt;
+                gMapControl.UpdateMarkerLocalPosition(madeMarkers[dragVertex]);
+                madeRing[dragVertex] = new Wgs84(pt.Lat, pt.Lng);
+                RedrawMadeBoundary();
+                gMapControl.Invalidate();
+            }
+        }
+
+        private void gMap_MouseUp(object sender, MouseEventArgs e)
+        {
+            if (dragRect != null || dragVertex >= 0)
+            {
+                dragRect = null; dragCorner = -1; dragVertex = -1;
+                gMapControl.CanDragMap = true;
+            }
+        }
+
+        private void ClearBridges()
+        {
+            bridgeRects.Clear();
+            dragRect = null; dragCorner = -1;
+            bridgeOverlay.Polygons.Clear();
+            bridgeOverlay.Markers.Clear();
+            ResetPointEdit();
+        }
+
+        private void btnClearSel_Click(object sender, EventArgs e)
+        {
+            selected.Clear();
+            ClearBridges();
+            InvalidateMadeBoundary();
+            RenderParcels();
+            UpdateSelInfo();
+        }
+
+        // ── Point edit (touch arrow-pad) ──────────────────────────────────
+        // POINT button cycles: OFF -> Mark (red) -> [tap a corner] Move (green) -> OFF.
+        private void btnPoint_Click(object sender, EventArgs e)
+        {
+            if (pointMode == PointEdit.Off) SetPointMode(PointEdit.Mark);
+            else ResetPointEdit(); // release / turn off
+        }
+
+        private void SetPointMode(PointEdit mode)
+        {
+            pointMode = mode;
+            switch (mode)
+            {
+                case PointEdit.Off:
+                    btnPoint.BackColor = Color.Gainsboro;
+                    lblPointMode.Text = "";
+                    break;
+                case PointEdit.Mark:
+                    btnPoint.BackColor = Color.IndianRed;
+                    lblPointMode.Text = gStr.gsMarkPoint;
+                    break;
+                case PointEdit.Move:
+                    btnPoint.BackColor = Color.LimeGreen;
+                    lblPointMode.Text = gStr.gsMovePoint;
+                    break;
+            }
+            UpdateArrowColors();
+        }
+
+        private void ResetPointEdit()
+        {
+            if (selMarker != null) { selMarker.Selected = false; selMarker = null; }
+            selRect = null; selCorner = -1; selVertex = -1;
+            pointMode = PointEdit.Off;
+            btnPoint.BackColor = Color.Gainsboro;
+            lblPointMode.Text = "";
+            UpdateArrowColors();
+            gMapControl.Invalidate();
+        }
+
+        private void SelectCorner(BridgeRect rect, int corner)
+        {
+            if (selMarker != null) selMarker.Selected = false;
+            selRect = rect; selCorner = corner; selVertex = -1;
+            selMarker = rect.Markers[corner];
+            selMarker.Selected = true;
+            SetPointMode(PointEdit.Move);
+            gMapControl.Invalidate();
+        }
+
+        // Select a boundary vertex for editing (move with arrows/drag). Snapshots for Undo.
+        private void SelectVertex(int idx)
+        {
+            if (selMarker != null) selMarker.Selected = false;
+            selRect = null; selCorner = -1; selVertex = idx;
+            selMarker = madeMarkers[idx];
+            selMarker.Selected = true;
+            PushUndo();
+            SetPointMode(PointEdit.Move);
+            gMapControl.Invalidate();
+        }
+
+        // Arrows are blue while panning, green while a point is selected for moving.
+        private void UpdateArrowColors()
+        {
+            Color c = pointMode == PointEdit.Move ? Color.Green : Color.RoyalBlue;
+            btnNavUp.ForeColor = c;
+            btnNavDown.ForeColor = c;
+            btnNavLeft.ForeColor = c;
+            btnNavRight.ForeColor = c;
+        }
+
+        private void btnNavUp_Click(object sender, EventArgs e) => Nav(0, -1);
+        private void btnNavDown_Click(object sender, EventArgs e) => Nav(0, 1);
+        private void btnNavLeft_Click(object sender, EventArgs e) => Nav(-1, 0);
+        private void btnNavRight_Click(object sender, EventArgs e) => Nav(1, 0);
+
+        // Move the selected point by the step (Fine/Coarse), else pan the map by 20%.
+        private void Nav(int dx, int dy)
+        {
+            if (pointMode == PointEdit.Move && selMarker != null)
+                MoveSelectedPoint(dx * stepPx, dy * stepPx);
+            else
+                PanByFraction(dx * 0.2, dy * 0.2);
+        }
+
+        private void MoveSelectedPoint(int dxPx, int dyPx)
+        {
+            GPoint sp = gMapControl.FromLatLngToLocal(selMarker.Position);
+            PointLatLng pt = gMapControl.FromLocalToLatLng((int)sp.X + dxPx, (int)sp.Y + dyPx);
+            ApplyPointMove(pt);
+        }
+
+        // Apply a new position to the currently selected handle (bridge corner OR boundary vertex).
+        private void ApplyPointMove(PointLatLng pt)
+        {
+            selMarker.Position = pt;
+            gMapControl.UpdateMarkerLocalPosition(selMarker);
+
+            if (selVertex >= 0) // boundary vertex: update the ring + green preview, keep Save on
+            {
+                madeRing[selVertex] = new Wgs84(pt.Lat, pt.Lng);
+                RedrawMadeBoundary();
+            }
+            else if (selRect != null) // bridge corner: the union must be re-made
+            {
+                selRect.Corners[selCorner] = pt;
+                RedrawRect(selRect);
+                InvalidateMadeBoundary();
+            }
+            gMapControl.Invalidate();
+        }
+
+        private void PanByFraction(double fracLon, double fracLat)
+        {
+            var area = gMapControl.ViewArea;
+            double spanLat = area.LocationTopLeft.Lat - area.LocationRightBottom.Lat;
+            double spanLon = area.LocationRightBottom.Lng - area.LocationTopLeft.Lng;
+            var p = gMapControl.Position;
+            // dy: up arrow (fracLat<0) should move the view north (increase lat)
+            gMapControl.Position = new PointLatLng(
+                p.Lat - fracLat * spanLat,
+                p.Lng + fracLon * spanLon);
+        }
+
+        private void btnFine_Click(object sender, EventArgs e)
+        {
+            stepPx = 5;
+            btnFine.BackColor = Color.LightSteelBlue;
+            btnCoarse.BackColor = SystemColors.Control;
+            btnFine.UseVisualStyleBackColor = false;
+            btnCoarse.UseVisualStyleBackColor = true;
+        }
+
+        private void btnCoarse_Click(object sender, EventArgs e)
+        {
+            stepPx = 20;
+            btnCoarse.BackColor = Color.LightSteelBlue;
+            btnFine.BackColor = SystemColors.Control;
+            btnCoarse.UseVisualStyleBackColor = false;
+            btnFine.UseVisualStyleBackColor = true;
+        }
+
+        // Set a bool property by name if it exists (for optional GMap touch flags).
+        private static void TrySetBool(object obj, string prop, bool value)
+        {
+            try { obj.GetType().GetProperty(prop)?.SetValue(obj, value); } catch { }
+        }
+
+        // ── Build boundary from selected parcels (NTS union) ──────────────
+        private void btnMakeBoundary_Click(object sender, EventArgs e)
+        {
+            if (selected.Count == 0)
+            {
+                lblStatus.Text = gStr.gsSelectParcelsFirst;
+                return;
+            }
+
+            var bridgePolys = new List<Polygon>();
+            foreach (var r in bridgeRects)
+            {
+                var quad = CadastralWfsClient.MakeQuad3765(r.Corners);
+                if (quad != null) bridgePolys.Add(quad);
+            }
+
+            madeRing = CadastralWfsClient.UnionOuterRingWgs84(selected.Values, bridgePolys);
+            if (madeRing == null || madeRing.Count < 3)
+            {
+                lblStatus.Text = gStr.gsSelectParcelsFirst;
+                return;
+            }
+
+            DrawMadeBoundary();
+            // Bridges are now baked into the boundary; remove their handles/quads so the map
+            // isn't cluttered (if something's wrong, Clear and start over).
+            ClearBridges();
+            BuildMadeHandles();          // Phase 4: one handle per boundary vertex
+            undoStack.Clear();
+            EnableEditButtons(true);
+            btnSaveBoundary.Enabled = true;
+            lblStatus.Text = gStr.gsBoundaryReady;
+        }
+
+        private void DrawMadeBoundary()
+        {
+            madeOverlay.Polygons.Clear();
+            var pts = new List<PointLatLng>(madeRing.Count);
+            foreach (var w in madeRing) pts.Add(new PointLatLng(w.Latitude, w.Longitude));
+            madeOverlay.Polygons.Add(new GMapPolygon(pts, "made")
+            {
+                Fill = new SolidBrush(Color.FromArgb(40, Color.LimeGreen)),
+                Stroke = new Pen(Color.LimeGreen, 5f)
+            });
+            gMapControl.Invalidate();
+        }
+
+        // Update the green boundary polygon in place (after a vertex move), keep Save enabled.
+        private void RedrawMadeBoundary()
+        {
+            if (madeOverlay.Polygons.Count == 0) { DrawMadeBoundary(); return; }
+            var poly = madeOverlay.Polygons[0];
+            poly.Points.Clear();
+            foreach (var w in madeRing) poly.Points.Add(new PointLatLng(w.Latitude, w.Longitude));
+            gMapControl.UpdatePolygonLocalPosition(poly);
+        }
+
+        // One draggable/selectable handle per boundary vertex (Phase 4 editing).
+        private void BuildMadeHandles()
+        {
+            editOverlay.Markers.Clear();
+            madeMarkers.Clear();
+            if (madeRing == null) return;
+            foreach (var w in madeRing)
+            {
+                var m = new CornerMarker(new PointLatLng(w.Latitude, w.Longitude));
+                madeMarkers.Add(m);
+                editOverlay.Markers.Add(m);
+            }
+            gMapControl.Invalidate();
+        }
+
+        private void EnableEditButtons(bool on)
+        {
+            btnAddPoint.Enabled = on;
+            btnDeletePoint.Enabled = on;
+            btnUndo.Enabled = on && undoStack.Count > 0;
+        }
+
+        private void ClearMadeEdit()
+        {
+            editOverlay.Markers.Clear();
+            madeMarkers.Clear();
+            undoStack.Clear();
+            selVertex = -1; dragVertex = -1;
+            btnAddPoint.Checked = false;
+            btnDeletePoint.Checked = false;
+            EnableEditButtons(false);
+        }
+
+        private void InvalidateMadeBoundary()
+        {
+            madeRing = null;
+            madeOverlay.Polygons.Clear();
+            btnSaveBoundary.Enabled = false;
+            ClearMadeEdit();
+        }
+
+        // ── Phase 4: boundary vertex add / delete / undo ──────────────────
+        private void PushUndo()
+        {
+            if (madeRing == null) return;
+            undoStack.Add(new List<Wgs84>(madeRing)); // Wgs84 elements are replaced, not mutated
+            if (undoStack.Count > 5) undoStack.RemoveAt(0);
+            btnUndo.Enabled = true;
+        }
+
+        private void btnUndo_Click(object sender, EventArgs e)
+        {
+            if (undoStack.Count == 0) return;
+            madeRing = undoStack[undoStack.Count - 1];
+            undoStack.RemoveAt(undoStack.Count - 1);
+            ResetPointEdit();
+            DrawMadeBoundary();
+            BuildMadeHandles();
+            btnUndo.Enabled = undoStack.Count > 0;
+            lblStatus.Text = "";
+        }
+
+        private void btnAddPoint_CheckedChanged(object sender, EventArgs e)
+        {
+            if (btnAddPoint.Checked)
+            {
+                chkMarkParcel.Checked = false; // exclusive tap mode
+                btnDeletePoint.Checked = false;
+                ResetPointEdit();
+                lblStatus.Text = gStr.gsAddPoint;
+            }
+            UpdateDragButton();
+        }
+
+        // Delete point is a tap mode: while active, a tap on a vertex deletes it (keeps deleting).
+        private void btnDeletePoint_CheckedChanged(object sender, EventArgs e)
+        {
+            if (btnDeletePoint.Checked)
+            {
+                btnAddPoint.Checked = false;
+                chkMarkParcel.Checked = false;
+                ResetPointEdit();
+                lblStatus.Text = gStr.gsDeletePoint;
+            }
+            UpdateDragButton();
+        }
+
+        private void DeleteVertexAt(int idx)
+        {
+            if (madeRing == null || idx < 0 || idx >= madeRing.Count) return;
+            if (madeRing.Count <= 3) { lblStatus.Text = gStr.gsDeletePoint; return; } // need >= 3
+            PushUndo();
+            madeRing.RemoveAt(idx);
+            DrawMadeBoundary();
+            BuildMadeHandles();
+            lblStatus.Text = gStr.gsDeletePoint;
+        }
+
+        private void InsertBoundaryPoint(int x, int y)
+        {
+            PointLatLng pt = gMapControl.FromLocalToLatLng(x, y);
+            int seg = NearestSegment(x, y);
+            PushUndo();
+            madeRing.Insert(seg + 1, new Wgs84(pt.Lat, pt.Lng));
+            DrawMadeBoundary();
+            BuildMadeHandles();
+            lblStatus.Text = gStr.gsAddPoint;
+        }
+
+        // Index i of the ring segment (i, i+1) closest to a screen point.
+        private int NearestSegment(int x, int y)
+        {
+            int n = madeRing.Count, best = 0;
+            double bestD = double.MaxValue;
+            for (int i = 0; i < n; i++)
+            {
+                GPoint a = gMapControl.FromLatLngToLocal(new PointLatLng(madeRing[i].Latitude, madeRing[i].Longitude));
+                GPoint b = gMapControl.FromLatLngToLocal(new PointLatLng(madeRing[(i + 1) % n].Latitude, madeRing[(i + 1) % n].Longitude));
+                double d = DistPointToSeg(x, y, a.X, a.Y, b.X, b.Y);
+                if (d < bestD) { bestD = d; best = i; }
+            }
+            return best;
+        }
+
+        private static double DistPointToSeg(double px, double py, double ax, double ay, double bx, double by)
+        {
+            double dx = bx - ax, dy = by - ay;
+            double len2 = dx * dx + dy * dy;
+            double t = len2 <= 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / len2;
+            t = Math.Max(0, Math.Min(1, t));
+            double cx = ax + t * dx, cy = ay + t * dy;
+            return Math.Sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy));
+        }
+
+        private bool HitTestVertex(int x, int y, out int idx)
+        {
+            for (int i = 0; i < madeMarkers.Count; i++)
+            {
+                GPoint sp = gMapControl.FromLatLngToLocal(madeMarkers[i].Position);
+                if (Math.Abs(sp.X - x) <= 16 && Math.Abs(sp.Y - y) <= 16) { idx = i; return true; }
+            }
+            idx = -1; return false;
+        }
+
+        private void UpdateDragButton()
+        {
+            gMapControl.DragButton = (chkMarkParcel.Checked || btnAddPoint.Checked || btnDeletePoint.Checked)
+                ? MouseButtons.Right : MouseButtons.Left;
+        }
+
+        // ── Save boundary: always export a temp KML, then apply (new field / replace) ──
+        private async void btnSaveBoundary_Click(object sender, EventArgs e)
+        {
+            if (madeRing == null || madeRing.Count < 3)
+            {
+                lblStatus.Text = gStr.gsSelectParcelsFirst;
+                return;
+            }
+
+            string name = mf.currentFieldDirectory;
+            string tempKml = BoundaryKmlWriter.WriteTempKml(name, madeRing);
+
+            // Empty field (no boundary / AB lines / recorded paths / flags) -> rebuild the
+            // field from the KML so StartFix lands at the boundary bbox center. Otherwise ask.
+            if (IsFieldEmpty())
+            {
+                await RebuildFieldFromKml(name, tempKml);
+                return;
+            }
+
+            bool outside = StartFixOutsideBbox(madeRing);
+            string msg = gStr.gsApplyBoundaryQ + "\n\n" + gStr.gsReplaceOuterOpt + "\n" + gStr.gsNewFieldOpt;
+            if (outside) msg = gStr.gsStartFixOutsideWarning + "\n\n" + msg;
+
+            DialogResult r = MessageBox.Show(msg, gStr.gsBoundaryFromGeoportal,
+                MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+
+            if (r == DialogResult.Cancel)
+            {
+                TryDelete(tempKml);
+                return;
+            }
+
+            if (r == DialogResult.Yes) // replace outer boundary on current field, keep inner holes
+            {
+                ReplaceOuterBoundary(madeRing);
+                TryDelete(tempKml);
+                lblStatus.Text = gStr.gsBoundarySaved;
+                Close();
+            }
+            else // No = create a new field from the boundary
+            {
+                await RebuildFieldFromKml(name, tempKml);
+            }
+        }
+
+        // Close + delete the (empty) current field, then recreate it from the KML via the
+        // proven AOG pipeline (StartFix = boundary bbox center). Same path as Shape import.
+        private async Task RebuildFieldFromKml(string name, string tempKml)
+        {
+            try
+            {
+                if (mf.isJobStarted)
+                    await mf.FileSaveEverythingBeforeClosingField();
+
+                string dir = Path.Combine(RegistrySettings.fieldsDirectory, name);
+                try { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
+                catch (Exception ex) { Log.EventWriter("Geoportal: delete field dir failed " + ex.Message); }
+
+                using (var kmlForm = new FormFieldKML(mf))
+                    kmlForm.CreateFieldFromKml(tempKml, name);
+            }
+            finally
+            {
+                TryDelete(tempKml);
+            }
+            Close();
+        }
+
+        // Replace the outer boundary (bndList[0]) on the current field, keeping inner holes.
+        private void ReplaceOuterBoundary(List<Wgs84> ring)
+        {
+            var newB = new CBoundaryList();
+            foreach (var w in ring)
+            {
+                GeoCoord gc = mf.AppModel.LocalPlane.ConvertWgs84ToGeoCoord(new Wgs84(w.Latitude, w.Longitude));
+                newB.fenceLine.Add(new vec3(gc));
+            }
+            newB.CalculateFenceArea(0);
+            newB.FixFenceLine(0);
+
+            if (mf.bnd.bndList.Count > 0) mf.bnd.bndList[0] = newB;
+            else mf.bnd.bndList.Add(newB);
+
+            mf.FileSaveBoundary();
+            mf.bnd.BuildTurnLines();
+            mf.fd.UpdateFieldBoundaryGUIAreas();
+            mf.CalculateMinMax();
+        }
+
+        private bool IsFieldEmpty()
+        {
+            return mf.bnd.bndList.Count == 0
+                && mf.trk.gArr.Count == 0
+                && mf.recPath.recList.Count == 0
+                && mf.flagPts.Count == 0;
+        }
+
+        // True if StartFix (local-plane origin) is more than ~1 m outside the ring's bbox.
+        private bool StartFixOutsideBbox(List<Wgs84> ring)
+        {
+            double minLat = double.MaxValue, maxLat = double.MinValue;
+            double minLon = double.MaxValue, maxLon = double.MinValue;
+            foreach (var w in ring)
+            {
+                if (w.Latitude < minLat) minLat = w.Latitude;
+                if (w.Latitude > maxLat) maxLat = w.Latitude;
+                if (w.Longitude < minLon) minLon = w.Longitude;
+                if (w.Longitude > maxLon) maxLon = w.Longitude;
+            }
+
+            Wgs84 o = mf.AppModel.LocalPlane.Origin;
+            double mLat = 1.0 / 111320.0;
+            double mLon = 1.0 / (111320.0 * Math.Cos(o.Latitude * Math.PI / 180.0));
+            return o.Latitude < minLat - mLat || o.Latitude > maxLat + mLat
+                || o.Longitude < minLon - mLon || o.Longitude > maxLon + mLon;
+        }
+
+        private static void TryDelete(string path)
+        {
+            try { if (File.Exists(path)) File.Delete(path); } catch { }
+        }
+
+        private void chkParcels_CheckedChanged(object sender, EventArgs e)
+        {
+            if (chkParcels.Checked)
+            {
+                RefreshParcels();
+            }
+            else
+            {
+                parcelOverlay.Polygons.Clear();
+                gMapControl.Invalidate();
+                lblStatus.Text = gStr.gsParcelsHidden;
+            }
+        }
+
+        private void btnRefresh_Click(object sender, EventArgs e)
+        {
+            RefreshParcels();
+        }
+
+        private void btnGoToPos_Click(object sender, EventArgs e)
+        {
+            gMapControl.Position = new PointLatLng(
+                mf.AppModel.CurrentLatLon.Latitude,
+                mf.AppModel.CurrentLatLon.Longitude);
+            RefreshParcels();
+        }
+
+        private void btnZoomIn_Click(object sender, EventArgs e)
+        {
+            if (gMapControl.Zoom < gMapControl.MaxZoom)
+                gMapControl.Zoom = (int)gMapControl.Zoom + 1;
+        }
+
+        private void btnZoomOut_Click(object sender, EventArgs e)
+        {
+            if (gMapControl.Zoom > gMapControl.MinZoom)
+                gMapControl.Zoom = (int)gMapControl.Zoom - 1;
+        }
+
+        // ── Window controls (touch, like the main window) ─────────────────
+        private void btnWinFull_Click(object sender, EventArgs e)
+        {
+            // Toggle full screen (maximize) / normal. No dedicated "restore" icon in
+            // Resources, so the maximize icon stays for both states.
+            this.WindowState = this.WindowState == FormWindowState.Maximized
+                ? FormWindowState.Normal
+                : FormWindowState.Maximized;
+        }
+
+        private void btnWinClose_Click(object sender, EventArgs e)
+        {
+            Close();
+        }
+
+        // Drag the borderless window by its background (top strip gaps / empty areas).
+        private void FormDrag_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left) return;
+            ReleaseCapture();
+            SendMessage(this.Handle, WM_NCLBUTTONDOWN, HTCAPTION, 0);
+        }
+
+        private void vehicleTimer_Tick(object sender, EventArgs e)
+        {
+            if (vehicleMarker == null || mf == null) return;
+            vehicleMarker.Position = new PointLatLng(
+                mf.AppModel.CurrentLatLon.Latitude,
+                mf.AppModel.CurrentLatLon.Longitude);
+            gMapControl.UpdateMarkerLocalPosition(vehicleMarker);
+            gMapControl.Invalidate();
+        }
+
+        private void FormGeoportalBoundary_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            refreshTimer.Stop();
+            vehicleTimer.Stop();
+        }
+    }
+}

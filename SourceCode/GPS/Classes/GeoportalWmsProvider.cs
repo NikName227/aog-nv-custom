@@ -1,5 +1,8 @@
 using System;
 using System.Globalization;
+using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
 using GMap.NET;
 using GMap.NET.MapProviders;
 using GMap.NET.Projections;
@@ -22,12 +25,21 @@ namespace AgOpenGPS
 
         // Default base endpoint (year is part of the path -> editable in settings).
         public const string DefaultBaseUrl =
-            "https://geoportal.dgu.hr/services/inspire/orthophoto_2023_2024/wms";
+            "https://geoportal.dgu.hr/services/inspire/orthophoto_2025_2026/wms";
 
         // Full GetMap template. {0}=minLon {1}=minLat {2}=maxLon {3}=maxLat
         private string urlFormat;
 
-        private readonly Guid id = new Guid("7B5E9C10-1D2F-4A6B-9C3E-0F1A2B3C4D5E");
+        // Cache identity (Id + DbId) is derived from the base URL in SetBaseUrl, so a different
+        // endpoint/year uses a fresh tile-cache bucket instead of serving stale cached tiles.
+        // Must be a valid unique Guid before the base ctor runs (it rejects duplicate/empty ids);
+        // the field initializer provides that, then SetBaseUrl overrides it from the URL.
+        private Guid id = new Guid("7B5E9C10-1D2F-4A6B-9C3E-0F1A2B3C4D5E");
+
+        // GMapProvider.DbId is a readonly base field but is what GMap keys the tile cache by;
+        // set it via reflection so the cache bucket follows the URL.
+        private static readonly FieldInfo DbIdField =
+            typeof(GMapProvider).GetField("DbId", BindingFlags.Public | BindingFlags.Instance);
 
         private GeoportalWmsProvider()
         {
@@ -50,6 +62,16 @@ namespace AgOpenGPS
                 "&STYLES=&CRS=CRS:84" +
                 "&BBOX={0},{1},{2},{3}" +
                 "&WIDTH=256&HEIGHT=256&FORMAT=image/jpeg";
+
+            // Tie the tile-cache identity to the URL. GMap keys cached tiles (memory + disk)
+            // by DbId, so without this a new URL (e.g. next year's orthophoto) would keep
+            // serving the previous year's cached tiles.
+            byte[] hash;
+            using (var md5 = MD5.Create())
+                hash = md5.ComputeHash(Encoding.UTF8.GetBytes(baseUrl));
+            id = new Guid(hash);
+            int h = BitConverter.ToInt32(hash, 0);
+            DbIdField?.SetValue(this, h == int.MinValue ? 1 : Math.Abs(h));
         }
 
         #region GMapProvider members

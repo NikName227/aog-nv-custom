@@ -2,11 +2,14 @@ using AgLibrary.Logging;
 using AgOpenGPS.Core;
 using AgOpenGPS.Core.Models;
 using AgOpenGPS.Core.Streamers;
+using AgOpenGPS.Core.Translations;
 using GMap.NET;
 using GMap.NET.WindowsForms;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace AgOpenGPS
@@ -30,10 +33,23 @@ namespace AgOpenGPS
         private VehicleMarker vehicleMarker;
         private readonly Timer vehicleTimer = new Timer();
 
+        // Parcel overlay: thin vector lines (WFS) drawn on the preview and baked into
+        // the captured background on Apply (so they appear on the main map).
+        private readonly GMapOverlay parcelOverlay = new GMapOverlay("parcels");
+        private readonly Timer parcelTimer = new Timer();
+        private bool fetchingParcels;
+        private List<CadastralParcel> lastParcels = new List<CadastralParcel>();
+
+        // Borderless-window drag (same idea as the main window).
+        [DllImport("user32.dll")] private static extern bool ReleaseCapture();
+        [DllImport("user32.dll")] private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
+        private const int WM_NCLBUTTONDOWN = 0xA1, HTCAPTION = 0x2;
+
         public FormMapApp(Form callingForm)
         {
             mf = callingForm as FormGPS;
             InitializeComponent();
+            LocalizeText();
 
             captureTimer.Interval = 2500; // fallback if tile-load event never fires
             captureTimer.Tick += captureTimer_Tick;
@@ -41,7 +57,48 @@ namespace AgOpenGPS
             vehicleTimer.Interval = 600; // update vehicle marker position
             vehicleTimer.Tick += vehicleTimer_Tick;
 
+            parcelTimer.Interval = 700; // debounce parcel re-fetch on pan/zoom
+            parcelTimer.Tick += (s, e) => { parcelTimer.Stop(); RefreshParcels(); };
+
+            this.KeyPreview = true;
+            this.KeyDown += (s, e) => { if (e.KeyCode == Keys.Escape) Close(); };
+            this.MouseDown += FormDrag_MouseDown;
             this.Shown += FormMapApp_Shown;
+        }
+
+        // English is the Designer default; pull localized text from gStr so HR (and other
+        // languages) show translated strings when the app language changes.
+        private void LocalizeText()
+        {
+            grpSource.Text = gStr.gsMapSource;
+            rbtnDefault.Text = gStr.gsMapSourceDefault;
+            rbtnCustom.Text = gStr.gsCustomWmsDgu;
+            lblUrl.Text = gStr.gsWmsUrl;
+            lblParcelUrl.Text = gStr.gsParcelWfsUrl;
+            btnClose.Text = gStr.gsApplyAndClose;
+            UpdateToggleText();
+            UpdateParcelToggleText();
+        }
+
+        // ── Window controls (touch, like the main window) ─────────────────
+        private void btnWinFull_Click(object sender, EventArgs e)
+        {
+            this.WindowState = this.WindowState == FormWindowState.Maximized
+                ? FormWindowState.Normal
+                : FormWindowState.Maximized;
+        }
+
+        private void btnWinClose_Click(object sender, EventArgs e)
+        {
+            Close();
+        }
+
+        // Drag the borderless window by its background (top strip / empty areas).
+        private void FormDrag_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left) return;
+            ReleaseCapture();
+            SendMessage(this.Handle, WM_NCLBUTTONDOWN, HTCAPTION, 0);
         }
 
         // Custom WMS tiles often don't render on first show until the view changes
@@ -49,8 +106,15 @@ namespace AgOpenGPS
         // imagery appears immediately instead of after a manual pan/zoom.
         private void FormMapApp_Shown(object sender, EventArgs e)
         {
+            // keep the on-map buttons above the map
+            btnZoomIn.BringToFront();
+            btnZoomOut.BringToFront();
+            btnWinFull.BringToFront();
+            btnWinClose.BringToFront();
+
             if (mf == null || !mf.isJobStarted) return;
             ForceMapRefresh();
+            if (chkParcels.Checked) RefreshParcels();
         }
 
         private void ForceMapRefresh()
@@ -59,6 +123,22 @@ namespace AgOpenGPS
             if (z > gMapControl.MinZoom) gMapControl.Zoom = z - 1;
             gMapControl.Zoom = z;
             gMapControl.ReloadMap();
+        }
+
+        // On-screen zoom buttons (touchscreen-friendly). Zoom in/out by one integer
+        // step; OnMapZoomChanged already re-fetches parcels for the new view.
+        private void btnZoomIn_Click(object sender, EventArgs e)
+        {
+            int z = (int)gMapControl.Zoom + 1;
+            if (z > gMapControl.MaxZoom) z = (int)gMapControl.MaxZoom;
+            gMapControl.Zoom = z;
+        }
+
+        private void btnZoomOut_Click(object sender, EventArgs e)
+        {
+            int z = (int)gMapControl.Zoom - 1;
+            if (z < gMapControl.MinZoom) z = (int)gMapControl.MinZoom;
+            gMapControl.Zoom = z;
         }
 
         private void FormMapApp_Load(object sender, EventArgs e)
@@ -71,8 +151,10 @@ namespace AgOpenGPS
                 chkBackgroundOn.Enabled = false;
                 grpSource.Enabled = false;
                 tboxWmsUrl.Enabled = false;
+                chkParcels.Enabled = false;
+                tboxParcelUrl.Enabled = false;
                 gMapControl.Enabled = false;
-                lblStatus.Text = "Open a field first to use a background map.";
+                lblStatus.Text = gStr.gsOpenFieldFirst;
                 isLoading = false;
                 return;
             }
@@ -89,7 +171,17 @@ namespace AgOpenGPS
             tboxWmsUrl.Text = string.IsNullOrWhiteSpace(url)
                 ? GeoportalWmsProvider.DefaultBaseUrl
                 : url;
-            tboxWmsUrl.Enabled = rbtnCustom.Checked;
+            // Always editable: this DGU WMS endpoint is shared config (used by Custom mode
+            // here AND by the Geoportal Boundary window), so it must not be locked to Custom.
+            tboxWmsUrl.Enabled = true;
+
+            // Parcel overlay (vector lines, WFS)
+            string parcelUrl = Properties.Settings.Default.setMap_parcelWfsUrl;
+            tboxParcelUrl.Text = string.IsNullOrWhiteSpace(parcelUrl)
+                ? "https://api.uredjenazemlja.hr/services/inspire/cp/wfs"
+                : parcelUrl;
+            chkParcels.Checked = Properties.Settings.Default.setMap_showParcelsOnMain;
+            UpdateParcelToggleText();
 
             // Configure the preview map, centered on current position
             gMapControl.MapProvider = AppMapHelper.GetProvider();
@@ -108,6 +200,12 @@ namespace AgOpenGPS
             gMapControl.ShowCenter = false;
             gMapControl.DragButton = MouseButtons.Left;
             gMapControl.OnTileLoadComplete += gMap_OnTileLoadComplete;
+
+            // Parcel overlay (vector, baked into capture) + boundary/vehicle overlay (not baked)
+            gMapControl.Overlays.Add(parcelOverlay);
+            parcelOverlay.IsVisibile = chkParcels.Checked;
+            gMapControl.OnPositionChanged += pos => DebounceParcels();
+            gMapControl.OnMapZoomChanged += () => DebounceParcels();
 
             // Display overlay: boundary + vehicle position
             gMapControl.Overlays.Add(overlay);
@@ -132,14 +230,13 @@ namespace AgOpenGPS
             RadioButton rb = sender as RadioButton;
             if (rb != null && !rb.Checked) return; // only react to the newly checked one
 
-            tboxWmsUrl.Enabled = rbtnCustom.Checked;
             SaveSourceSettings();
 
             gMapControl.MapProvider = AppMapHelper.GetProvider();
             ForceMapRefresh();
 
             if (chkBackgroundOn.Checked)
-                BeginCapture("Updating background...");
+                BeginCapture(gStr.gsUpdatingBackground);
         }
 
         private void tboxWmsUrl_Leave(object sender, EventArgs e)
@@ -152,7 +249,7 @@ namespace AgOpenGPS
                 gMapControl.MapProvider = AppMapHelper.GetProvider();
                 ForceMapRefresh();
                 if (chkBackgroundOn.Checked)
-                    BeginCapture("Updating background...");
+                    BeginCapture(gStr.gsUpdatingBackground);
             }
         }
 
@@ -164,14 +261,15 @@ namespace AgOpenGPS
 
             if (chkBackgroundOn.Checked)
             {
-                BeginCapture("Loading imagery...");
+                BeginCapture(gStr.gsLoadingImagery);
             }
             else
             {
                 pendingCapture = false;
                 captureTimer.Stop();
                 SetAndSaveBingMap(null);
-                lblStatus.Text = "Background removed.";
+                mf.parcels.Clear();   // map off -> parcels off too
+                lblStatus.Text = gStr.gsBackgroundRemoved;
             }
         }
 
@@ -206,13 +304,14 @@ namespace AgOpenGPS
             BingMap bingMap = CreateBingMap();
             if (bingMap == null)
             {
-                lblStatus.Text = "Area too large - zoom in on the map, then toggle again.";
+                lblStatus.Text = gStr.gsAreaTooLarge;
                 Log.EventWriter("Map App: BingMap area too large");
                 return;
             }
 
             SetAndSaveBingMap(bingMap);
-            lblStatus.Text = "Background set.";
+            ApplyParcelsToMainMap();
+            lblStatus.Text = gStr.gsBackgroundSet;
         }
 
         // Capture the current map view into a BingMap (same logic as FormMap).
@@ -230,11 +329,15 @@ namespace AgOpenGPS
                 4000 < Math.Abs(box.MinNorthing) || 4000 < Math.Abs(box.MaxEasting);
             if (tooBig) return null;
 
-            // Hide boundary/vehicle overlay so they are not baked into the saved background
+            // Hide overlays so they are not baked into the saved background image.
+            // Parcels are drawn as crisp vectors on the main map, not baked in.
             overlay.IsVisibile = false;
+            bool parcelsVisible = parcelOverlay.IsVisibile;
+            parcelOverlay.IsVisibile = false;
             Bitmap bitmap = new Bitmap(gMapControl.Width, gMapControl.Height);
             gMapControl.DrawToBitmap(bitmap, new Rectangle(0, 0, bitmap.Width, bitmap.Height));
             overlay.IsVisibile = true;
+            parcelOverlay.IsVisibile = parcelsVisible;
             gMapControl.Invalidate();
 
             return new BingMap(box, bitmap);
@@ -303,9 +406,137 @@ namespace AgOpenGPS
 
         private void UpdateToggleText()
         {
-            chkBackgroundOn.Text = chkBackgroundOn.Checked
-                ? "Background Map: ON"
-                : "Background Map: OFF";
+            chkBackgroundOn.Text = gStr.gsBackgroundMap + ": " +
+                (chkBackgroundOn.Checked ? gStr.gsOn : gStr.gsOff);
+        }
+
+        private void UpdateParcelToggleText()
+        {
+            chkParcels.Text = gStr.gsParcel + ": " +
+                (chkParcels.Checked ? gStr.gsOn : gStr.gsOff);
+        }
+
+        // ── Parcel overlay: thin vector lines (WFS), baked into capture ──
+        private void chkParcels_CheckedChanged(object sender, EventArgs e)
+        {
+            UpdateParcelToggleText();
+            parcelOverlay.IsVisibile = chkParcels.Checked;
+            if (isLoading) return;
+
+            Properties.Settings.Default.setMap_showParcelsOnMain = chkParcels.Checked;
+
+            if (chkParcels.Checked)
+            {
+                RefreshParcels();
+            }
+            else
+            {
+                parcelOverlay.Polygons.Clear();
+                gMapControl.Invalidate();
+                lblStatus.Text = gStr.gsParcelsHidden;
+            }
+        }
+
+        private void btnParcelRefresh_Click(object sender, EventArgs e)
+        {
+            if (!chkParcels.Checked) chkParcels.Checked = true;
+            else RefreshParcels();
+        }
+
+        private void tboxParcelUrl_Leave(object sender, EventArgs e)
+        {
+            if (isLoading) return;
+            Properties.Settings.Default.setMap_parcelWfsUrl = tboxParcelUrl.Text.Trim();
+            if (chkParcels.Checked) RefreshParcels();
+        }
+
+        private void DebounceParcels()
+        {
+            if (isLoading || !chkParcels.Checked) return;
+            parcelTimer.Stop();
+            parcelTimer.Start();
+        }
+
+        private void RefreshParcels()
+        {
+            if (fetchingParcels || !chkParcels.Checked || mf == null || !mf.isJobStarted) return;
+
+            var area = gMapControl.ViewArea;
+            double minLat = area.LocationRightBottom.Lat;
+            double maxLat = area.LocationTopLeft.Lat;
+            double minLon = area.LocationTopLeft.Lng;
+            double maxLon = area.LocationRightBottom.Lng;
+            string wfsUrl = Properties.Settings.Default.setMap_parcelWfsUrl;
+
+            fetchingParcels = true;
+            lblStatus.Text = gStr.gsLoadingParcels;
+
+            Task.Run(() =>
+            {
+                var parcels = CadastralWfsClient.GetParcels(wfsUrl, minLat, minLon, maxLat, maxLon, out string err);
+                if (!IsHandleCreated) return;
+                BeginInvoke((MethodInvoker)(() => DrawParcels(parcels, err)));
+            });
+        }
+
+        private void DrawParcels(List<CadastralParcel> parcels, string err)
+        {
+            fetchingParcels = false;
+            parcelOverlay.Polygons.Clear();
+
+            if (err != null)
+            {
+                lblStatus.Text = gStr.gsParcelsError + ": " + err;
+                Log.EventWriter("Parcel WFS error " + err);
+                return;
+            }
+
+            lastParcels = parcels;
+
+            foreach (var p in parcels)
+            {
+                if (p.Outer.Count < 3) continue;
+                var poly = new GMapPolygon(p.Outer, "parcel")
+                {
+                    Fill = new SolidBrush(Color.Transparent),
+                    Stroke = new Pen(Color.DeepSkyBlue, 1.4f)
+                };
+                parcelOverlay.Polygons.Add(poly);
+            }
+
+            lblStatus.Text = parcels.Count + " " + gStr.gsParcels + ".";
+            gMapControl.Invalidate();
+        }
+
+        // Convert the captured parcels to local line segments for the crisp main-map vector draw.
+        private void ApplyParcelsToMainMap()
+        {
+            if (mf == null) return;
+
+            if (!chkParcels.Checked)
+            {
+                mf.parcels.Clear();
+                return;
+            }
+
+            var segs = new List<GeoCoord>();
+            foreach (var p in lastParcels)
+            {
+                int n = p.Outer.Count;
+                if (n < 3) continue;
+
+                var ring = new GeoCoord[n];
+                for (int i = 0; i < n; i++)
+                    ring[i] = mf.AppModel.LocalPlane.ConvertWgs84ToGeoCoord(
+                        new Wgs84(p.Outer[i].Lat, p.Outer[i].Lng));
+
+                for (int i = 0; i < n; i++)
+                {
+                    segs.Add(ring[i]);
+                    segs.Add(ring[(i + 1) % n]);
+                }
+            }
+            mf.parcels.Segments = segs.ToArray();
         }
 
         private void FormMapApp_FormClosing(object sender, FormClosingEventArgs e)
@@ -313,13 +544,14 @@ namespace AgOpenGPS
             gMapControl.OnTileLoadComplete -= gMap_OnTileLoadComplete;
             captureTimer.Stop();
             vehicleTimer.Stop();
+            parcelTimer.Stop();
             Properties.Settings.Default.Save();
         }
 
         private void btnClose_Click(object sender, EventArgs e)
         {
             // Apply: if the background is ON, capture the current (panned/zoomed)
-            // view so pan/zoom changes take effect without toggling OFF/ON.
+            // view. The parcel overlay (if visible) is baked into the captured image.
             if (chkBackgroundOn.Checked && mf != null && mf.isJobStarted)
             {
                 pendingCapture = false;
@@ -327,7 +559,10 @@ namespace AgOpenGPS
 
                 BingMap bingMap = CreateBingMap();
                 if (bingMap != null)
+                {
                     SetAndSaveBingMap(bingMap);
+                    ApplyParcelsToMainMap();
+                }
             }
             Close();
         }

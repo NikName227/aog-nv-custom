@@ -1,0 +1,797 @@
+using AgLibrary.Logging;
+using AgOpenGPS.Core.Models;
+using AgOpenGPS.Core.Translations;
+using AgOpenGPS.Core.Visuals;
+using AgOpenGPS.Helpers;
+using AgOpenGPS.Visuals;
+using OpenTK;
+using OpenTK.Graphics.OpenGL;
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Globalization;
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
+
+namespace AgOpenGPS
+{
+    /// <summary>
+    /// "Smart AB" — enhanced AB/curve builder (NEW window; original FormABDraw is untouched).
+    /// Phase 1: free points placed/moved anywhere (not snapped to the boundary), arrow-pad point
+    /// editing (Fine 1px / Coarse 10px or drag), Add/Delete point, +/- zoom and pan, "active
+    /// operation" text. Line generation / satellite / check / smooth come in later phases.
+    /// GUI is English; Croatian comes from the gStr translation map.
+    /// </summary>
+    public partial class FormSmartAB : Form
+    {
+        private readonly FormGPS mf;
+
+        // GL view (persistent): camera distance factor + normalized pan offsets.
+        private double zoom = 2.0, sX = 0, sY = 0;
+
+        // Free points (field easting/northing). A and B = the two FARTHEST-APART points
+        // (recomputed on any change), so adding a point can move A/B.
+        private readonly List<vec2> pts = new List<vec2>();
+        private int aIndex = 0, bIndex = -1;
+        private string lastMake; // last line type built ("AB"/"Curve"/"Bnd"), for auto-regenerate
+
+        // Generated tracks (Phase 2): starts as a copy of the field's tracks; the line built from
+        // the current points is kept at genIdx (replaced on re-make). Committed to mf.trk.gArr on Accept.
+        private readonly List<CTrk> gTemp = new List<CTrk>();
+        private int genIdx = -1;
+
+        // Point edit (arrow-pad), same idea as the geoportal boundary tool.
+        private enum PointEdit { Off, Mark, Move }
+        private PointEdit pointMode = PointEdit.Off;
+        private int selIndex = -1;
+        private int stepPx = 10; // Coarse by default; Fine = 1
+
+        // Mouse drag state.
+        private int dragIndex = -1;
+        private bool panning;
+        private Point downPt;
+        private double panStartSX, panStartSY;
+        private bool moved;
+
+        private readonly Timer redraw = new Timer();
+        private bool glReady; // GL context exists (set in oglSelf_Load); Resize can fire before it
+
+        // Borderless-window drag + layout-on-resize (fullscreen).
+        [DllImport("user32.dll")] private static extern bool ReleaseCapture();
+        [DllImport("user32.dll")] private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
+        private const int WM_NCLBUTTONDOWN = 0xA1, HTCAPTION = 0x2;
+        private Dictionary<Control, Point> origLoc;
+
+        public FormSmartAB(Form callingForm)
+        {
+            mf = callingForm as FormGPS;
+            InitializeComponent();
+            LocalizeText();
+
+            mf.CalculateMinMax();
+
+            // start from the field's existing tracks (so Accept keeps them)
+            foreach (var t in mf.trk.gArr) gTemp.Add(new CTrk(t));
+
+            redraw.Interval = 250;
+            redraw.Tick += (s, e) => oglSelf.Invalidate();
+
+            this.KeyPreview = true;
+            this.KeyDown += (s, e) => { if (e.KeyCode == Keys.Escape) Close(); };
+            this.MouseDown += FormDrag_MouseDown;
+        }
+
+        // ── Window controls (touch) + layout ──────────────────────────────
+        private void FormDrag_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left) return;
+            ReleaseCapture();
+            SendMessage(this.Handle, WM_NCLBUTTONDOWN, HTCAPTION, 0);
+        }
+
+        private void btnWinFull_Click(object sender, EventArgs e)
+        {
+            this.WindowState = this.WindowState == FormWindowState.Maximized
+                ? FormWindowState.Normal : FormWindowState.Maximized;
+        }
+
+        private void btnWinClose_Click(object sender, EventArgs e) => Close();
+
+        private void FormSmartAB_Resize(object sender, EventArgs e) => LayoutControls();
+
+        // Grow the (square) GL map to fit the height; keep the tool panel hugging the right.
+        private void LayoutControls()
+        {
+            if (origLoc == null)
+            {
+                origLoc = new Dictionary<Control, Point>();
+                foreach (Control c in Controls) if (c != oglSelf) origLoc[c] = c.Location;
+            }
+
+            // GL fills the area left of the tool panel (rectangle, aspect-correct projection).
+            int glW = Math.Max(300, ClientSize.Width - 332);
+            int glH = Math.Max(300, ClientSize.Height - 36);
+            oglSelf.SetBounds(8, 8, glW, glH);
+
+            int dx = ClientSize.Width - 1000; // design width
+            foreach (var kv in origLoc)
+                if (kv.Value.X >= 676) kv.Key.Location = new Point(kv.Value.X + dx, kv.Value.Y);
+
+            btnSat.Location = new Point(oglSelf.Right - 64, oglSelf.Top + 6);
+            btnZoomIn.Location = new Point(oglSelf.Right - 64, oglSelf.Bottom - 124);
+            btnZoomOut.Location = new Point(oglSelf.Right - 64, oglSelf.Bottom - 62);
+            lblActiveOp.Location = new Point(8, oglSelf.Bottom + 6);
+            btnWinClose.Location = new Point(ClientSize.Width - 60, 6);
+            btnWinFull.Location = new Point(ClientSize.Width - 118, 6);
+
+            SetupProjection();
+            oglSelf.Invalidate();
+        }
+
+        private void LocalizeText()
+        {
+            this.Text = gStr.gsSmartAB;
+            btnFine.Text = gStr.gsFine;
+            btnCoarse.Text = gStr.gsCoarse;
+            btnAddPoint.Text = gStr.gsAddPoint;
+            btnDeletePoint.Text = gStr.gsDeletePoint;
+            lblPointMode.Text = "";
+            lblActiveOp.Text = "";
+        }
+
+        private void FormSmartAB_Load(object sender, EventArgs e)
+        {
+            UpdateArrowColors();
+            UpdateLineButtons();
+            LayoutControls();
+            redraw.Start();
+
+            // keep the on-map buttons above the GL control
+            btnZoomIn.BringToFront();
+            btnZoomOut.BringToFront();
+            btnSat.BringToFront();
+            btnWinFull.BringToFront();
+            btnWinClose.BringToFront();
+        }
+
+        private void FormSmartAB_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            redraw.Stop();
+        }
+
+        // ── GL setup / render ─────────────────────────────────────────────
+        private void oglSelf_Load(object sender, EventArgs e)
+        {
+            oglSelf.MakeCurrent();
+            GL.Enable(EnableCap.CullFace);
+            GL.CullFace(CullFaceMode.Back);
+            GL.ClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+            glReady = true;
+            SetupProjection();
+        }
+
+        private void oglSelf_Resize(object sender, EventArgs e)
+        {
+            SetupProjection();
+        }
+
+        private void SetupProjection()
+        {
+            if (!glReady || oglSelf.Width <= 0 || oglSelf.Height <= 0) return;
+            oglSelf.MakeCurrent();
+            GL.MatrixMode(MatrixMode.Projection);
+            GL.LoadIdentity();
+            GL.Viewport(0, 0, oglSelf.Width, oglSelf.Height);
+            float aspect = (float)oglSelf.Width / oglSelf.Height;
+            Matrix4 mat = Matrix4.CreatePerspectiveFieldOfView(1.01f, aspect, 1.0f, 20000);
+            GL.LoadMatrix(ref mat);
+            GL.MatrixMode(MatrixMode.Modelview);
+        }
+
+        private void oglSelf_Paint(object sender, PaintEventArgs e)
+        {
+            if (!glReady) return;
+            oglSelf.MakeCurrent();
+            GL.Clear(ClearBufferMask.DepthBufferBit | ClearBufferMask.ColorBufferBit);
+            GL.LoadIdentity();
+
+            GL.Translate(0, 0, -mf.maxFieldDistance * zoom);
+            GL.Translate(-mf.fieldCenterX + sX * mf.maxFieldDistance,
+                         -mf.fieldCenterY + sY * mf.maxFieldDistance, 0);
+
+            // boundary
+            for (int j = 0; j < mf.bnd.bndList.Count; j++)
+            {
+                GeoCoord[] fenceLineEar = GeoRefactorHelper.ToGeoCoordArray(mf.bnd.bndList[j].fenceLineEar);
+                FenceLineVisual.DrawFenceLine(fenceLineEar, false);
+            }
+
+            VehicleDotVisual.DrawVehicleDot(mf.pivotAxlePos.ToGeoCoord());
+
+            DrawBuiltLines();
+            DrawPoints();
+
+            GL.Flush();
+            oglSelf.SwapBuffers();
+        }
+
+        // Markers for free points. A = cyan, B = orange, others white; selected = green.
+        private void DrawPoints()
+        {
+            double h = 8.0 * MetersPerPixel(); // ~16px square, constant on screen
+            GL.LineWidth(2);
+            for (int i = 0; i < pts.Count; i++)
+            {
+                if (i == selIndex) GL.Color3(0.2f, 1.0f, 0.2f);
+                else if (i == aIndex) GL.Color3(0.2f, 0.9f, 1.0f); // A
+                else if (i == bIndex) GL.Color3(1.0f, 0.6f, 0.1f); // B
+                else GL.Color3(1.0f, 1.0f, 1.0f);
+
+                double x = pts[i].easting, y = pts[i].northing;
+                GL.Begin(PrimitiveType.LineLoop);
+                GL.Vertex3(x - h, y - h, 0);
+                GL.Vertex3(x + h, y - h, 0);
+                GL.Vertex3(x + h, y + h, 0);
+                GL.Vertex3(x - h, y + h, 0);
+                GL.End();
+
+                // centre dot to emphasise the exact point
+                GL.PointSize(4f);
+                GL.Begin(PrimitiveType.Points);
+                GL.Vertex3(x, y, 0);
+                GL.End();
+            }
+        }
+
+        // ── Coordinate transforms (field <-> screen) ──────────────────────
+        // Meters per pixel is set by the VERTICAL FOV (height); the projection aspect makes
+        // the horizontal scale match, so the GL view can be any rectangle (fills fullscreen).
+        private double MetersPerPixel()
+        {
+            double scale = oglSelf.Height * 0.903;
+            return mf.maxFieldDistance / scale * zoom;
+        }
+
+        private vec2 ScreenToWorld(int px, int py)
+        {
+            double W = oglSelf.Width, H = oglSelf.Height, k = MetersPerPixel();
+            double e = (px - W / 2.0) * k + mf.fieldCenterX - sX * mf.maxFieldDistance;
+            double n = (H / 2.0 - py) * k + mf.fieldCenterY - sY * mf.maxFieldDistance;
+            return new vec2(e, n);
+        }
+
+        private Point WorldToScreen(vec2 w)
+        {
+            double W = oglSelf.Width, H = oglSelf.Height, k = MetersPerPixel();
+            double px = (w.easting - mf.fieldCenterX + sX * mf.maxFieldDistance) / k + W / 2.0;
+            double py = H / 2.0 - (w.northing - mf.fieldCenterY + sY * mf.maxFieldDistance) / k;
+            return new Point((int)Math.Round(px), (int)Math.Round(py));
+        }
+
+        private int HitTestPoint(int px, int py)
+        {
+            for (int i = 0; i < pts.Count; i++)
+            {
+                Point sp = WorldToScreen(pts[i]);
+                if (Math.Abs(sp.X - px) <= 16 && Math.Abs(sp.Y - py) <= 16) return i;
+            }
+            return -1;
+        }
+
+        // ── Mouse ─────────────────────────────────────────────────────────
+        private void oglSelf_MouseDown(object sender, MouseEventArgs e)
+        {
+            downPt = e.Location;
+            moved = false;
+            dragIndex = -1;
+            panning = false;
+
+            // Right button always pans — also while in point-edit/add/delete modes.
+            if (e.Button == MouseButtons.Right)
+            {
+                panning = true; panStartSX = sX; panStartSY = sY;
+                return;
+            }
+            if (e.Button != MouseButtons.Left) return;
+
+            int hit = HitTestPoint(e.X, e.Y);
+            if (hit >= 0 && !btnAddPoint.Checked && !btnDeletePoint.Checked)
+            {
+                dragIndex = hit; // grab a point to drag
+            }
+            else if (!btnAddPoint.Checked && !btnDeletePoint.Checked)
+            {
+                panning = true; panStartSX = sX; panStartSY = sY; // left-drag empty space = pan
+            }
+        }
+
+        private void oglSelf_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (dragIndex >= 0)
+            {
+                moved = true;
+                pts[dragIndex] = ScreenToWorld(e.X, e.Y);
+                RecomputeAB();
+                oglSelf.Invalidate();
+            }
+            else if (panning)
+            {
+                moved = true;
+                double k = MetersPerPixel();
+                sX = panStartSX + (e.X - downPt.X) * k / mf.maxFieldDistance;
+                sY = panStartSY - (e.Y - downPt.Y) * k / mf.maxFieldDistance;
+                oglSelf.Invalidate();
+            }
+        }
+
+        private void oglSelf_MouseUp(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Right) { panning = false; return; }
+            if (e.Button != MouseButtons.Left) return;
+
+            bool wasPointDrag = dragIndex >= 0 && moved;
+
+            if (!moved) // a tap
+            {
+                if (btnAddPoint.Checked)
+                {
+                    pts.Add(ScreenToWorld(e.X, e.Y));
+                    RecomputeAB();
+                    UpdateLineButtons();
+                    Regenerate();           // new point -> update the line
+                    lblActiveOp.Text = gStr.gsAddPoint;
+                }
+                else if (btnDeletePoint.Checked)
+                {
+                    int hit = HitTestPoint(e.X, e.Y);
+                    if (hit >= 0) DeletePoint(hit);
+                }
+                else if (pointMode != PointEdit.Off)
+                {
+                    int hit = HitTestPoint(e.X, e.Y);
+                    if (hit >= 0) SelectPoint(hit);
+                }
+            }
+
+            dragIndex = -1; panning = false; moved = false;
+            if (wasPointDrag) Regenerate();  // dragged a point -> update the line
+            oglSelf.Invalidate();
+        }
+
+        // ── Free-point model ──────────────────────────────────────────────
+        // A,B = the pair of points with the maximum distance between them (the "diameter").
+        private void RecomputeAB()
+        {
+            aIndex = 0; bIndex = -1;
+            if (pts.Count < 2) return;
+            double best = -1;
+            for (int i = 0; i < pts.Count; i++)
+                for (int j = i + 1; j < pts.Count; j++)
+                {
+                    double dx = pts[i].easting - pts[j].easting;
+                    double dy = pts[i].northing - pts[j].northing;
+                    double d = dx * dx + dy * dy;
+                    if (d > best) { best = d; aIndex = i; bIndex = j; }
+                }
+        }
+
+        // Re-run the last line build after the points were edited (live update).
+        private void Regenerate()
+        {
+            if (lastMake == "AB" && pts.Count == 2) btnMakeAB_Click(null, null);
+            else if (lastMake == "Curve" && pts.Count > 2) btnMakeCurve_Click(null, null);
+            else if (lastMake == "Bnd" && pts.Count == 2) btnMakeBndCurve_Click(null, null);
+        }
+
+        private void DeletePoint(int idx)
+        {
+            if (idx < 0 || idx >= pts.Count) return;
+            pts.RemoveAt(idx);
+            if (selIndex == idx) { selIndex = -1; SetPointMode(PointEdit.Mark); }
+            else if (selIndex > idx) selIndex--;
+            RecomputeAB();
+            UpdateLineButtons();
+            Regenerate();
+            lblActiveOp.Text = gStr.gsDeletePoint;
+            oglSelf.Invalidate();
+        }
+
+        // ── Point edit (POINT button + arrows) ────────────────────────────
+        private void btnPoint_Click(object sender, EventArgs e)
+        {
+            if (pointMode == PointEdit.Off)
+            {
+                btnAddPoint.Checked = false;
+                btnDeletePoint.Checked = false;
+                SetPointMode(PointEdit.Mark);
+            }
+            else
+            {
+                selIndex = -1;
+                SetPointMode(PointEdit.Off);
+            }
+            oglSelf.Invalidate();
+        }
+
+        private void SelectPoint(int idx)
+        {
+            selIndex = idx;
+            SetPointMode(PointEdit.Move);
+            oglSelf.Invalidate();
+        }
+
+        private void SetPointMode(PointEdit mode)
+        {
+            pointMode = mode;
+            switch (mode)
+            {
+                case PointEdit.Off: btnPoint.BackColor = Color.Gainsboro; lblPointMode.Text = ""; lblActiveOp.Text = ""; break;
+                case PointEdit.Mark: btnPoint.BackColor = Color.IndianRed; lblPointMode.Text = gStr.gsMarkPoint; lblActiveOp.Text = gStr.gsMarkPoint; break;
+                case PointEdit.Move: btnPoint.BackColor = Color.LimeGreen; lblPointMode.Text = gStr.gsMovePoint; lblActiveOp.Text = gStr.gsMovePoint; break;
+            }
+            UpdateArrowColors();
+        }
+
+        private void UpdateArrowColors()
+        {
+            Color c = pointMode == PointEdit.Move ? Color.Green : Color.RoyalBlue;
+            btnNavUp.ForeColor = c; btnNavDown.ForeColor = c; btnNavLeft.ForeColor = c; btnNavRight.ForeColor = c;
+        }
+
+        private void btnNavUp_Click(object sender, EventArgs e) => Nav(0, -1);
+        private void btnNavDown_Click(object sender, EventArgs e) => Nav(0, 1);
+        private void btnNavLeft_Click(object sender, EventArgs e) => Nav(-1, 0);
+        private void btnNavRight_Click(object sender, EventArgs e) => Nav(1, 0);
+
+        // Move the selected point by step px (Fine/Coarse), else pan the view by 20%.
+        private void Nav(int dx, int dy)
+        {
+            if (pointMode == PointEdit.Move && selIndex >= 0)
+            {
+                double k = MetersPerPixel();
+                var p = pts[selIndex];
+                pts[selIndex] = new vec2(p.easting + dx * stepPx * k, p.northing - dy * stepPx * k);
+                RecomputeAB();
+                Regenerate();
+            }
+            else
+            {
+                double dPan = 0.2 * zoom / 0.903;
+                sX += -dx * dPan;
+                sY += dy * dPan;
+            }
+            oglSelf.Invalidate();
+        }
+
+        private void btnFine_Click(object sender, EventArgs e)
+        {
+            stepPx = 1;
+            btnFine.BackColor = Color.LightSteelBlue; btnCoarse.BackColor = SystemColors.Control;
+            btnFine.UseVisualStyleBackColor = false; btnCoarse.UseVisualStyleBackColor = true;
+        }
+
+        private void btnCoarse_Click(object sender, EventArgs e)
+        {
+            stepPx = 10;
+            btnCoarse.BackColor = Color.LightSteelBlue; btnFine.BackColor = SystemColors.Control;
+            btnCoarse.UseVisualStyleBackColor = false; btnFine.UseVisualStyleBackColor = true;
+        }
+
+        // ── Add / Delete toggles ──────────────────────────────────────────
+        private void btnAddPoint_CheckedChanged(object sender, EventArgs e)
+        {
+            if (btnAddPoint.Checked)
+            {
+                btnDeletePoint.Checked = false;
+                selIndex = -1; SetPointMode(PointEdit.Off);
+                lblActiveOp.Text = gStr.gsAddPoint;
+            }
+            else if (!btnDeletePoint.Checked) lblActiveOp.Text = "";
+        }
+
+        private void btnDeletePoint_CheckedChanged(object sender, EventArgs e)
+        {
+            if (btnDeletePoint.Checked)
+            {
+                btnAddPoint.Checked = false;
+                selIndex = -1; SetPointMode(PointEdit.Off);
+                lblActiveOp.Text = gStr.gsDeletePoint;
+            }
+            else if (!btnAddPoint.Checked) lblActiveOp.Text = "";
+        }
+
+        // ── Zoom ──────────────────────────────────────────────────────────
+        private void btnZoomIn_Click(object sender, EventArgs e)
+        {
+            zoom *= 0.8; if (zoom < 0.08) zoom = 0.08; // deeper zoom (was 0.2 → 0.1 → 0.08)
+            oglSelf.Invalidate();
+        }
+
+        private void btnZoomOut_Click(object sender, EventArgs e)
+        {
+            zoom /= 0.8; if (zoom > 6.0) zoom = 6.0;
+            oglSelf.Invalidate();
+        }
+
+        // Line buttons enable rules (Phase 2 will wire the actual generation):
+        // 0 pts = all off; 2 pts = AB + CurveByBoundary; >2 = Curve only.
+        private void UpdateLineButtons()
+        {
+            int n = pts.Count;
+            btnMakeAB.Enabled = (n == 2);
+            btnMakeBndCurve.Enabled = (n == 2);
+            btnMakeCurve.Enabled = (n > 2);
+        }
+
+        // ── Phase 2: build lines from the free points (reuse AOG generation) ──
+        // Keep one generated track at genIdx; re-make replaces it.
+        private void StoreGenerated(CTrk t)
+        {
+            if (genIdx >= 0 && genIdx < gTemp.Count) gTemp[genIdx] = t;
+            else { gTemp.Add(t); genIdx = gTemp.Count - 1; }
+            oglSelf.Invalidate();
+        }
+
+        private string LineName(string prefix, double headingRad)
+        {
+            string n = tboxName.Text.Trim();
+            if (n.Length > 0) return n;
+            return prefix + " " + Math.Round(glm.toDegrees(headingRad), 1).ToString(CultureInfo.InvariantCulture) + "°";
+        }
+
+        private void btnMakeAB_Click(object sender, EventArgs e)
+        {
+            if (pts.Count != 2 || bIndex < 0) return;
+            lastMake = "AB";
+            vec2 a = pts[aIndex], b = pts[bIndex];
+            double abHead = Math.Atan2(b.easting - a.easting, b.northing - a.northing);
+            if (abHead < 0) abHead += glm.twoPI;
+
+            var t = new CTrk { mode = TrackMode.AB, heading = abHead, isVisible = true };
+            t.ptA = new vec2(a.easting, a.northing);
+            t.ptB = new vec2(b.easting, b.northing);
+            t.name = LineName("AB", abHead);
+            StoreGenerated(t);
+            lblActiveOp.Text = "AB line";
+        }
+
+        private void btnMakeCurve_Click(object sender, EventArgs e)
+        {
+            if (pts.Count < 3) return;
+            lastMake = "Curve";
+            var ordered = OrderPointsAtoB();        // A → nearest-neighbour … → B
+            var des = Densify(ordered, 1.6);
+            if (des.Count < 4) { lblActiveOp.Text = "Curve error"; return; }
+
+            CABCurve.CalculateHeadings(ref des);
+
+            double x = 0, y = 0;
+            foreach (vec3 p in des) { x += Math.Cos(p.heading); y += Math.Sin(p.heading); }
+            double head = Math.Atan2(y / des.Count, x / des.Count);
+            if (head < 0) head += glm.twoPI;
+
+            ExtendEnds(des, ExtendMeters);          // 150 m tails BOTH directions
+            CABCurve.CalculateHeadings(ref des);
+
+            var t = new CTrk { mode = TrackMode.Curve, heading = head, isVisible = true };
+            t.ptA = new vec2(pts[aIndex].easting, pts[aIndex].northing);
+            t.ptB = new vec2(pts[bIndex].easting, pts[bIndex].northing);
+            t.name = LineName("Cu", head);
+            foreach (vec3 p in des) t.curvePts.Add(p);
+            StoreGenerated(t);
+            lblActiveOp.Text = "Curve";
+        }
+
+        private void btnMakeBndCurve_Click(object sender, EventArgs e)
+        {
+            if (pts.Count != 2) return;
+            lastMake = "Bnd";
+            try
+            {
+                if (mf.bnd.bndList.Count == 0) { lblActiveOp.Text = "No boundary"; return; }
+
+                // snap A and B to the nearest boundary vertex
+                int bSel = NearestBoundaryVertex(pts[aIndex], out int start);
+                NearestBoundaryVertexOn(bSel, pts[bIndex], out int end);
+
+                var fence = mf.bnd.bndList[bSel].fenceLine;
+                bool isLoop = Math.Abs(start - end) > fence.Count * 0.5;
+                int limit = end;
+                if (isLoop) { if (start < end) (end, start) = (start, end); limit = end; end = fence.Count; }
+                else { if (start > end) (end, start) = (start, end); }
+
+                var des = new List<vec3>();
+                for (int i = start; i < end; i++)
+                {
+                    var p = new vec3(fence[i]);
+                    // skip consecutive coincident points (avoids zero-length segments / folds)
+                    if (des.Count == 0 || Math.Abs(p.easting - des[des.Count - 1].easting) > 0.02
+                                       || Math.Abs(p.northing - des[des.Count - 1].northing) > 0.02)
+                        des.Add(p);
+                    if (isLoop && i == fence.Count - 1) { i = -1; isLoop = false; end = limit; }
+                }
+                if (des.Count < 4) { lblActiveOp.Text = "Curve by boundary error"; return; }
+
+                CABCurve.CalculateHeadings(ref des);
+                double head = des.Count > 1 ? des[des.Count / 2].heading : 0;
+                vec3 a0 = des[0], bN = des[des.Count - 1];
+                ExtendEnds(des, ExtendMeters);   // 150 m tails BOTH directions, past the boundary
+                CABCurve.CalculateHeadings(ref des);
+
+                // Use a normal Curve (an OPEN slice), not bndCurve — bndCurve is a closed boundary
+                // loop and AOG would draw/guide a second wrap-around line ("double line").
+                var t = new CTrk { mode = TrackMode.Curve, heading = head, isVisible = true };
+                t.ptA = new vec2(a0.easting, a0.northing);
+                t.ptB = new vec2(bN.easting, bN.northing);
+                t.name = LineName("CuBnd", head);
+                foreach (vec3 p in des) t.curvePts.Add(p);
+                StoreGenerated(t);
+                lblActiveOp.Text = "Curve by Boundary";
+            }
+            catch (Exception ex)
+            {
+                lblActiveOp.Text = "Curve by boundary error";
+                Log.EventWriter("SmartAB CurveByBoundary " + ex.Message);
+            }
+        }
+
+        private const double ExtendMeters = 150.0; // guidance tail length each end
+
+        // Order the points into a path: A (pts[0]) → nearest-neighbour through the middle → B (farthest).
+        private List<vec2> OrderPointsAtoB()
+        {
+            var remaining = new List<int>();
+            for (int i = 0; i < pts.Count; i++) if (i != aIndex && i != bIndex) remaining.Add(i);
+
+            var ordered = new List<vec2> { pts[aIndex] };
+            int cur = aIndex;
+            while (remaining.Count > 0)
+            {
+                int best = 0; double bestD = double.MaxValue;
+                for (int k = 0; k < remaining.Count; k++)
+                {
+                    double dx = pts[remaining[k]].easting - pts[cur].easting;
+                    double dy = pts[remaining[k]].northing - pts[cur].northing;
+                    double d = dx * dx + dy * dy;
+                    if (d < bestD) { bestD = d; best = k; }
+                }
+                cur = remaining[best];
+                ordered.Add(pts[cur]);
+                remaining.RemoveAt(best);
+            }
+            if (bIndex >= 0) ordered.Add(pts[bIndex]); // B is the far endpoint
+            return ordered;
+        }
+
+        // Extend the polyline tangentially by 'meters' at BOTH ends (for autoguidance).
+        private static void ExtendEnds(List<vec3> des, double meters)
+        {
+            if (des.Count < 2) return;
+            const double step = 1.6;
+            int n = Math.Max(1, (int)(meters / step));
+
+            double h0 = des[0].heading;
+            var front = new List<vec3>();
+            for (int i = n; i >= 1; i--)
+            {
+                double d = i * step;
+                front.Add(new vec3(des[0].easting - Math.Sin(h0) * d, des[0].northing - Math.Cos(h0) * d, h0));
+            }
+
+            int last = des.Count - 1;
+            double hl = des[last].heading;
+            var back = new List<vec3>();
+            for (int i = 1; i <= n; i++)
+            {
+                double d = i * step;
+                back.Add(new vec3(des[last].easting + Math.Sin(hl) * d, des[last].northing + Math.Cos(hl) * d, hl));
+            }
+
+            des.InsertRange(0, front);
+            des.AddRange(back);
+        }
+
+        // Linear densification of the point list to ~spacing metres (for curve points/headings).
+        private static List<vec3> Densify(List<vec2> p, double spacing)
+        {
+            var list = new List<vec3>();
+            for (int i = 0; i < p.Count - 1; i++)
+            {
+                double dx = p[i + 1].easting - p[i].easting, dy = p[i + 1].northing - p[i].northing;
+                double len = Math.Sqrt(dx * dx + dy * dy);
+                int steps = Math.Max(1, (int)(len / spacing));
+                for (int s = 0; s < steps; s++)
+                {
+                    double f = (double)s / steps;
+                    list.Add(new vec3(p[i].easting + dx * f, p[i].northing + dy * f, 0));
+                }
+            }
+            list.Add(new vec3(p[p.Count - 1].easting, p[p.Count - 1].northing, 0));
+            return list;
+        }
+
+        private int NearestBoundaryVertex(vec2 w, out int idx)
+        {
+            double best = double.MaxValue; int bSel = 0; idx = 0;
+            for (int j = 0; j < mf.bnd.bndList.Count; j++)
+            {
+                var f = mf.bnd.bndList[j].fenceLine;
+                for (int i = 0; i < f.Count; i++)
+                {
+                    double dx = w.easting - f[i].easting, dy = w.northing - f[i].northing;
+                    double d = dx * dx + dy * dy;
+                    if (d < best) { best = d; bSel = j; idx = i; }
+                }
+            }
+            return bSel;
+        }
+
+        private void NearestBoundaryVertexOn(int bSel, vec2 w, out int idx)
+        {
+            double best = double.MaxValue; idx = 0;
+            var f = mf.bnd.bndList[bSel].fenceLine;
+            for (int i = 0; i < f.Count; i++)
+            {
+                double dx = w.easting - f[i].easting, dy = w.northing - f[i].northing;
+                double d = dx * dx + dy * dy;
+                if (d < best) { best = d; idx = i; }
+            }
+        }
+
+        // Draw generated tracks (AB dashed, curves as line strips) — like FormABDraw.
+        private void DrawBuiltLines()
+        {
+            GL.LineStipple(1, 0x0707);
+            for (int i = 0; i < gTemp.Count; i++)
+            {
+                var t = gTemp[i];
+                if (t.mode == TrackMode.AB)
+                {
+                    GL.Enable(EnableCap.LineStipple);
+                    GL.LineWidth(i == genIdx ? 8 : 4);
+                    GL.Color3(1.0f, 0.20f, 0.20f);
+                    GL.Begin(PrimitiveType.Lines);
+                    GL.Vertex3(t.ptA.easting - Math.Sin(t.heading) * mf.ABLine.abLength, t.ptA.northing - Math.Cos(t.heading) * mf.ABLine.abLength, 0);
+                    GL.Vertex3(t.ptB.easting + Math.Sin(t.heading) * mf.ABLine.abLength, t.ptB.northing + Math.Cos(t.heading) * mf.ABLine.abLength, 0);
+                    GL.End();
+                    GL.Disable(EnableCap.LineStipple);
+                }
+                else if (t.curvePts.Count > 1)
+                {
+                    GL.LineWidth(i == genIdx ? 5 : 3);
+                    if (t.mode == TrackMode.bndCurve) GL.Color3(0.70f, 0.5f, 0.2f);
+                    else GL.Color3(0.30f, 0.97f, 0.30f);
+                    GL.Begin(PrimitiveType.LineStrip);
+                    foreach (vec3 p in t.curvePts) GL.Vertex3(p.easting, p.northing, 0);
+                    GL.End();
+                }
+            }
+        }
+
+        // ── Bottom: cancel / accept (Phase 1: just close) ─────────────────
+        private void btnCancel_Click(object sender, EventArgs e)
+        {
+            DialogResult = DialogResult.Cancel;
+            Close();
+        }
+
+        private void btnAccept_Click(object sender, EventArgs e)
+        {
+            // Apply the typed name to the generated line (works no matter when it was typed).
+            string nm = tboxName.Text.Trim();
+            if (nm.Length > 0 && genIdx >= 0 && genIdx < gTemp.Count) gTemp[genIdx].name = nm;
+
+            // Commit the generated tracks (existing + new) to the field and save.
+            mf.trk.gArr.Clear();
+            foreach (var t in gTemp) mf.trk.gArr.Add(new CTrk(t));
+            mf.trk.idx = (genIdx >= 0 && genIdx < gTemp.Count) ? genIdx
+                       : (gTemp.Count > 0 ? gTemp.Count - 1 : -1);
+            mf.FileSaveTracks();
+            mf.curve.isCurveValid = false;
+            mf.ABLine.isABValid = false;
+
+            DialogResult = DialogResult.OK;
+            Close();
+        }
+    }
+}

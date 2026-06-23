@@ -79,6 +79,9 @@ namespace AgOpenGPS
         // Set by FormJob "Shape File" button -> Controls opens FormFieldShapeImport
         public bool isShapeImportRequested;
 
+        // Set by FormBoundary "Geoportal" button -> Controls opens FormGeoportalBoundary
+        public bool isGeoportalBoundaryRequested;
+
         public string displayFieldName => AppModel.Fields.ActiveField != null ? AppModel.Fields.ActiveField.Name : gStr.gsNone;
 
 
@@ -153,6 +156,9 @@ namespace AgOpenGPS
         /// create world grid
         /// </summary>
         public WorldGrid worldGrid;
+
+        // Cadastral parcel outlines (crisp vector lines on the main map)
+        public CParcels parcels = new CParcels();
 
         /// <summary>
         /// The NMEA class that decodes it
@@ -1128,6 +1134,7 @@ namespace AgOpenGPS
             btnContour.Enabled = true;
             btnTrack.Enabled = true;
             btnABDraw.Enabled = true;
+            btnSmartAB.Enabled = true;
             btnCycleLines.Image = Properties.Resources.ABLineCycle;
             btnCycleLinesBk.Image = Properties.Resources.ABLineCycleBk;
 
@@ -1325,6 +1332,7 @@ namespace AgOpenGPS
             btnContour.Image = Properties.Resources.ContourOff;
             ct.isContourOn = false;
 
+            btnSmartAB.Enabled = false;
             btnABDraw.Enabled = false;
             btnCycleLines.Image = Properties.Resources.ABLineCycle;
             //btnCycleLines.Enabled = false;

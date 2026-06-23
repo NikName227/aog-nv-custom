@@ -156,6 +156,7 @@ namespace AgOpenGPS
             this.flp1 = new System.Windows.Forms.FlowLayoutPanel();
             this.btnNudge = new System.Windows.Forms.Button();
             this.btnABDraw = new System.Windows.Forms.Button();
+            this.btnSmartAB = new System.Windows.Forms.Button();
             this.btnPlusAB = new System.Windows.Forms.Button();
             this.btnBuildTracks = new System.Windows.Forms.Button();
             this.btnTracksOff = new System.Windows.Forms.Button();
@@ -1986,6 +1987,7 @@ namespace AgOpenGPS
             this.flp1.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
             this.flp1.Controls.Add(this.btnNudge);
             this.flp1.Controls.Add(this.btnABDraw);
+            this.flp1.Controls.Add(this.btnSmartAB);
             this.flp1.Controls.Add(this.btnPlusAB);
             this.flp1.Controls.Add(this.btnBuildTracks);
             this.flp1.Controls.Add(this.btnTracksOff);
@@ -2040,9 +2042,32 @@ namespace AgOpenGPS
             this.btnABDraw.TextAlign = System.Drawing.ContentAlignment.TopCenter;
             this.btnABDraw.UseVisualStyleBackColor = false;
             this.btnABDraw.Click += new System.EventHandler(this.btnABDraw_Click);
-            // 
+            //
+            // btnSmartAB
+            //
+            this.btnSmartAB.Anchor = System.Windows.Forms.AnchorStyles.None;
+            this.btnSmartAB.BackColor = System.Drawing.Color.Transparent;
+            this.btnSmartAB.BackgroundImage = global::AgOpenGPS.Properties.Resources.SmartAB;
+            this.btnSmartAB.BackgroundImageLayout = System.Windows.Forms.ImageLayout.Zoom;
+            this.btnSmartAB.Enabled = false;
+            this.btnSmartAB.FlatAppearance.BorderColor = System.Drawing.Color.RoyalBlue;
+            this.btnSmartAB.FlatAppearance.BorderSize = 0;
+            this.btnSmartAB.FlatAppearance.CheckedBackColor = System.Drawing.Color.Transparent;
+            this.btnSmartAB.FlatAppearance.MouseDownBackColor = System.Drawing.Color.Transparent;
+            this.btnSmartAB.FlatAppearance.MouseOverBackColor = System.Drawing.Color.Transparent;
+            this.btnSmartAB.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnSmartAB.Font = new System.Drawing.Font("Tahoma", 12F);
+            this.btnSmartAB.ImeMode = System.Windows.Forms.ImeMode.NoControl;
+            this.btnSmartAB.Location = new System.Drawing.Point(3, 418);
+            this.btnSmartAB.Name = "btnSmartAB";
+            this.btnSmartAB.Size = new System.Drawing.Size(80, 72);
+            this.btnSmartAB.TabIndex = 546;
+            this.btnSmartAB.TextAlign = System.Drawing.ContentAlignment.TopCenter;
+            this.btnSmartAB.UseVisualStyleBackColor = false;
+            this.btnSmartAB.Click += new System.EventHandler(this.btnSmartAB_Click);
+            //
             // btnPlusAB
-            // 
+            //
             this.btnPlusAB.Anchor = System.Windows.Forms.AnchorStyles.None;
             this.btnPlusAB.BackColor = System.Drawing.Color.Transparent;
             this.btnPlusAB.BackgroundImageLayout = System.Windows.Forms.ImageLayout.Center;
@@ -3006,6 +3031,7 @@ namespace AgOpenGPS
         public System.Windows.Forms.Timer timerSim;
         public System.Windows.Forms.Button btnSectionMasterManual;
         public System.Windows.Forms.Button btnABDraw;
+        public System.Windows.Forms.Button btnSmartAB;
         public System.Windows.Forms.ToolStripMenuItem menustripLanguage;
         public System.Windows.Forms.Button btnCycleLines;
         private System.Windows.Forms.StatusStrip statusStripLeft;

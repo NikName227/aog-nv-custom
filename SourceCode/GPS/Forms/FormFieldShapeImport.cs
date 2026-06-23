@@ -108,7 +108,7 @@ namespace AgOpenGPS
                         if (mf.isJobStarted)
                             await mf.FileSaveEverythingBeforeClosingField();
 
-                        string kml = WriteTempKml(name, feat.Boundary);
+                        string kml = BoundaryKmlWriter.WriteTempKml(name, feat.Boundary);
                         kmlForm.CreateFieldFromKml(kml, name);
                         try { File.Delete(kml); } catch { }
 
@@ -154,26 +154,5 @@ namespace AgOpenGPS
             return candidate;
         }
 
-        private string WriteTempKml(string name, List<Wgs84> boundary)
-        {
-            string path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".kml");
-
-            var sb = new StringBuilder();
-            sb.Append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
-            sb.Append("<kml xmlns=\"http://www.opengis.net/kml/2.2\">");
-            sb.Append("<Placemark><name>" + name + "</name>");
-            sb.Append("<Polygon><outerBoundaryIs><LinearRing><coordinates>");
-            foreach (var p in boundary)
-            {
-                sb.Append(p.Longitude.ToString("F8", CultureInfo.InvariantCulture));
-                sb.Append(",");
-                sb.Append(p.Latitude.ToString("F8", CultureInfo.InvariantCulture));
-                sb.Append(",0 ");
-            }
-            sb.Append("</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark></kml>");
-
-            File.WriteAllText(path, sb.ToString());
-            return path;
-        }
     }
 }

@@ -35,7 +35,14 @@ namespace AgOpenGPS.Properties
         // ===== APP MAP (background map source) =====
         // 0 = Default (Bing, as in AOG), 1 = Google satellite, 2 = Custom WMS (default: DGU Geoportal)
         public int setMap_appMapMode = 0;
-        public string setMap_customWmsUrl = "https://geoportal.dgu.hr/services/inspire/orthophoto_2023_2024/wms";
+        // Empty = use the single default from GeoportalWmsProvider.DefaultBaseUrl (one source of
+        // truth). Map App prefills the textbox with that default on first run; once the user edits
+        // and saves, their URL is stored here. Change the default link in DefaultBaseUrl only.
+        public string setMap_customWmsUrl = "";
+
+        // Cadastral parcels (HR): WFS vector endpoint + whether to draw parcel lines on the map
+        public string setMap_parcelWfsUrl = "https://api.uredjenazemlja.hr/services/inspire/cp/wfs";
+        public bool setMap_showParcelsOnMain = true;
 
         public Point setWindow_QuickABLocation = new Point(100, 100);
         public Size setWindow_gridSize = new Size(400, 400);

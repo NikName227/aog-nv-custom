@@ -69,7 +69,14 @@ namespace AgOpenGPS.Properties {
                 return ((System.Drawing.Bitmap)(obj));
             }
         }
-        
+
+        internal static System.Drawing.Bitmap SmartAB {
+            get {
+                object obj = ResourceManager.GetObject("SmartAB", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
@@ -585,6 +592,16 @@ namespace AgOpenGPS.Properties {
         internal static System.Drawing.Bitmap ShapeFile {
             get {
                 object obj = ResourceManager.GetObject("ShapeFile", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
+        internal static System.Drawing.Bitmap Geoportal {
+            get {
+                object obj = ResourceManager.GetObject("Geoportal", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
             }
         }

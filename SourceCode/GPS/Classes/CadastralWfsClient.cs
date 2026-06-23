@@ -1,0 +1,247 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Net;
+using AgOpenGPS.Core.Models;
+using GMap.NET;
+using NetTopologySuite.Features;
+using NetTopologySuite.Geometries;
+using NetTopologySuite.IO;
+using ProjNet.CoordinateSystems;
+using ProjNet.CoordinateSystems.Transformations;
+
+namespace AgOpenGPS
+{
+    /// <summary>One cadastral parcel: outer ring as WGS84 points (for GMap display)
+    /// plus the original EPSG:3765 polygon geometry (for hit-testing and union).</summary>
+    public class CadastralParcel
+    {
+        public List<PointLatLng> Outer = new List<PointLatLng>();
+
+        /// <summary>Original parcel polygon in EPSG:3765 (metric) — used for point-in-polygon
+        /// selection and NetTopologySuite union when building the boundary.</summary>
+        public Polygon Geom3765;
+
+        /// <summary>Selection state (toggled by clicking on the map).</summary>
+        public bool Selected;
+    }
+
+    /// <summary>
+    /// Fetches HR cadastral parcels (CP:CadastralParcel) from the Uredjena zemlja WFS
+    /// as GeoJSON in EPSG:3765 and reprojects them to WGS84 for display on a GMap.
+    /// </summary>
+    public static class CadastralWfsClient
+    {
+        public const string WfsUrl = "https://api.uredjenazemlja.hr/services/inspire/cp/wfs";
+
+        private const string Htrs96Wkt =
+            "PROJCS[\"HTRS96 / Croatia TM\",GEOGCS[\"HTRS96\",DATUM[\"Croatian_Terrestrial_Reference_System\"," +
+            "SPHEROID[\"GRS 1980\",6378137,298.257222101]],PRIMEM[\"Greenwich\",0]," +
+            "UNIT[\"degree\",0.0174532925199433]],PROJECTION[\"Transverse_Mercator\"]," +
+            "PARAMETER[\"latitude_of_origin\",0],PARAMETER[\"central_meridian\",16.5]," +
+            "PARAMETER[\"scale_factor\",0.9999],PARAMETER[\"false_easting\",500000]," +
+            "PARAMETER[\"false_northing\",0],UNIT[\"metre\",1]]";
+
+        private static readonly ICoordinateTransformation ToWgs84; // 3765 -> WGS84
+        private static readonly ICoordinateTransformation To3765;  // WGS84 -> 3765
+
+        static CadastralWfsClient()
+        {
+            try { ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12; } catch { }
+
+            var csf = new CoordinateSystemFactory();
+            var ctf = new CoordinateTransformationFactory();
+            var htrs = csf.CreateFromWkt(Htrs96Wkt);
+            var wgs = GeographicCoordinateSystem.WGS84;
+            ToWgs84 = ctf.CreateFromCoordinateSystems(htrs, wgs);
+            To3765 = ctf.CreateFromCoordinateSystems(wgs, htrs);
+        }
+
+        /// <summary>Fetch parcels intersecting a WGS84 bbox. Blocking — call off the UI thread.</summary>
+        public static List<CadastralParcel> GetParcels(
+            double minLat, double minLon, double maxLat, double maxLon, out string error)
+        {
+            return GetParcels(WfsUrl, minLat, minLon, maxLat, maxLon, out error);
+        }
+
+        public static List<CadastralParcel> GetParcels(
+            string wfsUrl, double minLat, double minLon, double maxLat, double maxLon, out string error)
+        {
+            error = null;
+            var parcels = new List<CadastralParcel>();
+            if (string.IsNullOrWhiteSpace(wfsUrl)) wfsUrl = WfsUrl;
+            wfsUrl = wfsUrl.Trim().TrimEnd('?', '&');
+            try
+            {
+                var (e1, n1) = To3765.MathTransform.Transform(minLon, minLat);
+                var (e2, n2) = To3765.MathTransform.Transform(maxLon, maxLat);
+                double minE = Math.Min(e1, e2), maxE = Math.Max(e1, e2);
+                double minN = Math.Min(n1, n2), maxN = Math.Max(n1, n2);
+
+                string url = wfsUrl +
+                    "?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAMES=CP:CadastralParcel" +
+                    "&SRSNAME=EPSG:3765&OUTPUTFORMAT=application/json&COUNT=800&BBOX=" +
+                    F(minE) + "," + F(minN) + "," + F(maxE) + "," + F(maxN) + ",EPSG:3765";
+
+                string json;
+                using (var wc = new WebClient())
+                {
+                    wc.Encoding = System.Text.Encoding.UTF8;
+                    json = wc.DownloadString(url);
+                }
+
+                var fc = new GeoJsonReader().Read<FeatureCollection>(json);
+                foreach (var feat in fc)
+                    AddPolygons(feat.Geometry, parcels);
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+            }
+            return parcels;
+        }
+
+        private static void AddPolygons(Geometry geom, List<CadastralParcel> parcels)
+        {
+            if (geom is Polygon poly)
+            {
+                parcels.Add(ToParcel(poly));
+            }
+            else if (geom is MultiPolygon mp)
+            {
+                for (int i = 0; i < mp.NumGeometries; i++)
+                    parcels.Add(ToParcel((Polygon)mp.GetGeometryN(i)));
+            }
+        }
+
+        private static CadastralParcel ToParcel(Polygon poly)
+        {
+            // poly is in EPSG:3765 (GeoJSON SRSNAME=EPSG:3765) — keep it for hit-test/union.
+            var p = new CadastralParcel { Geom3765 = poly };
+            foreach (var c in poly.ExteriorRing.Coordinates)
+            {
+                var (lon, lat) = ToWgs84.MathTransform.Transform(c.X, c.Y);
+                p.Outer.Add(new PointLatLng(lat, lon));
+            }
+            return p;
+        }
+
+        /// <summary>True if a WGS84 point falls inside the parcel (tested in EPSG:3765).</summary>
+        public static bool Contains(CadastralParcel parcel, double lat, double lon)
+        {
+            if (parcel?.Geom3765 == null) return false;
+            var (e, n) = To3765.MathTransform.Transform(lon, lat);
+            return parcel.Geom3765.Contains(GeomFactory.CreatePoint(new Coordinate(e, n)));
+        }
+
+        /// <summary>Reproject an EPSG:3765 coordinate to WGS84 (lat/lon). For union output rings.</summary>
+        public static PointLatLng To84(double easting, double northing)
+        {
+            var (lon, lat) = ToWgs84.MathTransform.Transform(easting, northing);
+            return new PointLatLng(lat, lon);
+        }
+
+        internal static readonly GeometryFactory GeomFactory = new GeometryFactory();
+
+        /// <summary>
+        /// Union the selected parcels (EPSG:3765) and return the outer ring of the largest
+        /// resulting polygon as WGS84 points (for the boundary). Returns null if nothing usable.
+        /// </summary>
+        public static List<Wgs84> UnionOuterRingWgs84(IEnumerable<CadastralParcel> parcels)
+        {
+            return UnionOuterRingWgs84(parcels, null);
+        }
+
+        /// <summary>
+        /// Union the selected parcels plus optional bridge polygons (all EPSG:3765) and return
+        /// the outer ring of the largest resulting polygon as WGS84. Bridges connect parcels
+        /// that aren't adjacent (a path on the map but not in the field) into one polygon.
+        /// </summary>
+        public static List<Wgs84> UnionOuterRingWgs84(
+            IEnumerable<CadastralParcel> parcels, IEnumerable<Polygon> bridges3765)
+        {
+            Geometry acc = null;
+            foreach (var p in parcels)
+            {
+                if (p?.Geom3765 == null) continue;
+                acc = acc == null ? (Geometry)p.Geom3765 : acc.Union(p.Geom3765);
+            }
+            if (bridges3765 != null)
+            {
+                foreach (var b in bridges3765)
+                {
+                    if (b == null) continue;
+                    acc = acc == null ? (Geometry)b : acc.Union(b);
+                }
+            }
+            if (acc == null) return null;
+
+            Polygon largest = null;
+            if (acc is Polygon pg)
+            {
+                largest = pg;
+            }
+            else if (acc is MultiPolygon mp)
+            {
+                for (int i = 0; i < mp.NumGeometries; i++)
+                {
+                    var g = (Polygon)mp.GetGeometryN(i);
+                    if (largest == null || g.Area > largest.Area) largest = g;
+                }
+            }
+            if (largest == null) return null;
+
+            var ring = new List<Wgs84>();
+            foreach (var c in largest.ExteriorRing.Coordinates)
+            {
+                var (lon, lat) = ToWgs84.MathTransform.Transform(c.X, c.Y);
+                ring.Add(new Wgs84(lat, lon));
+            }
+            return ring;
+        }
+
+        /// <summary>
+        /// Build an EPSG:3765 polygon from a quad of WGS84 corners (a bridge rectangle the user
+        /// dragged into place). Used to connect non-adjacent parcels into one polygon. If the
+        /// quad is self-intersecting it is repaired (Buffer(0) / convex hull). Null if invalid.
+        /// </summary>
+        public static Polygon MakeQuad3765(IList<PointLatLng> cornersWgs)
+        {
+            if (cornersWgs == null || cornersWgs.Count < 3) return null;
+
+            var cs = new List<Coordinate>(cornersWgs.Count + 1);
+            foreach (var p in cornersWgs)
+            {
+                var (e, n) = To3765.MathTransform.Transform(p.Lng, p.Lat);
+                cs.Add(new Coordinate(e, n));
+            }
+            cs.Add(new Coordinate(cs[0].X, cs[0].Y)); // close the ring
+
+            Polygon poly;
+            try { poly = GeomFactory.CreatePolygon(cs.ToArray()); }
+            catch { return null; }
+
+            if (!poly.IsValid)
+            {
+                Geometry g = poly.Buffer(0);
+                if (g is Polygon pg && !pg.IsEmpty) poly = pg;
+                else poly = poly.ConvexHull() as Polygon;
+            }
+            return poly;
+        }
+
+        /// <summary>Exterior ring of an EPSG:3765 polygon as WGS84 points (for map drawing).</summary>
+        public static List<PointLatLng> Ring84(Polygon poly3765)
+        {
+            var pts = new List<PointLatLng>();
+            foreach (var c in poly3765.ExteriorRing.Coordinates)
+            {
+                var (lon, lat) = ToWgs84.MathTransform.Transform(c.X, c.Y);
+                pts.Add(new PointLatLng(lat, lon));
+            }
+            return pts;
+        }
+
+        private static string F(double v) => v.ToString("F2", CultureInfo.InvariantCulture);
+    }
+}

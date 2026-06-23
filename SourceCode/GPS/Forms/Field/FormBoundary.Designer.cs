@@ -45,6 +45,7 @@
             this.btnLoadBoundaryFromGE = new System.Windows.Forms.Button();
             this.btnLoadMultiBoundaryFromGE = new System.Windows.Forms.Button();
             this.btnBingMaps = new System.Windows.Forms.Button();
+            this.btnGeoportal = new System.Windows.Forms.Button();
             this.btnAdd = new System.Windows.Forms.Button();
             this.btnCancel = new System.Windows.Forms.Button();
             this.btnOpenGoogleEarth = new System.Windows.Forms.Button();
@@ -59,7 +60,7 @@
             this.labelBounds.BackColor = System.Drawing.Color.Transparent;
             this.labelBounds.Font = new System.Drawing.Font("Tahoma", 14.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.labelBounds.ForeColor = System.Drawing.Color.Black;
-            this.labelBounds.Location = new System.Drawing.Point(33, 85);
+            this.labelBounds.Location = new System.Drawing.Point(33, 160);
             this.labelBounds.Name = "labelBounds";
             this.labelBounds.Size = new System.Drawing.Size(177, 32);
             this.labelBounds.TabIndex = 203;
@@ -71,7 +72,7 @@
             this.Thru.BackColor = System.Drawing.Color.Transparent;
             this.Thru.Font = new System.Drawing.Font("Tahoma", 14.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.Thru.ForeColor = System.Drawing.Color.Black;
-            this.Thru.Location = new System.Drawing.Point(410, 85);
+            this.Thru.Location = new System.Drawing.Point(410, 160);
             this.Thru.Name = "Thru";
             this.Thru.RightToLeft = System.Windows.Forms.RightToLeft.No;
             this.Thru.Size = new System.Drawing.Size(145, 32);
@@ -84,7 +85,7 @@
             this.Area.BackColor = System.Drawing.Color.Transparent;
             this.Area.Font = new System.Drawing.Font("Tahoma", 14.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.Area.ForeColor = System.Drawing.Color.Black;
-            this.Area.Location = new System.Drawing.Point(229, 85);
+            this.Area.Location = new System.Drawing.Point(229, 160);
             this.Area.Name = "Area";
             this.Area.Size = new System.Drawing.Size(177, 32);
             this.Area.TabIndex = 201;
@@ -96,6 +97,7 @@
             this.panelMain.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
             | System.Windows.Forms.AnchorStyles.Left)));
             this.panelMain.BackColor = System.Drawing.Color.WhiteSmoke;
+            this.panelMain.Controls.Add(this.btnGeoportal);
             this.panelMain.Controls.Add(this.btnBuildBoundaryFromTracks);
             this.panelMain.Controls.Add(this.flp1);
             this.panelMain.Controls.Add(this.btnBingMaps);
@@ -108,7 +110,7 @@
             this.panelMain.Controls.Add(this.btnDelete);
             this.panelMain.Location = new System.Drawing.Point(4, 6);
             this.panelMain.Name = "panelMain";
-            this.panelMain.Size = new System.Drawing.Size(608, 299);
+            this.panelMain.Size = new System.Drawing.Size(608, 375);
             this.panelMain.TabIndex = 417;
             // 
             // btnBuildBoundaryFromTracks
@@ -128,7 +130,7 @@
             this.flp1.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
             | System.Windows.Forms.AnchorStyles.Left)));
             this.flp1.AutoScroll = true;
-            this.flp1.Location = new System.Drawing.Point(11, 120);
+            this.flp1.Location = new System.Drawing.Point(11, 195);
             this.flp1.Name = "flp1";
             this.flp1.Size = new System.Drawing.Size(586, 166);
             this.flp1.TabIndex = 218;
@@ -292,9 +294,23 @@
             this.btnBingMaps.TextAlign = System.Drawing.ContentAlignment.BottomCenter;
             this.btnBingMaps.UseVisualStyleBackColor = true;
             this.btnBingMaps.Click += new System.EventHandler(this.btnBingMaps_Click);
-            // 
+            //
+            // btnGeoportal
+            //
+            this.btnGeoportal.DialogResult = System.Windows.Forms.DialogResult.Yes;
+            this.btnGeoportal.FlatAppearance.BorderSize = 0;
+            this.btnGeoportal.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnGeoportal.Font = new System.Drawing.Font("Tahoma", 12F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.btnGeoportal.Image = global::AgOpenGPS.Properties.Resources.Geoportal;
+            this.btnGeoportal.Location = new System.Drawing.Point(11, 80);
+            this.btnGeoportal.Name = "btnGeoportal";
+            this.btnGeoportal.Size = new System.Drawing.Size(190, 72);
+            this.btnGeoportal.TabIndex = 230;
+            this.btnGeoportal.UseVisualStyleBackColor = true;
+            this.btnGeoportal.Click += new System.EventHandler(this.btnGeoportal_Click);
+            //
             // btnAdd
-            // 
+            //
             this.btnAdd.FlatAppearance.BorderSize = 0;
             this.btnAdd.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnAdd.Font = new System.Drawing.Font("Tahoma", 12F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
@@ -356,7 +372,7 @@
             this.AutoScaleDimensions = new System.Drawing.SizeF(10F, 23F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.Color.Cyan;
-            this.ClientSize = new System.Drawing.Size(1084, 310);
+            this.ClientSize = new System.Drawing.Size(1084, 386);
             this.ControlBox = false;
             this.Controls.Add(this.panelChoose);
             this.Controls.Add(this.panelKML);
@@ -401,6 +417,7 @@
         private System.Windows.Forms.Label label5;
         private System.Windows.Forms.Label label3;
         private System.Windows.Forms.Button btnBingMaps;
+        private System.Windows.Forms.Button btnGeoportal;
         private System.Windows.Forms.FlowLayoutPanel flp1;
         private System.Windows.Forms.Button btnBuildBoundaryFromTracks;
     }

@@ -1232,4 +1232,145 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="v_AboutIntro" xml:space="preserve">
     <value>https://www.youtube.com/watch?v=iN2cZ8avHag</value>
   </data>
+  <data name="gsBoundaryFromGeoportal" xml:space="preserve">
+    <value>Granica iz Geoportala</value>
+  </data>
+  <data name="gsCadastralParcels" xml:space="preserve">
+    <value>Katastarske čestice</value>
+  </data>
+  <data name="gsRefreshParcels" xml:space="preserve">
+    <value>Osvježi čestice</value>
+  </data>
+  <data name="gsGoToPosition" xml:space="preserve">
+    <value>Na poziciju</value>
+  </data>
+  <data name="gsMarkParcel" xml:space="preserve">
+    <value>Označi parcelu</value>
+  </data>
+  <data name="gsClearSelection" xml:space="preserve">
+    <value>Očisti odabir</value>
+  </data>
+  <data name="gsLoadingParcels" xml:space="preserve">
+    <value>Dohvaćam čestice…</value>
+  </data>
+  <data name="gsParcels" xml:space="preserve">
+    <value>čestica</value>
+  </data>
+  <data name="gsParcelsHidden" xml:space="preserve">
+    <value>Čestice skrivene.</value>
+  </data>
+  <data name="gsParcelsError" xml:space="preserve">
+    <value>Greška kod čestica</value>
+  </data>
+  <data name="gsBackgroundMap" xml:space="preserve">
+    <value>Pozadinska karta</value>
+  </data>
+  <data name="gsMapSource" xml:space="preserve">
+    <value>Izvor karte</value>
+  </data>
+  <data name="gsMapSourceDefault" xml:space="preserve">
+    <value>Zadana vrijednost</value>
+  </data>
+  <data name="gsCustomWmsDgu" xml:space="preserve">
+    <value>Vlastiti WMS (DGU)</value>
+  </data>
+  <data name="gsWmsUrl" xml:space="preserve">
+    <value>WMS URL:</value>
+  </data>
+  <data name="gsParcel" xml:space="preserve">
+    <value>Čestica</value>
+  </data>
+  <data name="gsParcelWfsUrl" xml:space="preserve">
+    <value>WFS URL čestica:</value>
+  </data>
+  <data name="gsApplyAndClose" xml:space="preserve">
+    <value>Primijeni i zatvori</value>
+  </data>
+  <data name="gsUpdatingBackground" xml:space="preserve">
+    <value>Ažuriram pozadinu…</value>
+  </data>
+  <data name="gsLoadingImagery" xml:space="preserve">
+    <value>Učitavam podlogu…</value>
+  </data>
+  <data name="gsBackgroundRemoved" xml:space="preserve">
+    <value>Pozadina maknuta.</value>
+  </data>
+  <data name="gsBackgroundSet" xml:space="preserve">
+    <value>Pozadina postavljena.</value>
+  </data>
+  <data name="gsAreaTooLarge" xml:space="preserve">
+    <value>Područje preveliko — približi pa ponovo uključi.</value>
+  </data>
+  <data name="gsOpenFieldFirst" xml:space="preserve">
+    <value>Prvo otvori polje za pozadinsku kartu.</value>
+  </data>
+  <data name="gsMakeBoundary" xml:space="preserve">
+    <value>Napravi granicu</value>
+  </data>
+  <data name="gsSaveBoundary" xml:space="preserve">
+    <value>Spremi granicu</value>
+  </data>
+  <data name="gsSelectParcelsFirst" xml:space="preserve">
+    <value>Prvo označi čestice.</value>
+  </data>
+  <data name="gsBoundaryReady" xml:space="preserve">
+    <value>Granica spremna — Spremi za primjenu.</value>
+  </data>
+  <data name="gsBoundarySaved" xml:space="preserve">
+    <value>Granica spremljena.</value>
+  </data>
+  <data name="gsApplyBoundaryQ" xml:space="preserve">
+    <value>Primijeniti granicu na ovo polje?</value>
+  </data>
+  <data name="gsReplaceOuterOpt" xml:space="preserve">
+    <value>Da = Zamijeni vanjsku granicu</value>
+  </data>
+  <data name="gsNewFieldOpt" xml:space="preserve">
+    <value>Ne = Kreiraj novo polje iz granice</value>
+  </data>
+  <data name="gsStartFixOutsideWarning" xml:space="preserve">
+    <value>Početna točka je izvan granice. Preporuča se kreiranje novog polja.</value>
+  </data>
+  <data name="gsAddBridge" xml:space="preserve">
+    <value>Dodaj most</value>
+  </data>
+  <data name="gsBridgeClickFirst" xml:space="preserve">
+    <value>Klikni prvu točku mosta.</value>
+  </data>
+  <data name="gsBridgeClickSecond" xml:space="preserve">
+    <value>Klikni drugu točku mosta.</value>
+  </data>
+  <data name="gsBridgeAdded" xml:space="preserve">
+    <value>Most dodan.</value>
+  </data>
+  <data name="gsMarkPoint" xml:space="preserve">
+    <value>Označi točku</value>
+  </data>
+  <data name="gsMovePoint" xml:space="preserve">
+    <value>Pomakni točku</value>
+  </data>
+  <data name="gsFine" xml:space="preserve">
+    <value>Fino</value>
+  </data>
+  <data name="gsCoarse" xml:space="preserve">
+    <value>Grubo</value>
+  </data>
+  <data name="gsStep" xml:space="preserve">
+    <value>Korak</value>
+  </data>
+  <data name="gsAddPoint" xml:space="preserve">
+    <value>Dodaj točku</value>
+  </data>
+  <data name="gsDeletePoint" xml:space="preserve">
+    <value>Obriši točku</value>
+  </data>
+  <data name="gsUndo" xml:space="preserve">
+    <value>Poništi</value>
+  </data>
+  <data name="gsSmartAB" xml:space="preserve">
+    <value>Smart AB</value>
+  </data>
+  <data name="gsActiveOperation" xml:space="preserve">
+    <value>Aktivna operacija</value>
+  </data>
 </root>

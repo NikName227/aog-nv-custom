@@ -109,6 +109,16 @@ namespace AgOpenGPS
 
                     worldGrid.DrawFieldSurface(fieldColor, camera.ZoomValue, isTextureOn);
 
+                    // Cadastral parcel lines: crisp vectors over the captured background area.
+                    // One batched draw call per frame (segments), bounded to the captured area.
+                    if (Properties.Settings.Default.setMap_showParcelsOnMain
+                        && worldGrid.HasBingMap && parcels.Segments.Length >= 2)
+                    {
+                        GL.LineWidth(1);
+                        GL.Color4(0f, 0.75f, 1f, 0.9f);
+                        GLW.DrawLinesPrimitive(parcels.Segments);
+                    }
+
                     if (isGridOn) worldGrid.DrawWorldGrid(worldGridColor);
 
                     if (isDrawPolygons) GL.PolygonMode(MaterialFace.Front, PolygonMode.Line);
