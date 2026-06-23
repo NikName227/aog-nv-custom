@@ -113,7 +113,7 @@ namespace AgOpenGPS
             //
             this.btnSat.Appearance = System.Windows.Forms.Appearance.Button;
             this.btnSat.BackColor = System.Drawing.Color.White;
-            this.btnSat.Enabled = false;
+            this.btnSat.FlatAppearance.CheckedBackColor = System.Drawing.Color.MediumAquamarine;
             this.btnSat.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnSat.Font = new System.Drawing.Font("Tahoma", 8F, System.Drawing.FontStyle.Bold);
             this.btnSat.Location = new System.Drawing.Point(604, 14);
@@ -123,6 +123,7 @@ namespace AgOpenGPS
             this.btnSat.Text = "SAT";
             this.btnSat.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
             this.btnSat.UseVisualStyleBackColor = false;
+            this.btnSat.CheckedChanged += new System.EventHandler(this.btnSat_CheckedChanged);
             //
             // btnWinFull
             //

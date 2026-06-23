@@ -1,4 +1,5 @@
 using AgLibrary.Logging;
+using AgOpenGPS.Core.DrawLib;
 using AgOpenGPS.Core.Models;
 using AgOpenGPS.Core.Translations;
 using AgOpenGPS.Core.Visuals;
@@ -63,6 +64,9 @@ namespace AgOpenGPS
 
         private readonly Timer redraw = new Timer();
         private bool glReady; // GL context exists (set in oglSelf_Load); Resize can fire before it
+
+        // Phase 3: App-Map satellite background (reuse worldGrid.BingMap) + cadastral parcels.
+        private BingMapVisual satVisual;
 
         // Borderless-window drag + layout-on-resize (fullscreen).
         [DllImport("user32.dll")] private static extern bool ReleaseCapture();
@@ -210,6 +214,18 @@ namespace AgOpenGPS
             GL.Translate(0, 0, -mf.maxFieldDistance * zoom);
             GL.Translate(-mf.fieldCenterX + sX * mf.maxFieldDistance,
                          -mf.fieldCenterY + sY * mf.maxFieldDistance, 0);
+
+            // satellite background (App-Map) + cadastral parcels (Phase 3)
+            if (satVisual != null)
+            {
+                satVisual.Draw();
+                if (Properties.Settings.Default.setMap_showParcelsOnMain && mf.parcels.Segments.Length >= 2)
+                {
+                    GL.LineWidth(1);
+                    GL.Color4(0f, 0.75f, 1f, 0.9f);
+                    GLW.DrawLinesPrimitive(mf.parcels.Segments);
+                }
+            }
 
             // boundary
             for (int j = 0; j < mf.bnd.bndList.Count; j++)
@@ -510,6 +526,29 @@ namespace AgOpenGPS
                 lblActiveOp.Text = gStr.gsDeletePoint;
             }
             else if (!btnAddPoint.Checked) lblActiveOp.Text = "";
+        }
+
+        // ── Satellite background (App-Map) ────────────────────────────────
+        private void btnSat_CheckedChanged(object sender, EventArgs e)
+        {
+            if (btnSat.Checked)
+            {
+                if (!glReady || !mf.worldGrid.HasBingMap)
+                {
+                    btnSat.Checked = false;
+                    lblActiveOp.Text = "No background — capture it in App Map first";
+                    return;
+                }
+                // texture must be created in THIS GL context
+                oglSelf.MakeCurrent();
+                satVisual = new BingMapVisual(mf.worldGrid.BingMap);
+                lblActiveOp.Text = "Satellite ON";
+            }
+            else
+            {
+                satVisual = null;
+            }
+            oglSelf.Invalidate();
         }
 
         // ── Zoom ──────────────────────────────────────────────────────────
