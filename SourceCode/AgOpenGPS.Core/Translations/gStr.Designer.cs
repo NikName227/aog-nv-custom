@@ -4674,5 +4674,29 @@ namespace AgOpenGPS.Core.Translations {
                 return ResourceManager.GetString("gsActiveOperation", resourceCulture);
             }
         }
+
+        public static string gsEdit {
+            get {
+                return ResourceManager.GetString("gsEdit", resourceCulture);
+            }
+        }
+
+        public static string gsABLine {
+            get {
+                return ResourceManager.GetString("gsABLine", resourceCulture);
+            }
+        }
+
+        public static string gsCurveByBoundary {
+            get {
+                return ResourceManager.GetString("gsCurveByBoundary", resourceCulture);
+            }
+        }
+
+        public static string gsCheckOutline {
+            get {
+                return ResourceManager.GetString("gsCheckOutline", resourceCulture);
+            }
+        }
     }
 }

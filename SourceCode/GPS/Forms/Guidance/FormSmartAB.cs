@@ -154,6 +154,14 @@ namespace AgOpenGPS
             btnCoarse.Text = gStr.gsCoarse;
             btnAddPoint.Text = gStr.gsAddPoint;
             btnDeletePoint.Text = gStr.gsDeletePoint;
+            btnNew.Text = gStr.gsNew;
+            btnEdit.Text = gStr.gsEdit;
+            lblName.Text = gStr.gsName;
+            lblSmoot.Text = gStr.gsSmooth;
+            lblCheck.Text = gStr.gsCheckOutline;
+            btnMakeAB.Text = gStr.gsABLine;
+            btnMakeBndCurve.Text = gStr.gsCurveByBoundary;
+            btnMakeCurve.Text = gStr.gsCurve;
             lblPointMode.Text = "";
             lblActiveOp.Text = "";
         }
