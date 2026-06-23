@@ -10,6 +10,12 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <EmbeddedResourceUseDependentUponConvention>true</EmbeddedResourceUseDependentUponConvention>
     <GenerateResourceUsePreserializedResources>true</GenerateResourceUsePreserializedResources>
+    <!-- NV custom release version: 6.8.5 upstream base + .1 my release number.
+         FileVersion/InformationalVersion only (drives Application.ProductVersion);
+         AssemblyVersion is left at default on purpose so user settings are not reset. -->
+    <FileVersion>6.8.5.1</FileVersion>
+    <InformationalVersion>6.8.5.1</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
@@ -118,7 +124,7 @@
 
   <!-- NV custom: copy build output to the shared test folder for laptop testing.
        ContinueOnError so the build still passes when Z: is not mounted. -->
-  <Target Name="CopyToTestTemp" AfterTargets="Build">
+  <Target Name="CopyToTestTemp" AfterTargets="Build" Condition="'$(Configuration)' == 'Debug'">
     <PropertyGroup>
       <TestTempDir>Z:\02_AgOpenGPS\AgOpenGPS_softw\Dev\test_temp</TestTempDir>
     </PropertyGroup>
