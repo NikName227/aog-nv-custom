@@ -71,6 +71,10 @@ namespace AgOpenGPS
         // Phase 4: boxes where the line deviates from the boundary by > threshold (and < 2 m).
         private readonly List<vec2> checkBoxes = new List<vec2>();
 
+        // Phase 5: smoothing. smoothVal -1 = off ("--"); smoothLine = preview overlay.
+        private int smoothVal = -1;
+        private List<vec3> smoothLine;
+
         // Borderless-window drag + layout-on-resize (fullscreen).
         [DllImport("user32.dll")] private static extern bool ReleaseCapture();
         [DllImport("user32.dll")] private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
@@ -240,6 +244,14 @@ namespace AgOpenGPS
             VehicleDotVisual.DrawVehicleDot(mf.pivotAxlePos.ToGeoCoord());
 
             DrawBuiltLines();
+            if (smoothLine != null && smoothLine.Count > 1)
+            {
+                GL.LineWidth(3);
+                GL.Color3(1.0f, 0.2f, 1.0f); // smoothed overlay (magenta)
+                GL.Begin(PrimitiveType.LineStrip);
+                foreach (vec3 p in smoothLine) GL.Vertex3(p.easting, p.northing, 0);
+                GL.End();
+            }
             if (mode == LineMode.Build) DrawPoints();
             DrawCheckBoxes();
 
@@ -569,7 +581,16 @@ namespace AgOpenGPS
             if (!double.TryParse(tboxCheckCm.Text.Trim(), out cm) || cm <= 0) cm = 10;
             double thr = cm / 100.0;
 
-            foreach (var p in LinePoints(gTemp[show]))
+            // If a smoothed preview is showing, check that instead of the raw line.
+            List<vec2> chk;
+            if (smoothLine != null)
+            {
+                chk = new List<vec2>();
+                foreach (vec3 p in smoothLine) chk.Add(new vec2(p.easting, p.northing));
+            }
+            else chk = LinePoints(gTemp[show]);
+
+            foreach (var p in chk)
             {
                 double d = DistToBoundary(p);
                 if (d > thr && d < 2.0) checkBoxes.Add(p);
@@ -638,6 +659,79 @@ namespace AgOpenGPS
             }
         }
 
+        // ── Phase 5: Smooth ───────────────────────────────────────────────
+        private void btnSmoothUp_Click(object sender, EventArgs e)
+        {
+            if (smoothVal < 0) smoothVal = 20; else smoothVal++;
+            ApplySmooth();
+        }
+
+        private void btnSmoothDown_Click(object sender, EventArgs e)
+        {
+            if (smoothVal < 0) smoothVal = 20;
+            else { smoothVal--; if (smoothVal < 2) smoothVal = -1; } // below 2 -> off
+            ApplySmooth();
+        }
+
+        private void btnSmoothApply_Click(object sender, EventArgs e)
+        {
+            if (smoothLine == null) return;
+            int show = (mode == LineMode.Browse) ? activeIdx : workIdx;
+            if (show < 0 || show >= gTemp.Count) return;
+
+            gTemp[show].curvePts.Clear();
+            foreach (vec3 p in smoothLine) gTemp[show].curvePts.Add(p);
+            var cp = gTemp[show].curvePts; CABCurve.CalculateHeadings(ref cp);
+            ctrlPts[show] = null; // control points no longer match the smoothed curve
+
+            smoothLine = null; smoothVal = -1;
+            checkBoxes.Clear();
+            UpdateSmoothUI();
+            lblActiveOp.Text = "Smoothed";
+            oglSelf.Invalidate();
+        }
+
+        private void ApplySmooth()
+        {
+            smoothLine = null;
+            if (smoothVal >= 0)
+            {
+                int show = (mode == LineMode.Browse) ? activeIdx : workIdx;
+                if (show >= 0 && show < gTemp.Count && gTemp[show].curvePts.Count > 4)
+                    smoothLine = SmoothPoints(gTemp[show].curvePts, smoothVal * 2);
+            }
+            UpdateSmoothUI();
+            oglSelf.Invalidate();
+        }
+
+        // Smooth arrows are usable only when the shown line is a curve.
+        private void UpdateSmoothUI()
+        {
+            int show = (mode == LineMode.Browse) ? activeIdx : workIdx;
+            bool isCurve = show >= 0 && show < gTemp.Count && gTemp[show].curvePts.Count > 1;
+            btnSmoothUp.Enabled = isCurve;
+            btnSmoothDown.Enabled = isCurve;
+            btnSmoothApply.Enabled = isCurve && smoothLine != null;
+            if (!isCurve) { smoothVal = -1; smoothLine = null; }
+            lblSmoothVal.Text = smoothVal < 0 ? "--" : smoothVal.ToString();
+        }
+
+        // Center-weighted moving average (same idea as CABCurve.SmoothAB), on a copy.
+        private static List<vec3> SmoothPoints(List<vec3> src, int smPts)
+        {
+            int cnt = src.Count;
+            var arr = new List<vec3>(cnt);
+            for (int i = 0; i < cnt; i++) arr.Add(new vec3(src[i]));
+            if (cnt < smPts || smPts < 2) return arr;
+            for (int i = smPts / 2; i < cnt - smPts / 2; i++)
+            {
+                double e = 0, n = 0;
+                for (int j = -smPts / 2; j < smPts / 2; j++) { e += src[j + i].easting; n += src[j + i].northing; }
+                arr[i] = new vec3(e / smPts, n / smPts, src[i].heading);
+            }
+            return arr;
+        }
+
         // ── Zoom ──────────────────────────────────────────────────────────
         private void btnZoomIn_Click(object sender, EventArgs e)
         {
@@ -679,6 +773,7 @@ namespace AgOpenGPS
             }
             UpdateLineButtons();
             UpdateNavButtons();
+            UpdateSmoothUI();
             UpdateArrowColors();
             oglSelf.Invalidate();
         }
@@ -726,6 +821,7 @@ namespace AgOpenGPS
             }
             UpdateNavButtons();
             checkBoxes.Clear();
+            smoothVal = -1; smoothLine = null; UpdateSmoothUI();
             lblActiveOp.Text = (gTemp[activeIdx].name ?? "line") + "  (" + (activeIdx + 1) + "/" + gTemp.Count + ")";
             oglSelf.Invalidate();
         }
@@ -777,6 +873,7 @@ namespace AgOpenGPS
             if (workIdx >= 0 && workIdx < gTemp.Count) { gTemp[workIdx] = t; ctrlPts[workIdx] = new List<vec2>(pts); }
             else { gTemp.Add(t); ctrlPts.Add(new List<vec2>(pts)); workIdx = gTemp.Count - 1; }
             checkBoxes.Clear(); // line changed -> old check marks are stale
+            smoothVal = -1; smoothLine = null; UpdateSmoothUI();
             oglSelf.Invalidate();
         }
 

@@ -438,6 +438,7 @@ namespace AgOpenGPS
             this.btnSmoothDown.TabIndex = 22;
             this.btnSmoothDown.Text = "▼";
             this.btnSmoothDown.UseVisualStyleBackColor = true;
+            this.btnSmoothDown.Click += new System.EventHandler(this.btnSmoothDown_Click);
             //
             // lblSmoothVal (placeholder)
             //
@@ -459,6 +460,7 @@ namespace AgOpenGPS
             this.btnSmoothUp.TabIndex = 24;
             this.btnSmoothUp.Text = "▲";
             this.btnSmoothUp.UseVisualStyleBackColor = true;
+            this.btnSmoothUp.Click += new System.EventHandler(this.btnSmoothUp_Click);
             //
             // btnSmoothApply (placeholder)
             //
@@ -470,6 +472,7 @@ namespace AgOpenGPS
             this.btnSmoothApply.TabIndex = 25;
             this.btnSmoothApply.Text = "Apply";
             this.btnSmoothApply.UseVisualStyleBackColor = true;
+            this.btnSmoothApply.Click += new System.EventHandler(this.btnSmoothApply_Click);
             //
             // btnNew
             //
