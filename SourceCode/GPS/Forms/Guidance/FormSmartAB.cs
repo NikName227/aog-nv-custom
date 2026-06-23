@@ -75,6 +75,12 @@ namespace AgOpenGPS
         private int smoothVal = -1;
         private List<vec3> smoothLine;
 
+        // Measure tool: a temporary ruler — two free RED points joined by a thin red line.
+        // Always draggable while on; shows the distance between them; never saved anywhere.
+        private bool measureOn;
+        private vec2 mp0, mp1;
+        private int measureDrag = -1; // 0 or 1 while dragging a measure endpoint
+
         // Borderless-window drag + layout-on-resize (fullscreen).
         [DllImport("user32.dll")] private static extern bool ReleaseCapture();
         [DllImport("user32.dll")] private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
@@ -149,19 +155,25 @@ namespace AgOpenGPS
 
         private void LocalizeText()
         {
-            this.Text = gStr.gsSmartAB;
-            btnFine.Text = gStr.gsFine;
-            btnCoarse.Text = gStr.gsCoarse;
-            btnAddPoint.Text = gStr.gsAddPoint;
-            btnDeletePoint.Text = gStr.gsDeletePoint;
-            btnNew.Text = gStr.gsNew;
-            btnEdit.Text = gStr.gsEdit;
-            lblName.Text = gStr.gsName;
-            lblSmoot.Text = gStr.gsSmooth;
-            lblCheck.Text = gStr.gsCheckOutline;
-            btnMakeAB.Text = gStr.gsABLine;
-            btnMakeBndCurve.Text = gStr.gsCurveByBoundary;
-            btnMakeCurve.Text = gStr.gsCurve;
+            // Fall back to the English default if a translation key is missing/empty,
+            // so a button never ends up blank.
+            string L(string s, string def) => string.IsNullOrEmpty(s) ? def : s;
+
+            this.Text = L(gStr.gsSmartAB, "Smart AB");
+            btnFine.Text = L(gStr.gsFine, "Fine");
+            btnCoarse.Text = L(gStr.gsCoarse, "Coarse");
+            btnMeasure.Text = L(gStr.gsMeasure, "Measure");
+            btnAddPoint.Text = L(gStr.gsAddPoint, "Add point");
+            btnDeletePoint.Text = L(gStr.gsDeletePoint, "Delete point");
+            btnNew.Text = L(gStr.gsNew, "New");
+            btnEdit.Text = L(gStr.gsEdit, "Edit");
+            btnDeleteLine.Text = L(gStr.gsDelete, "Del");
+            lblName.Text = L(gStr.gsName, "Name");
+            lblSmoot.Text = L(gStr.gsSmooth, "Smooth");
+            lblCheck.Text = L(gStr.gsCheckOutline, "Check boundary outline");
+            btnMakeAB.Text = L(gStr.gsABline, "AB line");
+            btnMakeBndCurve.Text = L(gStr.gsCurveByBoundary, "Curve by Boundary");
+            btnMakeCurve.Text = L(gStr.gsCurve, "Curve");
             lblPointMode.Text = "";
             lblActiveOp.Text = "";
         }
@@ -169,7 +181,7 @@ namespace AgOpenGPS
         private void FormSmartAB_Load(object sender, EventArgs e)
         {
             // Start in Browse if the field already has lines, else in Build (ready for a new line).
-            if (gTemp.Count > 0) { activeIdx = 0; SetMode(LineMode.Browse); }
+            if (gTemp.Count > 0) { activeIdx = 0; SetMode(LineMode.Browse); RefreshActiveName(); }
             else SetMode(LineMode.Build);
 
             UpdateArrowColors();
@@ -233,7 +245,9 @@ namespace AgOpenGPS
             // satellite background (App-Map) + cadastral parcels (Phase 3)
             if (satVisual != null)
             {
+                GL.Disable(EnableCap.CullFace); // the textured quad is back-facing here -> would be culled
                 satVisual.Draw();
+                GL.Enable(EnableCap.CullFace);
                 if (Properties.Settings.Default.setMap_showParcelsOnMain && mf.parcels.Segments.Length >= 2)
                 {
                     GL.LineWidth(1);
@@ -262,6 +276,7 @@ namespace AgOpenGPS
             }
             if (mode == LineMode.Build) DrawPoints();
             DrawCheckBoxes();
+            DrawMeasure();
 
             GL.Flush();
             oglSelf.SwapBuffers();
@@ -346,6 +361,10 @@ namespace AgOpenGPS
             }
             if (e.Button != MouseButtons.Left) return;
 
+            // Measure endpoints are always grabbable while the ruler is on (any mode).
+            int mh = HitTestMeasure(e.X, e.Y);
+            if (mh >= 0) { measureDrag = mh; return; }
+
             int hit = HitTestPoint(e.X, e.Y);
             if (hit >= 0 && !btnAddPoint.Checked && !btnDeletePoint.Checked)
             {
@@ -359,6 +378,15 @@ namespace AgOpenGPS
 
         private void oglSelf_MouseMove(object sender, MouseEventArgs e)
         {
+            if (measureDrag >= 0)
+            {
+                moved = true;
+                if (measureDrag == 0) mp0 = ScreenToWorld(e.X, e.Y);
+                else mp1 = ScreenToWorld(e.X, e.Y);
+                UpdateMeasureLabel();
+                oglSelf.Invalidate();
+                return;
+            }
             if (dragIndex >= 0)
             {
                 moved = true;
@@ -380,6 +408,8 @@ namespace AgOpenGPS
         {
             if (e.Button == MouseButtons.Right) { panning = false; return; }
             if (e.Button != MouseButtons.Left) return;
+
+            if (measureDrag >= 0) { measureDrag = -1; moved = false; oglSelf.Invalidate(); return; }
 
             bool wasPointDrag = dragIndex >= 0 && moved;
 
@@ -575,6 +605,76 @@ namespace AgOpenGPS
             oglSelf.Invalidate();
         }
 
+        // ── Measure tool (temporary ruler; never saved) ───────────────────
+        private void btnMeasure_Click(object sender, EventArgs e)
+        {
+            measureOn = !measureOn;
+            if (measureOn)
+            {
+                // place the two endpoints near the view centre, a bit apart, ready to drag
+                double k = MetersPerPixel();
+                vec2 c = ScreenToWorld(oglSelf.Width / 2, oglSelf.Height / 2);
+                mp0 = new vec2(c.easting - 40 * k, c.northing);
+                mp1 = new vec2(c.easting + 40 * k, c.northing);
+                btnMeasure.BackColor = Color.IndianRed;
+                btnMeasure.UseVisualStyleBackColor = false;
+                UpdateMeasureLabel();
+            }
+            else
+            {
+                measureDrag = -1;
+                btnMeasure.BackColor = SystemColors.Control;
+                btnMeasure.UseVisualStyleBackColor = true;
+                lblMeasure.Text = "";
+            }
+            oglSelf.Invalidate();
+        }
+
+        private void UpdateMeasureLabel()
+        {
+            double d = Math.Sqrt((mp1.easting - mp0.easting) * (mp1.easting - mp0.easting)
+                               + (mp1.northing - mp0.northing) * (mp1.northing - mp0.northing));
+            lblMeasure.Text = d < 1.0 ? (d * 100.0).ToString("0") + " cm"
+                                      : d.ToString("0.00") + " m";
+        }
+
+        private int HitTestMeasure(int px, int py)
+        {
+            if (!measureOn) return -1;
+            Point s0 = WorldToScreen(mp0), s1 = WorldToScreen(mp1);
+            if (Math.Abs(s0.X - px) <= 16 && Math.Abs(s0.Y - py) <= 16) return 0;
+            if (Math.Abs(s1.X - px) <= 16 && Math.Abs(s1.Y - py) <= 16) return 1;
+            return -1;
+        }
+
+        private void DrawMeasure()
+        {
+            if (!measureOn) return;
+            double h = 8.0 * MetersPerPixel();
+            // thin red connecting line
+            GL.LineWidth(1);
+            GL.Color3(1.0f, 0.1f, 0.1f);
+            GL.Begin(PrimitiveType.Lines);
+            GL.Vertex3(mp0.easting, mp0.northing, 0);
+            GL.Vertex3(mp1.easting, mp1.northing, 0);
+            GL.End();
+            // the two red endpoints (same square + centre-dot design as the other markers)
+            GL.LineWidth(2);
+            foreach (var p in new[] { mp0, mp1 })
+            {
+                GL.Begin(PrimitiveType.LineLoop);
+                GL.Vertex3(p.easting - h, p.northing - h, 0);
+                GL.Vertex3(p.easting + h, p.northing - h, 0);
+                GL.Vertex3(p.easting + h, p.northing + h, 0);
+                GL.Vertex3(p.easting - h, p.northing + h, 0);
+                GL.End();
+                GL.PointSize(4f);
+                GL.Begin(PrimitiveType.Points);
+                GL.Vertex3(p.easting, p.northing, 0);
+                GL.End();
+            }
+        }
+
         // ── Phase 4: Check boundary outline ───────────────────────────────
         // Mark (with small boxes) where the shown line strays from the boundary by more than the
         // threshold (cm) but less than 2 m (so the far side of the field is ignored).
@@ -597,6 +697,10 @@ namespace AgOpenGPS
                 foreach (vec3 p in smoothLine) chk.Add(new vec2(p.easting, p.northing));
             }
             else chk = LinePoints(gTemp[show]);
+
+            // Only the core A->B matters: the 150 m straight tails leave the boundary tangentially
+            // and would falsely flag points that are still < 2 m away near the ends.
+            chk = TrimToCore(chk, gTemp[show].ptA, gTemp[show].ptB);
 
             foreach (var p in chk)
             {
@@ -623,6 +727,32 @@ namespace AgOpenGPS
             }
             else foreach (vec3 p in t.curvePts) list.Add(new vec2(p.easting, p.northing));
             return list;
+        }
+
+        // The curve "core" = the part between A and B (excludes the 150 m straight tails).
+        private List<vec2> CurveCore(CTrk t)
+        {
+            var all = new List<vec2>();
+            foreach (vec3 p in t.curvePts) all.Add(new vec2(p.easting, p.northing));
+            return TrimToCore(all, t.ptA, t.ptB);
+        }
+
+        // Keep only the sub-range between the points nearest to a and b (inclusive).
+        private static List<vec2> TrimToCore(List<vec2> line, vec2 a, vec2 b)
+        {
+            if (line.Count < 3) return line;
+            int sI = 0, eI = line.Count - 1; double bs = double.MaxValue, be = double.MaxValue;
+            for (int i = 0; i < line.Count; i++)
+            {
+                double da = (line[i].easting - a.easting) * (line[i].easting - a.easting)
+                          + (line[i].northing - a.northing) * (line[i].northing - a.northing);
+                if (da < bs) { bs = da; sI = i; }
+                double db = (line[i].easting - b.easting) * (line[i].easting - b.easting)
+                          + (line[i].northing - b.northing) * (line[i].northing - b.northing);
+                if (db < be) { be = db; eI = i; }
+            }
+            if (sI > eI) { int tmp = sI; sI = eI; eI = tmp; }
+            return line.GetRange(sI, eI - sI + 1);
         }
 
         private double DistToBoundary(vec2 p)
@@ -772,7 +902,7 @@ namespace AgOpenGPS
             btnAddPoint.Enabled = build;
             btnDeletePoint.Enabled = build;
             btnPoint.Enabled = build;
-            tboxName.Enabled = build;
+            tboxName.Enabled = true; // name editable in Browse too (rename active line) and in Build
             if (!build)
             {
                 btnAddPoint.Checked = false; btnDeletePoint.Checked = false;
@@ -799,6 +929,8 @@ namespace AgOpenGPS
         {
             pts.Clear(); workIdx = -1; lastMake = null; selIndex = -1;
             tboxName.Text = "";
+            checkBoxes.Clear();                               // clear stale check marks too
+            smoothVal = -1; smoothLine = null; UpdateSmoothUI();
             RecomputeAB();
             SetMode(LineMode.Build);
             lblActiveOp.Text = "New line";
@@ -830,8 +962,16 @@ namespace AgOpenGPS
             UpdateNavButtons();
             checkBoxes.Clear();
             smoothVal = -1; smoothLine = null; UpdateSmoothUI();
+            RefreshActiveName();
             lblActiveOp.Text = (gTemp[activeIdx].name ?? "line") + "  (" + (activeIdx + 1) + "/" + gTemp.Count + ")";
             oglSelf.Invalidate();
+        }
+
+        // Show the active (Browse) line's name in the Name box so it can be renamed.
+        private void RefreshActiveName()
+        {
+            if (activeIdx >= 0 && activeIdx < gTemp.Count)
+                tboxName.Text = gTemp[activeIdx].name ?? "";
         }
 
         private void btnDeleteLine_Click(object sender, EventArgs e)
@@ -858,14 +998,15 @@ namespace AgOpenGPS
                 pts.Add(new vec2(t.ptA.easting, t.ptA.northing));
                 pts.Add(new vec2(t.ptB.easting, t.ptB.northing));
             }
-            else // sample a few control points from the dense curve
+            else // sample a few control points from the dense curve CORE (skip the 150 m tails)
             {
-                int nC = t.curvePts.Count;
+                var core = CurveCore(t);
+                int nC = core.Count;
                 int samples = Math.Min(6, Math.Max(3, nC / 30));
                 for (int s = 0; s < samples; s++)
                 {
                     int k = (samples == 1) ? 0 : (int)((double)s / (samples - 1) * (nC - 1));
-                    pts.Add(new vec2(t.curvePts[k].easting, t.curvePts[k].northing));
+                    pts.Add(core[k]);
                 }
             }
             lastMake = (t.mode == TrackMode.AB) ? "AB" : "Curve";
@@ -1130,21 +1271,23 @@ namespace AgOpenGPS
 
         private void btnAccept_Click(object sender, EventArgs e)
         {
-            // Apply the typed name to the generated line (works no matter when it was typed).
+            // Apply the typed name to the relevant line (active one in Browse, the built one in Build).
+            int target = (mode == LineMode.Browse) ? activeIdx : workIdx;
             string nm = tboxName.Text.Trim();
-            if (nm.Length > 0 && workIdx >= 0 && workIdx < gTemp.Count) gTemp[workIdx].name = nm;
+            if (nm.Length > 0 && target >= 0 && target < gTemp.Count) gTemp[target].name = nm;
 
-            // Commit the tracks (existing + new/edited) to the field and save.
+            // Commit the tracks (existing + new/edited) to the field and save — but keep the window
+            // OPEN so the user can keep managing lines (close with the X top-right, or Cancel).
             mf.trk.gArr.Clear();
             foreach (var t in gTemp) mf.trk.gArr.Add(new CTrk(t));
-            int sel = (mode == LineMode.Browse) ? activeIdx : workIdx;
-            mf.trk.idx = (sel >= 0 && sel < gTemp.Count) ? sel : (gTemp.Count > 0 ? 0 : -1);
+            mf.trk.idx = (target >= 0 && target < gTemp.Count) ? target : (gTemp.Count > 0 ? 0 : -1);
             mf.FileSaveTracks();
             mf.curve.isCurveValid = false;
             mf.ABLine.isABValid = false;
 
-            DialogResult = DialogResult.OK;
-            Close();
+            UpdateNavButtons();
+            lblActiveOp.Text = gStr.gsSaved ?? "Saved";
+            oglSelf.Invalidate();
         }
     }
 }

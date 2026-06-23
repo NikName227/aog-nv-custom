@@ -4681,12 +4681,6 @@ namespace AgOpenGPS.Core.Translations {
             }
         }
 
-        public static string gsABLine {
-            get {
-                return ResourceManager.GetString("gsABLine", resourceCulture);
-            }
-        }
-
         public static string gsCurveByBoundary {
             get {
                 return ResourceManager.GetString("gsCurveByBoundary", resourceCulture);
@@ -4696,6 +4690,18 @@ namespace AgOpenGPS.Core.Translations {
         public static string gsCheckOutline {
             get {
                 return ResourceManager.GetString("gsCheckOutline", resourceCulture);
+            }
+        }
+
+        public static string gsMeasure {
+            get {
+                return ResourceManager.GetString("gsMeasure", resourceCulture);
+            }
+        }
+
+        public static string gsSaved {
+            get {
+                return ResourceManager.GetString("gsSaved", resourceCulture);
             }
         }
     }

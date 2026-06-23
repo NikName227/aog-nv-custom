@@ -1376,13 +1376,22 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsEdit" xml:space="preserve">
     <value>Uredi</value>
   </data>
-  <data name="gsABLine" xml:space="preserve">
-    <value>AB linija</value>
-  </data>
   <data name="gsCurveByBoundary" xml:space="preserve">
     <value>Krivulja po granici</value>
   </data>
   <data name="gsCheckOutline" xml:space="preserve">
     <value>Provjeri odstupanje od granice</value>
+  </data>
+  <data name="gsMeasure" xml:space="preserve">
+    <value>Mjerenje</value>
+  </data>
+  <data name="gsSaved" xml:space="preserve">
+    <value>Spremljeno</value>
+  </data>
+  <data name="gsNew" xml:space="preserve">
+    <value>Novo</value>
+  </data>
+  <data name="gsName" xml:space="preserve">
+    <value>Naziv</value>
   </data>
 </root>

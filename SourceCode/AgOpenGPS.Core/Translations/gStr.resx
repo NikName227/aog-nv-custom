@@ -1749,13 +1749,16 @@ USE AT OWN RISK.</value>
   <data name="gsEdit" xml:space="preserve">
     <value>Edit</value>
   </data>
-  <data name="gsABLine" xml:space="preserve">
-    <value>AB line</value>
-  </data>
   <data name="gsCurveByBoundary" xml:space="preserve">
     <value>Curve by Boundary</value>
   </data>
   <data name="gsCheckOutline" xml:space="preserve">
     <value>Check boundary outline</value>
+  </data>
+  <data name="gsMeasure" xml:space="preserve">
+    <value>Measure</value>
+  </data>
+  <data name="gsSaved" xml:space="preserve">
+    <value>Saved</value>
   </data>
 </root>

@@ -30,6 +30,8 @@ namespace AgOpenGPS
             this.lblLegS = new System.Windows.Forms.Label();
             this.btnFine = new System.Windows.Forms.Button();
             this.btnCoarse = new System.Windows.Forms.Button();
+            this.btnMeasure = new System.Windows.Forms.Button();
+            this.lblMeasure = new System.Windows.Forms.Label();
             this.btnNavUp = new System.Windows.Forms.Button();
             this.btnNavDown = new System.Windows.Forms.Button();
             this.btnNavLeft = new System.Windows.Forms.Button();
@@ -245,6 +247,29 @@ namespace AgOpenGPS
             this.btnCoarse.UseVisualStyleBackColor = false;
             this.btnCoarse.Click += new System.EventHandler(this.btnCoarse_Click);
             //
+            // btnMeasure (temporary distance ruler)
+            //
+            this.btnMeasure.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
+            this.btnMeasure.Location = new System.Drawing.Point(684, 212);
+            this.btnMeasure.Name = "btnMeasure";
+            this.btnMeasure.Size = new System.Drawing.Size(80, 44);
+            this.btnMeasure.TabIndex = 7;
+            this.btnMeasure.Text = "Measure";
+            this.btnMeasure.UseVisualStyleBackColor = true;
+            this.btnMeasure.Click += new System.EventHandler(this.btnMeasure_Click);
+            //
+            // lblMeasure (result)
+            //
+            this.lblMeasure.AutoSize = false;
+            this.lblMeasure.Font = new System.Drawing.Font("Tahoma", 11F, System.Drawing.FontStyle.Bold);
+            this.lblMeasure.ForeColor = System.Drawing.Color.Firebrick;
+            this.lblMeasure.Location = new System.Drawing.Point(684, 260);
+            this.lblMeasure.Name = "lblMeasure";
+            this.lblMeasure.Size = new System.Drawing.Size(104, 22);
+            this.lblMeasure.TabIndex = 8;
+            this.lblMeasure.Text = "";
+            this.lblMeasure.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            //
             // btnNavUp
             //
             this.btnNavUp.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
@@ -390,18 +415,18 @@ namespace AgOpenGPS
             //
             // lblCheck (placeholder Phase 4)
             //
-            this.lblCheck.AutoSize = true;
+            this.lblCheck.AutoSize = false;
             this.lblCheck.Font = new System.Drawing.Font("Tahoma", 9.75F);
-            this.lblCheck.Location = new System.Drawing.Point(684, 444);
+            this.lblCheck.Location = new System.Drawing.Point(684, 432);
             this.lblCheck.Name = "lblCheck";
-            this.lblCheck.Size = new System.Drawing.Size(124, 16);
+            this.lblCheck.Size = new System.Drawing.Size(300, 16);
             this.lblCheck.TabIndex = 18;
             this.lblCheck.Text = "Check boundary outline";
             //
             // tboxCheckCm (placeholder)
             //
             this.tboxCheckCm.Font = new System.Drawing.Font("Tahoma", 12F);
-            this.tboxCheckCm.Location = new System.Drawing.Point(818, 440);
+            this.tboxCheckCm.Location = new System.Drawing.Point(684, 450);
             this.tboxCheckCm.Name = "tboxCheckCm";
             this.tboxCheckCm.Size = new System.Drawing.Size(70, 26);
             this.tboxCheckCm.TabIndex = 19;
@@ -410,9 +435,9 @@ namespace AgOpenGPS
             // btnCheck (placeholder)
             //
             this.btnCheck.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
-            this.btnCheck.Location = new System.Drawing.Point(896, 438);
+            this.btnCheck.Location = new System.Drawing.Point(762, 450);
             this.btnCheck.Name = "btnCheck";
-            this.btnCheck.Size = new System.Drawing.Size(88, 30);
+            this.btnCheck.Size = new System.Drawing.Size(110, 28);
             this.btnCheck.TabIndex = 20;
             this.btnCheck.Text = "Check (cm)";
             this.btnCheck.UseVisualStyleBackColor = true;
@@ -581,6 +606,8 @@ namespace AgOpenGPS
             this.Controls.Add(this.lblActiveOp);
             this.Controls.Add(this.btnFine);
             this.Controls.Add(this.btnCoarse);
+            this.Controls.Add(this.btnMeasure);
+            this.Controls.Add(this.lblMeasure);
             this.Controls.Add(this.btnNavUp);
             this.Controls.Add(this.btnNavLeft);
             this.Controls.Add(this.btnPoint);
@@ -638,6 +665,8 @@ namespace AgOpenGPS
         private System.Windows.Forms.Label lblLegS;
         private System.Windows.Forms.Button btnFine;
         private System.Windows.Forms.Button btnCoarse;
+        private System.Windows.Forms.Button btnMeasure;
+        private System.Windows.Forms.Label lblMeasure;
         private System.Windows.Forms.Button btnNavUp;
         private System.Windows.Forms.Button btnNavDown;
         private System.Windows.Forms.Button btnNavLeft;
