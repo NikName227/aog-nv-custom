@@ -400,7 +400,6 @@ namespace AgOpenGPS
             //
             // tboxCheckCm (placeholder)
             //
-            this.tboxCheckCm.Enabled = false;
             this.tboxCheckCm.Font = new System.Drawing.Font("Tahoma", 12F);
             this.tboxCheckCm.Location = new System.Drawing.Point(818, 440);
             this.tboxCheckCm.Name = "tboxCheckCm";
@@ -410,7 +409,6 @@ namespace AgOpenGPS
             //
             // btnCheck (placeholder)
             //
-            this.btnCheck.Enabled = false;
             this.btnCheck.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
             this.btnCheck.Location = new System.Drawing.Point(896, 438);
             this.btnCheck.Name = "btnCheck";
@@ -418,6 +416,7 @@ namespace AgOpenGPS
             this.btnCheck.TabIndex = 20;
             this.btnCheck.Text = "Check (cm)";
             this.btnCheck.UseVisualStyleBackColor = true;
+            this.btnCheck.Click += new System.EventHandler(this.btnCheck_Click);
             //
             // lblSmoot (placeholder Phase 5)
             //

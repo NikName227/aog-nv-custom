@@ -68,6 +68,9 @@ namespace AgOpenGPS
         // Phase 3: App-Map satellite background (reuse worldGrid.BingMap) + cadastral parcels.
         private BingMapVisual satVisual;
 
+        // Phase 4: boxes where the line deviates from the boundary by > threshold (and < 2 m).
+        private readonly List<vec2> checkBoxes = new List<vec2>();
+
         // Borderless-window drag + layout-on-resize (fullscreen).
         [DllImport("user32.dll")] private static extern bool ReleaseCapture();
         [DllImport("user32.dll")] private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
@@ -238,6 +241,7 @@ namespace AgOpenGPS
 
             DrawBuiltLines();
             if (mode == LineMode.Build) DrawPoints();
+            DrawCheckBoxes();
 
             GL.Flush();
             oglSelf.SwapBuffers();
@@ -551,6 +555,89 @@ namespace AgOpenGPS
             oglSelf.Invalidate();
         }
 
+        // ── Phase 4: Check boundary outline ───────────────────────────────
+        // Mark (with small boxes) where the shown line strays from the boundary by more than the
+        // threshold (cm) but less than 2 m (so the far side of the field is ignored).
+        private void btnCheck_Click(object sender, EventArgs e)
+        {
+            checkBoxes.Clear();
+            int show = (mode == LineMode.Browse) ? activeIdx : workIdx;
+            if (show < 0 || show >= gTemp.Count) { lblActiveOp.Text = "No line"; oglSelf.Invalidate(); return; }
+            if (mf.bnd.bndList.Count == 0) { lblActiveOp.Text = "No boundary"; oglSelf.Invalidate(); return; }
+
+            double cm;
+            if (!double.TryParse(tboxCheckCm.Text.Trim(), out cm) || cm <= 0) cm = 10;
+            double thr = cm / 100.0;
+
+            foreach (var p in LinePoints(gTemp[show]))
+            {
+                double d = DistToBoundary(p);
+                if (d > thr && d < 2.0) checkBoxes.Add(p);
+            }
+            lblActiveOp.Text = checkBoxes.Count + " spots > " + cm + " cm off boundary";
+            oglSelf.Invalidate();
+        }
+
+        private List<vec2> LinePoints(CTrk t)
+        {
+            var list = new List<vec2>();
+            if (t.mode == TrackMode.AB)
+            {
+                double dx = t.ptB.easting - t.ptA.easting, dy = t.ptB.northing - t.ptA.northing;
+                double len = Math.Sqrt(dx * dx + dy * dy);
+                int steps = Math.Max(1, (int)len);
+                for (int s = 0; s <= steps; s++)
+                {
+                    double f = (double)s / steps;
+                    list.Add(new vec2(t.ptA.easting + dx * f, t.ptA.northing + dy * f));
+                }
+            }
+            else foreach (vec3 p in t.curvePts) list.Add(new vec2(p.easting, p.northing));
+            return list;
+        }
+
+        private double DistToBoundary(vec2 p)
+        {
+            double best = double.MaxValue;
+            for (int j = 0; j < mf.bnd.bndList.Count; j++)
+            {
+                var f = mf.bnd.bndList[j].fenceLine;
+                for (int i = 0; i < f.Count - 1; i++)
+                {
+                    double d = DistSeg(p.easting, p.northing, f[i].easting, f[i].northing, f[i + 1].easting, f[i + 1].northing);
+                    if (d < best) best = d;
+                }
+            }
+            return best;
+        }
+
+        private static double DistSeg(double px, double py, double ax, double ay, double bx, double by)
+        {
+            double dx = bx - ax, dy = by - ay;
+            double len2 = dx * dx + dy * dy;
+            double t = len2 <= 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / len2;
+            t = Math.Max(0, Math.Min(1, t));
+            double cx = ax + t * dx, cy = ay + t * dy;
+            return Math.Sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy));
+        }
+
+        private void DrawCheckBoxes()
+        {
+            if (checkBoxes.Count == 0) return;
+            double h = 7.0 * MetersPerPixel();
+            GL.LineWidth(2);
+            GL.Color3(1.0f, 0.1f, 0.1f);
+            foreach (var c in checkBoxes)
+            {
+                GL.Begin(PrimitiveType.LineLoop);
+                GL.Vertex3(c.easting - h, c.northing - h, 0);
+                GL.Vertex3(c.easting + h, c.northing - h, 0);
+                GL.Vertex3(c.easting + h, c.northing + h, 0);
+                GL.Vertex3(c.easting - h, c.northing + h, 0);
+                GL.End();
+            }
+        }
+
         // ── Zoom ──────────────────────────────────────────────────────────
         private void btnZoomIn_Click(object sender, EventArgs e)
         {
@@ -638,6 +725,7 @@ namespace AgOpenGPS
                 if (activeIdx >= gTemp.Count) activeIdx = 0;
             }
             UpdateNavButtons();
+            checkBoxes.Clear();
             lblActiveOp.Text = (gTemp[activeIdx].name ?? "line") + "  (" + (activeIdx + 1) + "/" + gTemp.Count + ")";
             oglSelf.Invalidate();
         }
@@ -688,6 +776,7 @@ namespace AgOpenGPS
         {
             if (workIdx >= 0 && workIdx < gTemp.Count) { gTemp[workIdx] = t; ctrlPts[workIdx] = new List<vec2>(pts); }
             else { gTemp.Add(t); ctrlPts.Add(new List<vec2>(pts)); workIdx = gTemp.Count - 1; }
+            checkBoxes.Clear(); // line changed -> old check marks are stale
             oglSelf.Invalidate();
         }
 
