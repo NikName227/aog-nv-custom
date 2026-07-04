@@ -412,6 +412,7 @@ namespace AgOpenGPS
             boundariesToolStripMenuItem.Text = gStr.gsBoundary;
             headlandToolStripMenuItem.Text = gStr.gsHeadland;
             headlandBuildToolStripMenuItem.Text = gStr.gsHeadland + " Builder";
+            turnLinesToolStripMenuItem.Text = gStr.gsTurnLimitLines;
             deleteContourPathsToolStripMenuItem.Text = gStr.gsDeleteContourPaths;
             deleteAppliedToolStripMenuItem.Text = gStr.gsDeleteAppliedArea;
             tramLinesMenuField.Text = gStr.gsTramLines;

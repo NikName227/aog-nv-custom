@@ -227,6 +227,11 @@ namespace AgOpenGPS
         public CBoundary bnd;
 
         /// <summary>
+        /// Turn limit lines (NV custom) - how far the wheels may go while turning
+        /// </summary>
+        public CTurnLimitLines tnl;
+
+        /// <summary>
         /// Building a headland instance
         /// </summary>
         public CHeadLine hdl;
@@ -382,6 +387,9 @@ namespace AgOpenGPS
 
             //boundary object
             bnd = new CBoundary(this);
+
+            //turn limit lines (NV custom)
+            tnl = new CTurnLimitLines(this);
 
             //nmea simulator built in.
             sim = new CSim(this);
@@ -1069,6 +1077,11 @@ namespace AgOpenGPS
             AppModel.Fields.OpenField();
             startCounter = 0;
 
+            // Parcels start OFF on every field open (and new field); shown only on request
+            // via Map App ON, which then loads from the per-field cache (or the internet).
+            parcels.Clear();
+            Properties.Settings.Default.setMap_showParcelsOnMain = false;
+
             btnFieldStats.Visible = true;
 
             btnSectionMasterManual.Enabled = true;
@@ -1353,6 +1366,9 @@ namespace AgOpenGPS
             yt.ResetYouTurn();
             DisableYouTurnButtons();
 
+            //turn limit lines are per field
+            tnl.Reset();
+
             //reset acre and distance counters
             fd.workedAreaTotal = 0;
 
@@ -1405,6 +1421,7 @@ namespace AgOpenGPS
             boundariesToolStripMenuItem.Enabled = isOn;
             headlandToolStripMenuItem.Enabled = isOn;
             headlandBuildToolStripMenuItem.Enabled = isOn;
+            turnLinesToolStripMenuItem.Enabled = isOn;
             flagByLatLonToolStripMenuItem.Enabled = isOn;
             tramLinesMenuField.Enabled = isOn;
             tramsMultiMenuField.Enabled = isOn;
@@ -1418,6 +1435,7 @@ namespace AgOpenGPS
                 boundariesToolStripMenuItem.Enabled = false;
                 headlandToolStripMenuItem.Enabled = false;
                 headlandBuildToolStripMenuItem.Enabled = false;
+                turnLinesToolStripMenuItem.Enabled = false;
                 tramLinesMenuField.Enabled = false;
                 tramsMultiMenuField.Enabled = false;
                 recordedPathStripMenu.Enabled = false;

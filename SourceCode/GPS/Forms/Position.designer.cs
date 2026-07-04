@@ -1030,7 +1030,9 @@ namespace AgOpenGPS
                 }
                 else //Youturn is on
                 {
-                    bool isInTurnBounds = bnd.IsPointInsideTurnArea(pivotAxlePos) != -1;
+                    //turn limit lines: the bounded strip out to a drawn line counts as turn bounds too
+                    bool isInTurnBounds = bnd.IsPointInsideTurnArea(pivotAxlePos) != -1
+                        || tnl.IsInAllowedExtension(pivotAxlePos);
                     //Are we inside outer and outside inner all turn boundaries, no turn creation problems
                     //if we are too much off track > 1.3m, kill the diagnostic creation, start again
                     //if (!yt.isYouTurnTriggered) 
@@ -1053,7 +1055,7 @@ namespace AgOpenGPS
                                 else yt.BuildCurveDubinsYouTurn();
                             }
 
-                            if (yt.uTurnStyle == 0 && yt.youTurnPhase == 10)
+                            if (yt.activeTurnStyle == 0 && yt.youTurnPhase == 10)
                             {
                                 yt.SmoothYouTurn(6);
                             }
@@ -1081,8 +1083,43 @@ namespace AgOpenGPS
                                     sounds.isBoundAlarming = true;
                                 }
 
-                            //if we are close enough to pattern, trigger.
-                            if ((distancePivotToTurnLine <= 1.0) && (distancePivotToTurnLine >= 0) && !yt.isYouTurnTriggered)
+                            if (tnl.IsFeatureOn)
+                            {
+                                //turn limit lines: use a SIGNED distance of the pivot past the
+                                //turn start along travel (negative = still approaching, positive
+                                //= overshot). Overshot => wheels would cross the line => red +
+                                //driver must reverse. Trigger inside a tolerance window.
+                                double htv = yt.ytList[0].heading;
+                                double fwd = (pivotAxlePos.easting - yt.ytList[2].easting) * Math.Sin(htv)
+                                           + (pivotAxlePos.northing - yt.ytList[2].northing) * Math.Cos(htv);
+
+                                //window half-width (Params tab: Trigger tolerance, was fixed 1 m)
+                                double triggerTol = Properties.Settings.Default.set_turnTriggerTolerance;
+                                if (triggerTol < 0.2) triggerTol = 0.2;
+                                yt.turnOvershot = fwd > triggerTol && !yt.isYouTurnTriggered;
+                                //armed = pivot inside the window: turn is the next action (even stopped) -> orange
+                                yt.turnArmed = fwd >= -triggerTol && fwd <= triggerTol && !yt.isYouTurnTriggered;
+
+                                //turn-after-stop: arm on a real stop near the turn, fire on forward
+                                bool afterStopGate = true;
+                                if (tnl.isAfterStop)
+                                {
+                                    if (distancePivotToTurnLine < 5.0 && avgSpeed < 0.3) yt.afterStopStopped = true;
+                                    afterStopGate = yt.afterStopStopped && avgSpeed > 0.6 && !isReverse;
+                                }
+
+                                //fire as the pivot reaches the start (within tol, not overshot beyond);
+                                //only while driving FORWARD > 0.5 km/h - otherwise the trigger swaps
+                                //guidance to the new line while stopped/reversing (jerk + wrong line)
+                                if (fwd >= -triggerTol && fwd <= triggerTol && !yt.isYouTurnTriggered
+                                    && afterStopGate && !isReverse && avgSpeed > 0.5)
+                                {
+                                    yt.YouTurnTrigger();
+                                    sounds.isBoundAlarming = false;
+                                }
+                            }
+                            //stock trigger (feature off): unchanged
+                            else if ((distancePivotToTurnLine <= 1.0) && (distancePivotToTurnLine >= 0) && !yt.isYouTurnTriggered)
                             {
                                 yt.YouTurnTrigger();
                                 sounds.isBoundAlarming = false;

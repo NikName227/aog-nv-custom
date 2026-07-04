@@ -343,6 +343,9 @@ namespace AgOpenGPS
                         //draw Boundaries
                         bnd.DrawFenceLines();
 
+                        //turn limit lines (NV custom)
+                        tnl.DrawTurnLines();
+
                         GL.LineWidth(ABLine.lineWidth);
 
                         //draw the turnLines
@@ -1808,7 +1811,7 @@ namespace AgOpenGPS
 
             GL.Color3(1.0f, 1.0f, 1.0f);
 
-            Texture2D uTurnTexture = yt.uTurnStyle == 0 ? ScreenTextures.UTurnU : ScreenTextures.UTurnH;
+            Texture2D uTurnTexture = yt.activeTurnStyle == 0 ? ScreenTextures.UTurnU : ScreenTextures.UTurnH;
             XyCoord uTurnTextureCenter = new XyCoord(two3, 130);
             uTurnTexture.DrawCentered(uTurnTextureCenter, new XyDelta(32, 30));
 
@@ -1836,6 +1839,39 @@ namespace AgOpenGPS
                 {
                     font.DrawText(-40 + two3, 120, yt.onA.ToString());
                 }
+            }
+
+            //turn limit lines: unmistakable maneuver state for the driver
+            if (tnl.IsFeatureOn || yt.isYouTurnTriggered)
+            {
+                string state = "";
+                if (yt.isYouTurnTriggered)
+                {
+                    //maneuver running right now
+                    GL.Color3(0.98f, 0.35f, 0.98f);
+                    state = (yt.activeTurnStyle == 1 ? "K-TURN" : "U-TURN") + " !";
+                }
+                else if (yt.youTurnPhase == 10 && !yt.isOutOfBounds)
+                {
+                    if (yt.turnOvershot)
+                    {
+                        //drove past the turn start - wheels would cross the line, back up
+                        GL.Color3(0.97f, 0.3f, 0.3f);
+                        state = "REVERSE";
+                    }
+                    else
+                    {
+                        //maneuver planned and armed, waiting for the trigger distance
+                        GL.Color3(0.25f, 0.97f, 0.3f);
+                        state = (yt.activeTurnStyle == 1 ? "K" : "U") + " READY";
+                    }
+                }
+                else if (tnl.IsFeatureOn)
+                {
+                    GL.Color4(0.95f, 0.65f, 0.05f, 0.9f);
+                    state = "TURN LINES ON";
+                }
+                if (state.Length > 0) font.DrawText(-40 + two3, 155, state, 1.1);
             }
         }
 

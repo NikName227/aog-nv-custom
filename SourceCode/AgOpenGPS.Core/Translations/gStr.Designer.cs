@@ -4447,6 +4447,12 @@ namespace AgOpenGPS.Core.Translations {
             }
         }
 
+        public static string gsNoParcelCache {
+            get {
+                return ResourceManager.GetString("gsNoParcelCache", resourceCulture);
+            }
+        }
+
         public static string gsParcelsError {
             get {
                 return ResourceManager.GetString("gsParcelsError", resourceCulture);
@@ -4714,6 +4720,162 @@ namespace AgOpenGPS.Core.Translations {
         public static string gsFreePoint {
             get {
                 return ResourceManager.GetString("gsFreePoint", resourceCulture);
+            }
+        }
+
+        public static string gsTurnLimitLines {
+            get {
+                return ResourceManager.GetString("gsTurnLimitLines", resourceCulture);
+            }
+        }
+
+        public static string gsActivateTurn {
+            get {
+                return ResourceManager.GetString("gsActivateTurn", resourceCulture);
+            }
+        }
+
+        public static string gsAutomaticTurn {
+            get {
+                return ResourceManager.GetString("gsAutomaticTurn", resourceCulture);
+            }
+        }
+
+        public static string gsTurnAfterStop {
+            get {
+                return ResourceManager.GetString("gsTurnAfterStop", resourceCulture);
+            }
+        }
+
+        public static string gsAddLine {
+            get {
+                return ResourceManager.GetString("gsAddLine", resourceCulture);
+            }
+        }
+
+        public static string gsDeleteLine {
+            get {
+                return ResourceManager.GetString("gsDeleteLine", resourceCulture);
+            }
+        }
+
+        public static string gsKTurnPrimary {
+            get {
+                return ResourceManager.GetString("gsKTurnPrimary", resourceCulture);
+            }
+        }
+
+        public static string gsCombinedUK {
+            get {
+                return ResourceManager.GetString("gsCombinedUK", resourceCulture);
+            }
+        }
+
+        public static string gsTurnRadiusInfo {
+            get {
+                return ResourceManager.GetString("gsTurnRadiusInfo", resourceCulture);
+            }
+        }
+
+        public static string gsParameters {
+            get {
+                return ResourceManager.GetString("gsParameters", resourceCulture);
+            }
+        }
+
+        public static string gsMapView {
+            get {
+                return ResourceManager.GetString("gsMapView", resourceCulture);
+            }
+        }
+
+        public static string gsTurnStyleK {
+            get {
+                return ResourceManager.GetString("gsTurnStyleK", resourceCulture);
+            }
+        }
+
+        public static string gsTurnStyleU {
+            get {
+                return ResourceManager.GetString("gsTurnStyleU", resourceCulture);
+            }
+        }
+
+        public static string gsTurnStyleRS {
+            get {
+                return ResourceManager.GetString("gsTurnStyleRS", resourceCulture);
+            }
+        }
+
+        public static string gsExitRadius {
+            get {
+                return ResourceManager.GetString("gsExitRadius", resourceCulture);
+            }
+        }
+
+        public static string gsEntryRadius {
+            get {
+                return ResourceManager.GetString("gsEntryRadius", resourceCulture);
+            }
+        }
+
+        public static string gsEntryStartDist {
+            get {
+                return ResourceManager.GetString("gsEntryStartDist", resourceCulture);
+            }
+        }
+
+        public static string gsEntryAngle {
+            get {
+                return ResourceManager.GetString("gsEntryAngle", resourceCulture);
+            }
+        }
+
+        public static string gsTransitionRadius {
+            get {
+                return ResourceManager.GetString("gsTransitionRadius", resourceCulture);
+            }
+        }
+
+        public static string gsMinTurnRadius {
+            get {
+                return ResourceManager.GetString("gsMinTurnRadius", resourceCulture);
+            }
+        }
+
+        public static string gsTriggerTolerance {
+            get {
+                return ResourceManager.GetString("gsTriggerTolerance", resourceCulture);
+            }
+        }
+
+        public static string gsOvershootDist {
+            get {
+                return ResourceManager.GetString("gsOvershootDist", resourceCulture);
+            }
+        }
+
+        public static string gsUTurnFits {
+            get {
+                return ResourceManager.GetString("gsUTurnFits", resourceCulture);
+            }
+        }
+
+        public static string gsKTurnOnly {
+            get {
+                return ResourceManager.GetString("gsKTurnOnly", resourceCulture);
+            }
+        }
+
+        public static string gsTurnLinesSaved {
+            get {
+                return ResourceManager.GetString("gsTurnLinesSaved", resourceCulture);
+            }
+        }
+
+        public static string gsTurnLineHint {
+            get {
+                return ResourceManager.GetString("gsTurnLineHint", resourceCulture);
             }
         }
     }

@@ -144,6 +144,7 @@ namespace AgOpenGPS
             this.toolStripBtnFieldTools = new System.Windows.Forms.ToolStripDropDownButton();
             this.boundariesToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.headlandToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.turnLinesToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.headlandBuildToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.tramLinesMenuField = new System.Windows.Forms.ToolStripMenuItem();
             this.tramsMultiMenuField = new System.Windows.Forms.ToolStripMenuItem();
@@ -1856,6 +1857,7 @@ namespace AgOpenGPS
             this.boundariesToolStripMenuItem,
             this.headlandToolStripMenuItem,
             this.headlandBuildToolStripMenuItem,
+            this.turnLinesToolStripMenuItem,
             this.tramLinesMenuField,
             this.tramsMultiMenuField,
             this.deleteAppliedToolStripMenuItem,
@@ -1899,9 +1901,19 @@ namespace AgOpenGPS
             this.headlandBuildToolStripMenuItem.Size = new System.Drawing.Size(445, 70);
             this.headlandBuildToolStripMenuItem.Text = "Headland (Build)";
             this.headlandBuildToolStripMenuItem.Click += new System.EventHandler(this.headlandBuildToolStripMenuItem_Click);
-            // 
+            //
+            // turnLinesToolStripMenuItem
+            //
+            this.turnLinesToolStripMenuItem.Font = new System.Drawing.Font("Tahoma", 26.25F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.turnLinesToolStripMenuItem.Image = global::AgOpenGPS.Properties.Resources.Youturn80;
+            this.turnLinesToolStripMenuItem.ImageScaling = System.Windows.Forms.ToolStripItemImageScaling.None;
+            this.turnLinesToolStripMenuItem.Name = "turnLinesToolStripMenuItem";
+            this.turnLinesToolStripMenuItem.Size = new System.Drawing.Size(445, 70);
+            this.turnLinesToolStripMenuItem.Text = "Turn Lines";
+            this.turnLinesToolStripMenuItem.Click += new System.EventHandler(this.turnLinesToolStripMenuItem_Click);
+            //
             // tramLinesMenuField
-            // 
+            //
             this.tramLinesMenuField.Font = new System.Drawing.Font("Tahoma", 26.25F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.tramLinesMenuField.Image = global::AgOpenGPS.Properties.Resources.TramAll;
             this.tramLinesMenuField.Name = "tramLinesMenuField";
@@ -3116,6 +3128,7 @@ namespace AgOpenGPS
         private System.Windows.Forms.ToolStripDropDownButton toolStripBtnFieldTools;
         private System.Windows.Forms.ToolStripMenuItem boundariesToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem headlandToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem turnLinesToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem headlandBuildToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem tramLinesMenuField;
         private System.Windows.Forms.ToolStripMenuItem flagByLatLonToolStripMenuItem;

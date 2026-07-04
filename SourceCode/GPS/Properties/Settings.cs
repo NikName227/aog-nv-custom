@@ -146,6 +146,16 @@ namespace AgOpenGPS.Properties
         public int set_youSkipWidth = 1;
         public double set_youTurnRadius = 8.1;
         public int set_uTurnStyle = 0;
+        // Turn limit lines (NV custom) — per-vehicle turn shape parameters.
+        // Radii of 0 mean "use the general turn radius (set_youTurnRadius)".
+        public double set_turnK_exitRadius = 8;         // K: exit arc radius
+        public double set_turnK_entryStartDist = 2;     // K: metres before the new line the entry begins (d)
+        public double set_turnK_entryAngle = 40;        // K: entry straight angle to the new line (deg, alpha)
+        public double set_turnK_transitionRadius = 1.0; // K: unused (rigid K - covered by path smoothing)
+        public double set_turnU_exitRadius = 8;         // U: exit (outer) radius R_out
+        public double set_turnU_entryRadius = 8;        // U: entry (inner) radius R_in
+        public double set_turnU_overshootDist = 0.5;    // U: virtual line offset beyond AB (overshoot)
+        public double set_turnTriggerTolerance = 2.0;   // trigger window half-width (m)
         public double setAS_uTurnSmoothing = 14;
         public double setAS_uTurnCompensation = 1;
         public int setAS_numGuideLines = 10;
@@ -342,6 +352,7 @@ namespace AgOpenGPS.Properties
             dest.set_youSkipWidth = source.set_youSkipWidth;
             dest.set_youTurnRadius = source.set_youTurnRadius;
             dest.set_uTurnStyle = source.set_uTurnStyle;
+            // set_turnK_* / set_turnU_* (NV custom) have no legacy source - keep defaults on migration
             dest.setAS_uTurnSmoothing = source.setAS_uTurnSmoothing;
             dest.setAS_uTurnCompensation = source.setAS_uTurnCompensation;
             dest.setAS_numGuideLines = source.setAS_numGuideLines;

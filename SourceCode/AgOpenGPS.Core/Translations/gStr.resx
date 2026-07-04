@@ -1632,6 +1632,9 @@ USE AT OWN RISK.</value>
   <data name="gsParcelsHidden" xml:space="preserve">
     <value>Parcels hidden.</value>
   </data>
+  <data name="gsNoParcelCache" xml:space="preserve">
+    <value>No saved parcels - load them in Map App first.</value>
+  </data>
   <data name="gsParcelsError" xml:space="preserve">
     <value>Parcels error</value>
   </data>
@@ -1766,5 +1769,83 @@ USE AT OWN RISK.</value>
   </data>
   <data name="gsFreePoint" xml:space="preserve">
     <value>free point</value>
+  </data>
+  <data name="gsTurnLimitLines" xml:space="preserve">
+    <value>Turn Lines</value>
+  </data>
+  <data name="gsActivateTurn" xml:space="preserve">
+    <value>Activate turn</value>
+  </data>
+  <data name="gsAutomaticTurn" xml:space="preserve">
+    <value>Automatic turn</value>
+  </data>
+  <data name="gsTurnAfterStop" xml:space="preserve">
+    <value>Turn after stop</value>
+  </data>
+  <data name="gsAddLine" xml:space="preserve">
+    <value>Add line</value>
+  </data>
+  <data name="gsDeleteLine" xml:space="preserve">
+    <value>Delete line</value>
+  </data>
+  <data name="gsKTurnPrimary" xml:space="preserve">
+    <value>K-turn primary</value>
+  </data>
+  <data name="gsCombinedUK" xml:space="preserve">
+    <value>Combined U/K</value>
+  </data>
+  <data name="gsTurnRadiusInfo" xml:space="preserve">
+    <value>Turn radius</value>
+  </data>
+  <data name="gsParameters" xml:space="preserve">
+    <value>Parameters</value>
+  </data>
+  <data name="gsMapView" xml:space="preserve">
+    <value>Map</value>
+  </data>
+  <data name="gsTurnStyleK" xml:space="preserve">
+    <value>K-turn</value>
+  </data>
+  <data name="gsTurnStyleU" xml:space="preserve">
+    <value>U-turn</value>
+  </data>
+  <data name="gsTurnStyleRS" xml:space="preserve">
+    <value>RS (soon)</value>
+  </data>
+  <data name="gsExitRadius" xml:space="preserve">
+    <value>Exit radius</value>
+  </data>
+  <data name="gsEntryRadius" xml:space="preserve">
+    <value>Entry radius</value>
+  </data>
+  <data name="gsEntryStartDist" xml:space="preserve">
+    <value>Entry start (m before line)</value>
+  </data>
+  <data name="gsEntryAngle" xml:space="preserve">
+    <value>Entry angle (deg)</value>
+  </data>
+  <data name="gsTransitionRadius" xml:space="preserve">
+    <value>Transition radius</value>
+  </data>
+  <data name="gsMinTurnRadius" xml:space="preserve">
+    <value>Min radius</value>
+  </data>
+  <data name="gsTriggerTolerance" xml:space="preserve">
+    <value>Trigger tolerance (m)</value>
+  </data>
+  <data name="gsOvershootDist" xml:space="preserve">
+    <value>Overshoot distance (m)</value>
+  </data>
+  <data name="gsUTurnFits" xml:space="preserve">
+    <value>U-turn fits</value>
+  </data>
+  <data name="gsKTurnOnly" xml:space="preserve">
+    <value>K-turn only</value>
+  </data>
+  <data name="gsTurnLinesSaved" xml:space="preserve">
+    <value>Turn lines saved</value>
+  </data>
+  <data name="gsTurnLineHint" xml:space="preserve">
+    <value>Line = how far the wheels may go while turning (road allowed)</value>
   </data>
 </root>

@@ -195,6 +195,14 @@ namespace AgOpenGPS
                 btnAutoSteer.Image = trk.isAutoSnapToPivot ? Properties.Resources.AutoSteerOffSnapToPivot : Properties.Resources.AutoSteerOff;
                 //if (yt.isYouTurnBtnOn) btnAutoYouTurn.PerformClick();
                 if (sounds.isSteerSoundOn) sounds.sndAutoSteerOff.Play();
+
+                //turn limit lines: dropping autosteer mid-turn aborts the turn for this pass;
+                //the youturn button stays armed so it can re-engage on the next pass.
+                if (tnl.IsFeatureOn && (yt.isYouTurnTriggered || yt.youTurnPhase == 10))
+                {
+                    yt.RestorePreTriggerState();
+                    yt.ResetYouTurn();
+                }
             }
             else
             {
@@ -517,6 +525,7 @@ namespace AgOpenGPS
         {
             headlandToolStripMenuItem.Enabled = (bnd.bndList.Count > 0);
             headlandBuildToolStripMenuItem.Enabled = (bnd.bndList.Count > 0);
+            turnLinesToolStripMenuItem.Enabled = (bnd.bndList.Count > 0);
 
             tramLinesMenuField.Enabled = tramsMultiMenuField.Enabled = (trk.gArr.Count > 0 && trk.idx > -1);
         }
@@ -795,6 +804,9 @@ namespace AgOpenGPS
                 try { FileSaveTracks(); }
                 catch (Exception ex) { Log.EventWriter($"CRITICAL: Tracks save failed: {ex}"); throw; }
 
+                try { FileSaveTurnLines(); }
+                catch (Exception ex) { Log.EventWriter($"WARNING: TurnLines save failed: {ex}"); }
+
                 try { ExportFieldAs_KML(); }
                 catch (Exception ex) { Log.EventWriter($"WARNING: KML export failed: {ex}"); }
 
@@ -937,6 +949,30 @@ namespace AgOpenGPS
             PanelUpdateRightAndBottom();
             SetZoom();
         }
+        private void turnLinesToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            if (!isJobStarted) return;
+
+            if (bnd.bndList.Count == 0 || bnd.bndList[0].fenceLine.Count < 3)
+            {
+                TimedMessageBox(2000, gStr.gsNoBoundary, gStr.gsCreateABoundaryFirst);
+                return;
+            }
+
+            using (var form = new FormTurnLine(this))
+            {
+                form.ShowDialog(this);
+            }
+
+            //automatic = make sure the auto youturn button matches the wish
+            if (tnl.isTurnActive && tnl.isAutomatic && !yt.isYouTurnBtnOn && trk.idx > -1)
+            {
+                btnAutoYouTurn.PerformClick();
+            }
+
+            PanelUpdateRightAndBottom();
+        }
+
         private void boundariesToolStripMenuItem_Click(object sender, EventArgs e)
         {
             if (!isJobStarted) return;

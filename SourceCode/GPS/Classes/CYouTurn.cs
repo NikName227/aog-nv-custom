@@ -56,8 +56,24 @@ namespace AgOpenGPS
 
         public int uTurnStyle = 0;
 
+        /// <summary> style resolved for the current turn (turn limit lines can override) </summary>
+        public int activeTurnStyle = 0;
+
         //is UTurn pattern in or out of bounds
         public bool isOutOfBounds = false;
+
+        // turn-after-stop (turn limit lines): set once the vehicle has stopped near the
+        // armed turn; the maneuver only fires after it then starts moving forward again
+        public bool afterStopStopped = false;
+
+        // turn limit lines: true when the pivot has driven PAST the armed turn start, so the
+        // wheels would cross the line — the driver must reverse. Drawn red instead of green.
+        public bool turnOvershot = false;
+
+        // turn limit lines: true when the pivot is inside the trigger window, so the turn is
+        // the NEXT thing that will happen (even while stopped) — drawn orange so the driver
+        // knows the AB line is no longer what gets followed next.
+        public bool turnArmed = false;
 
         //sequence of operations of finding the next turn 0 to 3
         public int youTurnPhase;
@@ -105,9 +121,96 @@ namespace AgOpenGPS
             youTurnRadius = Properties.Settings.Default.set_youTurnRadius;
 
             uTurnStyle = Properties.Settings.Default.set_uTurnStyle;
+            activeTurnStyle = uTurnStyle;
 
             uTurnSmoothing = (int)Properties.Settings.Default.setAS_uTurnSmoothing;
         }
+
+        #region Turn limit lines (NV custom)
+
+        /// <summary>
+        /// A turn path point is allowed inside the regular turn area OR inside the extra
+        /// corridor up to a turn limit line (so the maneuver may use the road).
+        /// </summary>
+        private bool IsPointAllowedForTurn(vec3 pt)
+        {
+            // Stock drivable turn area, OR the extra strip out to a drawn turn limit line
+            // (bounded so the maneuver can use the road up to the line but never run far).
+            if (mf.bnd.IsPointInsideTurnArea(pt) == 0) return true;
+            return mf.tnl.IsInAllowedExtension(pt);
+        }
+
+        /// <summary>
+        /// Maneuver for the next turn: stock style unless the limit lines feature is on;
+        /// then K primary = always K, combined = U-turn only when it fits between the
+        /// turn line and the limit line.
+        /// </summary>
+        private int ResolveTurnStyle(bool isAB)
+        {
+            if (!mf.tnl.IsFeatureOn) return uTurnStyle;
+            if (mf.tnl.isKPrimary) return 1;
+            //combined: clean U (wide turn, drives out and loops back) when the next pass is far
+            //enough; a K-turn is only for tight spacing (a K at wide spacing bites into the field)
+            return DoesUTurnFit(isAB) ? 0 : 1;
+        }
+
+        /// <summary>
+        /// Depth of the U-turn bulb beyond its start/end points for the current widths
+        /// and skips (measured on a generated Dubins path), + 1 m safety.
+        /// </summary>
+        public double GetUTurnDepth()
+        {
+            double turnOffset = Math.Abs((mf.tool.width - mf.tool.overlap) * rowSkipsWidth)
+                + Math.Abs(mf.tool.offset * 2.0);
+
+            //wide turn = quarter circles in/out, depth is the radius
+            if (turnOffset >= youTurnRadius * 2.0) return youTurnRadius + 1.0;
+
+            CDubins.turningRadius = youTurnRadius;
+            CDubins dubPath = new CDubins();
+            List<vec3> pts = dubPath.GenerateDubins(new vec3(0, 0, 0), new vec3(turnOffset, 0, Math.PI));
+
+            double depth = youTurnRadius;
+            for (int i = 0; i < pts.Count; i++)
+                if (pts[i].northing > depth) depth = pts[i].northing;
+            return depth + 1.0;
+        }
+
+        //combined mode: a clean U-turn (wide turn) works when the spacing to the next pass is
+        //at least the turn diameter (2 * radius). Below that a plain U would loop back on
+        //itself, so a K-turn is used instead. (isAB kept for signature symmetry, unused.)
+        private bool DoesUTurnFit(bool isAB)
+        {
+            double turnOffset = Math.Abs((mf.tool.width - mf.tool.overlap) * rowSkipsWidth)
+                + Math.Abs(mf.tool.offset * 2.0);
+            return turnOffset >= UWideThreshold;
+        }
+
+        // Per-vehicle turn-shape radii (Params tab). A stored 0 means "inherit the general
+        // turn radius". Only consulted while the turn limit lines feature is on, so stock
+        // youturn geometry is left exactly as it was.
+        private double KExitRadius
+        {
+            get { double v = Properties.Settings.Default.set_turnK_exitRadius; return v > 0.5 ? v : youTurnRadius; }
+        }
+        private double UOutRadius
+        {
+            get { double v = Properties.Settings.Default.set_turnU_exitRadius; return v > 0.5 ? v : youTurnRadius; }
+        }
+        private double UInRadius
+        {
+            get { double v = Properties.Settings.Default.set_turnU_entryRadius; return v > 0.5 ? v : youTurnRadius; }
+        }
+
+        // Spacing (turnOffset) at/above which a clean U-turn fits. Stock = 2x the general
+        // radius; with the feature on it uses the actual U exit+entry radii, so a U with
+        // e.g. 5 m + 4 m radii already fits at 9 m (not 16 m).
+        private double UWideThreshold
+        {
+            get { return mf.tnl.IsFeatureOn ? (UOutRadius + UInRadius) : (youTurnRadius * 2.0); }
+        }
+
+        #endregion
 
         //find next not worked lane after the defined lanes to skip
         private int GetNextNotWorkedTrack(bool isTurnLeft, int rowSkipsWidth, bool isAB)
@@ -175,10 +278,13 @@ namespace AgOpenGPS
             double turnOffset = (mf.tool.width - mf.tool.overlap) * rowSkipsWidth + (isTurnLeft ? -mf.tool.offset * 2.0 : mf.tool.offset * 2.0);
             pointSpacing = youTurnRadius * 0.1;
 
-            if (uTurnStyle == 0)
+            //turn limit lines: per-field maneuver override (K primary / combined)
+            if (youTurnPhase == 0) activeTurnStyle = ResolveTurnStyle(false);
+
+            if (activeTurnStyle == 0)
             {
                 //Albin turn
-                if (turnOffset > (youTurnRadius * 2.0))
+                if (turnOffset > UWideThreshold)
                 {
                     return CreateCurveWideTurn();
                 }
@@ -189,7 +295,7 @@ namespace AgOpenGPS
                     return CreateCurveOmegaTurn();
                 }
             }
-            else if (uTurnStyle == 1)
+            else if (activeTurnStyle == 1)
             {
                 return (KStyleTurnCurve());
             }
@@ -220,11 +326,14 @@ namespace AgOpenGPS
 
             pointSpacing = youTurnRadius * 0.1;
 
-            if (uTurnStyle == 0)
+            //turn limit lines: per-field maneuver override (K primary / combined)
+            if (youTurnPhase == 0) activeTurnStyle = ResolveTurnStyle(true);
+
+            if (activeTurnStyle == 0)
             {
 
                 //Wide turn
-                if (turnOffset > (youTurnRadius * 2.0))
+                if (turnOffset > UWideThreshold)
                 {
                     return CreateABWideTurn();
                 }
@@ -234,7 +343,7 @@ namespace AgOpenGPS
                     return CreateABOmegaTurn();
                 }
             }
-            else if (uTurnStyle == 1)
+            else if (activeTurnStyle == 1)
             {
                 return KStyleTurnAB();
             }
@@ -344,7 +453,7 @@ namespace AgOpenGPS
 
                         for (int i = 0; i < ytList.Count; i++)
                         {
-                            if (mf.bnd.IsPointInsideTurnArea(ytList[i]) != 0)
+                            if (!IsPointAllowedForTurn(ytList[i]))
                             {
                                 isOutOfBounds = true;
                                 break;
@@ -497,6 +606,21 @@ namespace AgOpenGPS
                     inClosestTurnPt = new CClose(closestTurnPt);
                     startOfTurnPt = new CClose(inClosestTurnPt);
 
+                    //NV rigid U (sandbox port): fixed construction replaces the phased build
+                    if (mf.tnl.IsFeatureOn)
+                    {
+                        int rci = inClosestTurnPt.curveIndex;
+                        if (rci < 0) rci = 0;
+                        if (rci >= mf.curve.curList.Count) rci = mf.curve.curList.Count - 1;
+                        vec3 rPos = new vec3(mf.curve.curList[rci]);
+                        double rHead = rPos.heading;
+                        if (!mf.curve.isHeadingSameWay) rHead += Math.PI;
+                        if (rHead >= glm.twoPI) rHead -= glm.twoPI;
+                        double rigidOffset = (mf.tool.width - mf.tool.overlap) * rowSkipsWidth
+                            + (isTurnLeft ? -mf.tool.offset * 2.0 : mf.tool.offset * 2.0);
+                        return BuildRigidUTurn(rPos, rHead, rigidOffset);
+                    }
+
                     int stopIfWayOut = 0;
                     isOutOfBounds = true;
 
@@ -526,8 +650,8 @@ namespace AgOpenGPS
                             //Which way are we turning?
                             double turnParameter = isTurnLeft ? -1.0 : 1.0;
 
-                            //Update the heading
-                            currentPos.heading += (pointSpacing / youTurnRadius) * turnParameter;
+                            //Update the heading (U exit radius when turn limit lines on)
+                            currentPos.heading += (pointSpacing / (mf.tnl.IsFeatureOn ? UOutRadius : youTurnRadius)) * turnParameter;
 
                             //Add the new coordinate to the path
                             ytList.Add(currentPos);
@@ -543,7 +667,7 @@ namespace AgOpenGPS
                         //Are we out of bounds?
                         for (int j = 0; j < cnt4; j += 2)
                         {
-                            if (mf.bnd.IsPointInsideTurnArea(ytList[j]) != 0)
+                            if (!IsPointAllowedForTurn(ytList[j]))
                             {
                                 isOutOfBounds = true;
                                 break;
@@ -635,8 +759,8 @@ namespace AgOpenGPS
                             //Which way are we turning?
                             double turnParameter = isTurnLeft ? 1.0 : -1.0;
 
-                            //Update the heading
-                            currentPos.heading += (pointSpacing / youTurnRadius) * turnParameter;
+                            //Update the heading (U entry radius when turn limit lines on)
+                            currentPos.heading += (pointSpacing / (mf.tnl.IsFeatureOn ? UInRadius : youTurnRadius)) * turnParameter;
 
                             //Add the new coordinate to the path
                             ytList2.Add(currentPos);
@@ -652,7 +776,7 @@ namespace AgOpenGPS
                         //Are we out of bounds?
                         for (int j = 0; j < cnt3; j += 2)
                         {
-                            if (mf.bnd.IsPointInsideTurnArea(ytList2[j]) != 0)
+                            if (!IsPointAllowedForTurn(ytList2[j]))
                             {
                                 isOutOfBounds = true;
                                 break;
@@ -970,6 +1094,14 @@ namespace AgOpenGPS
             if (head >= glm.twoPI) head -= glm.twoPI;
 
 
+            //NV rigid U (sandbox port): fixed construction replaces the phased stock build
+            if (mf.tnl.IsFeatureOn)
+            {
+                double rigidOffset = (mf.tool.width - mf.tool.overlap) * rowSkipsWidth
+                    + (isTurnLeft ? -mf.tool.offset * 2.0 : mf.tool.offset * 2.0);
+                return BuildRigidUTurn(new vec3(mf.ABLine.rEastAB, mf.ABLine.rNorthAB, head), head, rigidOffset);
+            }
+
             //step 1 turn in to the turnline
             switch (youTurnPhase)
             {
@@ -1006,8 +1138,8 @@ namespace AgOpenGPS
                         //Which way are we turning?
                         double turnParameter = isTurnLeft ? -1.0 : 1.0;
 
-                        //Update the heading
-                        currentPos.heading += (pointSpacing / youTurnRadius) * turnParameter;
+                        //Update the heading (U exit radius when turn limit lines on)
+                        currentPos.heading += (pointSpacing / (mf.tnl.IsFeatureOn ? UOutRadius : youTurnRadius)) * turnParameter;
 
                         //Add the new coordinate to the path
                         ytList.Add(currentPos);
@@ -1038,6 +1170,16 @@ namespace AgOpenGPS
                     double distAway = widthMinusOverlap * (mf.ABLine.howManyPathsAway + ((isTurnLeft ^ mf.ABLine.isHeadingSameWay) ? rowSkipsWidth : -rowSkipsWidth)) + (mf.ABLine.isHeadingSameWay ? mf.tool.offset : -mf.tool.offset) + track.nudgeDistance;
 
                     distAway += (0.5 * widthMinusOverlap);
+
+                    //NV custom U overshoot: aim the entry arc at a virtual line pushed outward by
+                    //"overshoot distance", so a large entry radius overshoots and a short reverse
+                    //(driver) then aligns onto the real row. 0 = tangent the real line (stock).
+                    if (mf.tnl.IsFeatureOn)
+                    {
+                        double over = Properties.Settings.Default.set_turnU_overshootDist;
+                        if (over > 0.01)
+                            distAway += ((isTurnLeft ^ mf.ABLine.isHeadingSameWay) ? over : -over);
+                    }
 
                     nextCurve = mf.curve.BuildNewOffsetList(distAway, track);
 
@@ -1081,8 +1223,8 @@ namespace AgOpenGPS
                         //Which way are we turning?
                         double turnParameter = isTurnLeft ? 1.0 : -1.0;
 
-                        //Update the heading
-                        pointPos.heading += (pointSpacing / youTurnRadius) * turnParameter;
+                        //Update the heading (U entry radius when turn limit lines on)
+                        pointPos.heading += (pointSpacing / (mf.tnl.IsFeatureOn ? UInRadius : youTurnRadius)) * turnParameter;
 
                         //Add the new coordinate to the path
                         ytList2.Add(pointPos);
@@ -1287,10 +1429,23 @@ namespace AgOpenGPS
                 return false;
             }
 
-            //save a copy 
+            //save a copy
             inClosestTurnPt = new CClose(closestTurnPt);
 
             ytList?.Clear();
+
+            //NV rigid K (sandbox port): fixed construction, handles the tight case with a
+            //split + guided reverse leg - replaces the old parallel-then-enter shape
+            if (mf.tnl.IsFeatureOn)
+            {
+                int ci = inClosestTurnPt.curveIndex;
+                if (ci < 0) ci = 0;
+                if (ci >= mf.curve.curList.Count) ci = mf.curve.curList.Count - 1;
+                double kHead = mf.curve.curList[ci].heading;
+                if (!isHeadingSameWay) kHead += Math.PI;
+                if (kHead >= glm.twoPI) kHead -= glm.twoPI;
+                return BuildRigidKTurn(inClosestTurnPt.closePt, kHead, turnOffset);
+            }
 
             int count = isHeadingSameWay ? -1 : 1;
             int curveIndex = inClosestTurnPt.curveIndex + count;
@@ -1330,8 +1485,8 @@ namespace AgOpenGPS
                     //Which way are we turning?
                     double turnParameter = isTurnLeft ? -1.0 : 1.0;
 
-                    //Update the heading
-                    currentPos.heading += (pointSpacing / youTurnRadius) * turnParameter;
+                    //Update the heading (K exit radius when turn limit lines on)
+                    currentPos.heading += (pointSpacing / (mf.tnl.IsFeatureOn ? KExitRadius : youTurnRadius)) * turnParameter;
 
                     //Add the new coordinate to the path
                     ytList.Add(currentPos);
@@ -1339,7 +1494,7 @@ namespace AgOpenGPS
 
                 for (int i = 0; i < ytList.Count; i++)
                 {
-                    if (mf.bnd.IsPointInsideTurnArea(ytList[i]) != 0)
+                    if (!IsPointAllowedForTurn(ytList[i]))
                     {
                         pointOutOfBnd = true;
                         break;
@@ -1373,8 +1528,7 @@ namespace AgOpenGPS
 
                 for (j = 0; j < arr2.Length; j++)
                 {
-                    int bob = mf.bnd.IsPointInsideTurnArea(arr2[j]);
-                    if (bob != 0)
+                    if (!IsPointAllowedForTurn(arr2[j]))
                     {
                         pointOutOfBnd = true;
                         break;
@@ -1508,6 +1662,15 @@ namespace AgOpenGPS
                 if (!isHeadingSameWay) head += Math.PI;
                 if (head >= glm.twoPI) head -= glm.twoPI;
 
+                //NV rigid K (sandbox port): fixed construction, handles the tight case with
+                //a split + guided reverse leg - replaces the old parallel-then-enter shape
+                if (mf.tnl.IsFeatureOn)
+                {
+                    double kOffset = (mf.tool.width - mf.tool.overlap) * rowSkipsWidth
+                        + (isTurnLeft ? mf.tool.offset : -mf.tool.offset);
+                    return BuildRigidKTurn(inClosestTurnPt.closePt, head, kOffset);
+                }
+
                 //thistance to turnline from where we are
                 double turnDiagDistance = mf.distancePivotToTurnLine;
 
@@ -1532,8 +1695,8 @@ namespace AgOpenGPS
 
                     if (isTurnLeft) turnParameter = -1.0;
 
-                    //Update the heading
-                    currentPos.heading += (pointSpacing / youTurnRadius) * turnParameter;
+                    //Update the heading (K exit radius when turn limit lines on)
+                    currentPos.heading += (pointSpacing / (mf.tnl.IsFeatureOn ? KExitRadius : youTurnRadius)) * turnParameter;
 
                     //Add the new coordinate to the path
                     ytList.Add(currentPos);
@@ -1603,6 +1766,400 @@ namespace AgOpenGPS
             return true;
         }
 
+        // ── NV RIGID TURN BUILDERS (1:1 port of the turn_sim sandbox) ─────────────────
+        // See features/05_turn-zone/PORT_REVIEW.md. Rigid construction, minimal freedom:
+        //  U: exit circle R_out and entry circle R_in each slide up their own row until
+        //     TANGENT to the limit line (2 DOF); joined by the common upper tangent line.
+        //     Degenerate (stacked circles) -> level apexes (1 DOF). Too tight: shrink both
+        //     radii max -30%, then automatic overshoot (never a folded spike). No tail.
+        //  K: same construction, but NO entry radius - the entry is a straight slant at
+        //     angle alpha from E0 (d before the new row, on the tangent line), crossing the
+        //     row ~2 m (red) - the driver reverses, AB guidance aligns. Entry too close ->
+        //     SPLIT into two forward parts joined by a GUIDED reverse leg along the line.
+        // All math runs in a local frame: origin on the current row, +Y = travel heading,
+        // +X = lateral toward the target row (so left/right turns share one code path).
+        private static double AngleDiff(double a, double b)
+        {
+            double d = a - b;
+            while (d > Math.PI) d -= glm.twoPI;
+            while (d < -Math.PI) d += glm.twoPI;
+            return d;
+        }
+
+        // K split state: pending part 2 + stage (0 = none, 1 = part 1 forward,
+        // 2 = guided reverse back along part 1, 3 = part 2 forward)
+        public List<vec3> kPart2List = new List<vec3>();
+        public int kTurnStage = 0;
+        private bool kRevReached = false;   // reverse leg has reached the stop point
+        public int ytRedIndex = -1;     // ytList index from which points draw red
+        public int part2RedIndex = -1;  // red index inside the pending part 2
+
+        // local frame
+        private double frOx, frOy, frTx, frTy, frLx, frLy;
+
+        private void SetTurnFrame(vec3 rowPt, double head)
+        {
+            frOx = rowPt.easting; frOy = rowPt.northing;
+            frTx = Math.Sin(head); frTy = Math.Cos(head);
+            frLx = isTurnLeft ? -frTy : frTy;   // lateral unit toward the target row
+            frLy = isTurnLeft ? frTx : -frTx;
+        }
+
+        private vec2 ToLocal(double e, double n)
+        {
+            return new vec2((e - frOx) * frLx + (n - frOy) * frLy,
+                            (e - frOx) * frTx + (n - frOy) * frTy);
+        }
+
+        private vec3 ToWorld(double x, double y)
+        {
+            return new vec3(frOx + frLx * x + frTx * y, frOy + frLy * x + frTy * y, 0);
+        }
+
+        // effective limit polyline in LOCAL coords: the extrapolated drawn line hit by the
+        // travel ray, or the boundary turn line (closed ring) when no line is hit there
+        private bool TryGetLocalEff(double head, out List<vec2> eff)
+        {
+            eff = null;
+            List<vec2> world = mf.tnl.GetEffPolylineByRay(new vec2(frOx, frOy), head);
+            if (world == null)
+            {
+                if (mf.bnd.bndList.Count == 0 || mf.bnd.bndList[0].turnLine.Count < 3) return false;
+                var tl = mf.bnd.bndList[0].turnLine;
+                world = new List<vec2>(tl.Count + 1);
+                for (int i = 0; i < tl.Count; i++) world.Add(new vec2(tl[i].easting, tl[i].northing));
+                world.Add(new vec2(tl[0].easting, tl[0].northing));
+            }
+            eff = new List<vec2>(world.Count);
+            for (int i = 0; i < world.Count; i++) eff.Add(ToLocal(world[i].easting, world[i].northing));
+            return true;
+        }
+
+        // TOP crossing (largest local y) of the vertical x = e with the polyline
+        private static bool CrossTop(List<vec2> eff, double x, out double y)
+        {
+            y = double.MinValue; bool hit = false;
+            for (int i = 0; i < eff.Count - 1; i++)
+            {
+                double ax = eff[i].easting, bx = eff[i + 1].easting;
+                if ((ax - x) * (bx - x) <= 0 && Math.Abs(bx - ax) > 1e-9)
+                {
+                    double t = (x - ax) / (bx - ax);
+                    double yy = eff[i].northing + t * (eff[i + 1].northing - eff[i].northing);
+                    if (!hit || yy > y) { y = yy; hit = true; }
+                }
+            }
+            return hit;
+        }
+
+        // highest center y so the whole circle (center x = cx, radius R) stays under eff
+        private static double FitCircleY(List<vec2> eff, double cx, double R, double step)
+        {
+            double y = double.MaxValue;
+            for (int i = 0; i < eff.Count - 1; i++)
+            {
+                double ax = eff[i].easting, ay = eff[i].northing;
+                double dx = eff[i + 1].easting - ax, dy = eff[i + 1].northing - ay;
+                double len = Math.Sqrt(dx * dx + dy * dy);
+                int m = Math.Max(1, (int)Math.Ceiling(len / step));
+                for (int j = 0; j <= m; j++)
+                {
+                    double x = ax + dx * j / m, ddx = x - cx;
+                    if (Math.Abs(ddx) < R)
+                    {
+                        double cand = ay + dy * j / m - Math.Sqrt(R * R - ddx * ddx);
+                        if (cand < y) y = cand;
+                    }
+                }
+            }
+            return y;   // double.MaxValue = line nowhere above the circle span
+        }
+
+        // Laplacian smoothing, endpoints fixed (hardcoded 15 passes at the call sites)
+        private static void SmoothLocal(List<vec2> p, int passes)
+        {
+            if (passes <= 0 || p.Count < 5) return;
+            var q = new vec2[p.Count];
+            for (int k = 0; k < passes; k++)
+            {
+                p.CopyTo(q);
+                for (int i = 1; i < p.Count - 1; i++)
+                {
+                    p[i] = new vec2((q[i - 1].easting + 2 * q[i].easting + q[i + 1].easting) / 4.0,
+                                    (q[i - 1].northing + 2 * q[i].northing + q[i + 1].northing) / 4.0);
+                }
+            }
+        }
+
+        // rigid-ensemble shift toward the field when the limit line dips into the path (V)
+        private static void ShiftUnderEff(List<vec2> p1, List<vec2> p2, List<vec2> eff)
+        {
+            double viol = 0;
+            for (int i = 0; i < p1.Count; i++)
+                if (CrossTop(eff, p1[i].easting, out double yy)) viol = Math.Min(viol, yy - p1[i].northing);
+            if (p2 != null)
+                for (int i = 0; i < p2.Count; i++)
+                    if (CrossTop(eff, p2[i].easting, out double yy)) viol = Math.Min(viol, yy - p2[i].northing);
+            if (viol < 0)
+            {
+                for (int i = 0; i < p1.Count; i++) p1[i] = new vec2(p1[i].easting, p1[i].northing + viol);
+                if (p2 != null)
+                    for (int i = 0; i < p2.Count; i++) p2[i] = new vec2(p2[i].easting, p2[i].northing + viol);
+            }
+        }
+
+        private List<vec3> LocalToWorldPath(List<vec2> pl)
+        {
+            var outp = new List<vec3>(pl.Count);
+            for (int i = 0; i < pl.Count; i++) outp.Add(ToWorld(pl[i].easting, pl[i].northing));
+            for (int i = 0; i < outp.Count - 1; i++)
+            {
+                double hh = Math.Atan2(outp[i + 1].easting - outp[i].easting, outp[i + 1].northing - outp[i].northing);
+                if (hh < 0) hh += glm.twoPI;
+                outp[i] = new vec3(outp[i].easting, outp[i].northing, hh);
+            }
+            if (outp.Count > 1)
+                outp[outp.Count - 1] = new vec3(outp[outp.Count - 1].easting, outp[outp.Count - 1].northing, outp[outp.Count - 2].heading);
+            return outp;
+        }
+
+        private bool FinishRigidPath(List<vec2> p1, int redStart, List<vec2> p2, int p2Red)
+        {
+            if (p1.Count < 6) { FailCreate(); return false; }
+
+            var w1 = LocalToWorldPath(p1);
+            if (glm.Distance(w1[0], mf.pivotAxlePos) < 3) { FailCreate(); return false; }
+
+            ytList.Clear();
+            ytList.AddRange(w1);
+            ytRedIndex = redStart;
+
+            kPart2List.Clear();
+            kTurnStage = 0;
+            part2RedIndex = -1;
+            if (p2 != null && p2.Count > 3)
+            {
+                kPart2List.AddRange(LocalToWorldPath(p2));
+                part2RedIndex = p2Red;
+                kTurnStage = 1;
+            }
+
+            mf.distancePivotToTurnLine = glm.Distance(ytList[0], mf.pivotAxlePos);
+            isOutOfBounds = false;
+            youTurnPhase = 10;
+            turnTooCloseTrigger = false;
+            isTurnCreationTooClose = false;
+            return true;
+        }
+
+        /// <summary>
+        /// Rigid U-turn: 2-DOF circle fit + common upper tangent; degenerate -> level
+        /// apexes; too tight -> shrink both radii max -30%, then automatic overshoot.
+        /// </summary>
+        private bool BuildRigidUTurn(vec3 rowPt, double head, double turnOffset)
+        {
+            double o = Math.Abs(turnOffset);
+            if (o < 1.0) { FailCreate(); return false; }
+
+            SetTurnFrame(rowPt, head);
+            if (!TryGetLocalEff(head, out List<vec2> eff)) { FailCreate(); return false; }
+
+            double ps = Math.Max(0.1, youTurnRadius * 0.1);
+            double Rout = UOutRadius, Rin = UInRadius;
+            double over = Properties.Settings.Default.set_turnU_overshootDist;
+            if (over < 0) over = 0;
+
+            // auto-shrink both radii (max -30%), then automatic overshoot for the rest
+            double room = o + over;
+            if (Rout + Rin > room)
+            {
+                double shrink = Math.Max(0.7, room / (Rout + Rin));
+                Rout *= shrink; Rin *= shrink;
+            }
+            if (Rout + Rin > o + over) over += Rout + Rin - (o + over);
+
+            double eT = o + over;
+            double cx1 = Rout, cx3 = eT - Rin;
+            double y1 = FitCircleY(eff, cx1, Rout, ps);
+            double y3 = FitCircleY(eff, cx3, Rin, ps);
+            if (y1 == double.MaxValue || y3 == double.MaxValue) { FailCreate(); return false; }
+
+            // common upper external tangent: unit normal n with n·d = R_out - R_in
+            double dvx = cx3 - cx1, dvy = y3 - y1, D = Math.Sqrt(dvx * dvx + dvy * dvy);
+            double T1x = 0, T1y = 0, T3x = 0, T3y = 0, htgt = 0;
+            bool degen = true;
+            if (D > Math.Abs(Rout - Rin) + 1e-6)
+            {
+                double k = (Rout - Rin) / D, s = Math.Sqrt(Math.Max(0, 1 - k * k));
+                double dpx = -dvy / D, dpy = dvx / D;
+                double nAx = dvx / D * k + dpx * s, nAy = dvy / D * k + dpy * s;
+                double nBx = dvx / D * k - dpx * s, nBy = dvy / D * k - dpy * s;
+                double nx = nAy > nBy ? nAx : nBx, ny = nAy > nBy ? nAy : nBy;
+                T1x = cx1 + nx * Rout; T1y = y1 + ny * Rout;
+                T3x = cx3 + nx * Rin; T3y = y3 + ny * Rin;
+                htgt = Math.Atan2(T3x - T1x, T3y - T1y);
+                // the connector must actually head toward the target row (stacked circles
+                // at off ~ R_out+R_in give a near-vertical tangent -> the path would loop)
+                degen = !(Math.Sin(htgt) > 0.1);
+            }
+            if (degen)
+            {
+                double t = Math.Min(y1 + Rout, y3 + Rin);
+                y1 = t - Rout; y3 = t - Rin;
+                T1x = cx1; T1y = t; T3x = cx3; T3y = t; htgt = glm.PIBy2;
+            }
+
+            // lead-in + exit arc (0 -> htgt) + tangent line + entry arc (htgt -> PI), no tail
+            var pl = new List<vec2>(512);
+            int nLead = Math.Max(3, (int)(2.5 / ps));
+            for (int i = nLead; i >= 1; i--) pl.Add(new vec2(0, y1 - ps * i));
+
+            double px = 0, py = y1, h = 0;
+            int g = 0;
+            while (Math.Abs(AngleDiff(h, htgt)) > ps / Rout && g++ < 4000)
+            {
+                px += ps * Math.Sin(h); py += ps * Math.Cos(h); h += ps / Rout;
+                pl.Add(new vec2(px, py));
+            }
+            double L = Math.Sqrt((T3x - px) * (T3x - px) + (T3y - py) * (T3y - py));
+            int m = Math.Max(1, (int)Math.Round(L / ps));
+            for (int j = 1; j <= m; j++) pl.Add(new vec2(px + (T3x - px) * j / m, py + (T3y - py) * j / m));
+
+            int redStart = over > 0.05 ? pl.Count : -1;   // overshoot -> entry arc draws red
+            px = T3x; py = T3y; h = htgt; g = 0;
+            while (Math.Abs(AngleDiff(h, Math.PI)) > ps / Rin && g++ < 4000)
+            {
+                px += ps * Math.Sin(h); py += ps * Math.Cos(h); h += ps / Rin;
+                pl.Add(new vec2(px, py));
+            }
+
+            ShiftUnderEff(pl, null, eff);
+            SmoothLocal(pl, 15);
+            return FinishRigidPath(pl, redStart, null, -1);
+        }
+
+        /// <summary>
+        /// Rigid K-turn: same construction, entry = straight slant (d, alpha), no entry
+        /// radius. Entry too close -> split into two forward parts + guided reverse leg.
+        /// </summary>
+        private bool BuildRigidKTurn(vec3 rowPt, double head, double turnOffset)
+        {
+            double o = Math.Abs(turnOffset);
+            if (o < 1.0) { FailCreate(); return false; }
+
+            SetTurnFrame(rowPt, head);
+            if (!TryGetLocalEff(head, out List<vec2> eff)) { FailCreate(); return false; }
+
+            double ps = Math.Max(0.1, youTurnRadius * 0.1);
+            double R = KExitRadius; if (R < 1.0) R = 1.0;
+            double d = Properties.Settings.Default.set_turnK_entryStartDist;
+            if (d < 0.1) d = 0.1;
+            if (d > o - 0.2) d = Math.Max(0.1, o - 0.2);
+            double alpha = Properties.Settings.Default.set_turnK_entryAngle * Math.PI / 180.0;
+            if (alpha < 0.10) alpha = 0.10;
+            if (alpha > 1.40) alpha = 1.40;
+
+            double cx1 = R, cx3 = o - R;
+            double y1 = FitCircleY(eff, cx1, R, ps);
+            double y3 = FitCircleY(eff, cx3, R, ps);
+            if (y1 == double.MaxValue || y3 == double.MaxValue) { FailCreate(); return false; }
+
+            // equal radii -> the common upper tangent is parallel to the center line; the
+            // (virtual) entry circle only sets the tangent-line slope
+            double dvx = cx3 - cx1, dvy = y3 - y1, D = Math.Sqrt(dvx * dvx + dvy * dvy);
+            double nx = 0, ny = 1;
+            if (D > 1e-6)
+            {
+                double dpx = -dvy / D, dpy = dvx / D;
+                if (dpy > 0) { nx = dpx; ny = dpy; } else { nx = -dpx; ny = -dpy; }
+            }
+            double tx = ny, ty = -nx;               // CW-consistent travel direction
+            double htgt = Math.Atan2(tx, ty);
+            double T1x = cx1 + nx * R, T1y = y1 + ny * R;
+
+            // E0 = entry start point: on the tangent line, lateral d before the new row
+            double E0x, E0y;
+            if (Math.Abs(tx) > 0.05)
+            {
+                double sE = (o - d - T1x) / tx;
+                E0x = T1x + tx * sE; E0y = T1y + ty * sE;
+            }
+            else { E0x = o - d; E0y = T1y; }
+            double proj = (E0x - T1x) * tx + (E0y - T1y) * ty;   // < 0 -> E0 is BEHIND T1
+
+            // lead-in + exit arc (0 -> htgt), ends at T1
+            var pl = new List<vec2>(512);
+            int nLead = Math.Max(3, (int)(2.5 / ps));
+            for (int i = nLead; i >= 1; i--) pl.Add(new vec2(0, y1 - ps * i));
+
+            double px = 0, py = y1, h = 0;
+            int g = 0;
+            while (Math.Abs(AngleDiff(h, htgt)) > ps / R && g++ < 4000)
+            {
+                px += ps * Math.Sin(h); py += ps * Math.Cos(h); h += ps / R;
+                pl.Add(new vec2(px, py));
+            }
+
+            void Dens(List<vec2> lst, double ax, double ay, double bx, double by)
+            {
+                double len = Math.Sqrt((bx - ax) * (bx - ax) + (by - ay) * (by - ay));
+                int mm = Math.Max(1, (int)Math.Round(len / ps));
+                for (int j = 1; j <= mm; j++) lst.Add(new vec2(ax + (bx - ax) * j / mm, ay + (by - ay) * j / mm));
+            }
+
+            double hEnt = Math.PI - alpha;          // slant heading onto the row (local)
+            List<vec2> p2 = null;
+            int redStart = -1, p2Red = -1;
+
+            if (proj >= -0.01)
+            {
+                // fits forward: tangent line to E0, then the slant crossing the row ~2 m
+                Dens(pl, px, py, E0x, E0y);
+                px = E0x; py = E0y; g = 0;
+                while (px < o - 0.02 && g++ < 7000)
+                {
+                    px += ps * Math.Sin(hEnt); py += ps * Math.Cos(hEnt);
+                    pl.Add(new vec2(px, py));
+                }
+                redStart = pl.Count;                 // crossing past the line draws red
+                int nCross = (int)Math.Round(2.0 / ps);
+                for (int i = 0; i < nCross; i++)
+                {
+                    px += ps * Math.Sin(hEnt); py += ps * Math.Cos(hEnt);
+                    pl.Add(new vec2(px, py));
+                }
+            }
+            else
+            {
+                // SPLIT: part 1 forward (+2 m past T1), guided reverse back along the
+                // line, part 2 = forward line + slant (pending until reversed enough)
+                const double fwdE = 15.0, revE = 1.5;  // 15 m safety tangent on the exit radius
+                Dens(pl, px, py, px + tx * fwdE, py + ty * fwdE);
+
+                double rsx = E0x - tx * revE, rsy = E0y - ty * revE;
+                p2 = new List<vec2>(256) { new vec2(rsx, rsy) };
+                Dens(p2, rsx, rsy, E0x, E0y);
+                px = E0x; py = E0y; g = 0;
+                while (px < o - 0.02 && g++ < 7000)
+                {
+                    px += ps * Math.Sin(hEnt); py += ps * Math.Cos(hEnt);
+                    p2.Add(new vec2(px, py));
+                }
+                p2Red = p2.Count;
+                int nCross = (int)Math.Round(2.0 / ps);
+                for (int i = 0; i < nCross; i++)
+                {
+                    px += ps * Math.Sin(hEnt); py += ps * Math.Cos(hEnt);
+                    p2.Add(new vec2(px, py));
+                }
+            }
+
+            ShiftUnderEff(pl, p2, eff);
+            SmoothLocal(pl, 15);
+            if (p2 != null) SmoothLocal(p2, 15);
+            return FinishRigidPath(pl, redStart, p2, p2Red);
+        }
+
         private List<vec3> MoveABTurnInsideTurnLine(List<vec3> uTurnList, double head)
         {
             //step 1 make array out of the list so that we can modify the position
@@ -1632,7 +2189,7 @@ namespace AgOpenGPS
 
                 for (; j < cnt; j += 1)
                 {
-                    if (mf.bnd.IsPointInsideTurnArea(arr2[j]) != 0)
+                    if (!IsPointAllowedForTurn(arr2[j]))
                     {
                         pointOutOfBnd = true;
                         if (j > 0) j--;
@@ -1659,7 +2216,7 @@ namespace AgOpenGPS
 
                 for (int a = 0; a < cnt; a++)
                 {
-                    if (mf.bnd.IsPointInsideTurnArea(arr2[a]) != 0)
+                    if (!IsPointAllowedForTurn(arr2[a]))
                     {
                         semiCircleIndex = a;
                         uTurnList.AddRange(arr2);
@@ -2176,8 +2733,14 @@ namespace AgOpenGPS
             //how many points straight out - use youTurnStartOffset setting (value needs to be doubled for actual length)
             double lenny = youTurnStartOffset * 2.0;
 
+            //turn limit lines: the LEAD-IN is where the maneuver "starts" (and where the turn
+            //triggers). A long stock lead-in puts the start ~20 m back so you'd have to reverse
+            //to it - shorten it to ~2 m of straight just before the arc, near the boundary.
+            double lennyIn = mf.tnl.IsFeatureOn && pointSpacing > 0.001
+                ? Math.Max(2.0, 2.0 / pointSpacing) : lenny;
+
             vec3 pt;
-            for (int a = 0; a < lenny; a++)
+            for (int a = 0; a < lennyIn; a++)
             {
                 pt.easting = ytList[0].easting - (Math.Sin(inhead) * pointSpacing);
                 pt.northing = ytList[0].northing - (Math.Cos(inhead) * pointSpacing);
@@ -2187,7 +2750,13 @@ namespace AgOpenGPS
 
             int count = ytList.Count;
 
-            for (int i = 0; i <= lenny; i++)
+            //turn limit lines: short lead-OUT too, so the youturn ends ~2 m into the new row
+            //(right at the line) and hands back to AB/curve guidance instead of driving a long
+            //tail that keeps steering if the driver stops or backs up.
+            double lennyOut = mf.tnl.IsFeatureOn && pointSpacing > 0.001
+                ? Math.Max(2.0, 2.0 / pointSpacing) : lenny;
+
+            for (int i = 0; i <= lennyOut; i++)
             {
                 pt.easting = ytList[count - 1].easting - (Math.Sin(outhead) * i * pointSpacing);
                 pt.northing = ytList[count - 1].northing - (Math.Cos(outhead) * i * pointSpacing);
@@ -2220,10 +2789,15 @@ namespace AgOpenGPS
         {
             //how many points striaght out - use youTurnStartOffset setting (value needs to be doubled for actual length)
             double lenny = youTurnStartOffset * 2.0;
+
+            //turn limit lines: short lead-in so the turn starts just before the arc (see AddABSequenceLines)
+            double lennyIn = mf.tnl.IsFeatureOn && pointSpacing > 0.001
+                ? Math.Max(2.0, 2.0 / pointSpacing) : lenny;
+
             bool sameWay = mf.curve.isHeadingSameWay;
             int a = sameWay ? -1 : 1;
 
-            for (int i = 0; i < lenny && i > -lenny; i += a)
+            for (int i = 0; i < lennyIn && i > -lennyIn; i += a)
             {
                 ytList.Insert(0, new vec3(mf.curve.curList[inClosestTurnPt.curveIndex]));
                 inClosestTurnPt.curveIndex += a;
@@ -2236,7 +2810,7 @@ namespace AgOpenGPS
             if (isOutSameCurve) sameWay = !sameWay;
             a = sameWay ? -1 : 1;
 
-            for (int i = 0; i < lenny && i > -lenny; i += a)
+            for (int i = 0; i < lennyIn && i > -lennyIn; i += a)
             {
                 ytList.Add(new vec3(nextCurve[outClosestTurnPt.curveIndex]));
                 outClosestTurnPt.curveIndex += a;
@@ -2312,7 +2886,7 @@ namespace AgOpenGPS
 
                 for (; j < cnt; j += 1)
                 {
-                    if (mf.bnd.IsPointInsideTurnArea(arr2[j]) != 0)
+                    if (!IsPointAllowedForTurn(arr2[j]))
                     {
                         pointOutOfBnd = true;
                         if (j > 0) j--;
@@ -2328,8 +2902,13 @@ namespace AgOpenGPS
             }
 
             //step 3, we ar now inside turnline, move the turn forward until it hits the turnfence in steps of 0.1 meters
+            //safety cap on the forward travel: with a turn limit line the allowed region can
+            //reach far (e.g. a line drawn near-parallel to travel), which would otherwise push
+            //the turn far down the pass or loop forever. Stock hits the headland well within this.
+            int fwdSteps = 0;
             while (!pointOutOfBnd)
             {
+                if (++fwdSteps > 2000) return uTurnList; //~200 m: give up, upstream fails the turn
                 for (int i = 0; i < cnt; i++)
                 {
                     arr2[i].easting += (sinHead * 0.1);
@@ -2338,7 +2917,7 @@ namespace AgOpenGPS
 
                 for (int a = 0; a < cnt; a++)
                 {
-                    if (mf.bnd.IsPointInsideTurnArea(arr2[a]) != 0)
+                    if (!IsPointAllowedForTurn(arr2[a]))
                     {
                         semiCircleIndex = a;
                         pointOutOfBnd = true;
@@ -2415,6 +2994,11 @@ namespace AgOpenGPS
         }
 
         //called to initiate turn
+        //NV: with the turn limit feature the line swap is DEFERRED - guidance stays on
+        //the ORIGINAL row line until the vehicle has actually turned off the row
+        //(heading delta > 15 deg); only then the new line becomes active
+        private bool turnLineSwapPending = false;
+
         public void YouTurnTrigger()
         {
             //trigger pulled
@@ -2432,26 +3016,32 @@ namespace AgOpenGPS
                 savedTurnSkips = turnSkips;
                 savedPreviousBigSkip = previousBigSkip;
 
-                mf.curve.howManyPathsAway += (isTurnLeft ^ mf.curve.isHeadingSameWay) ? rowSkipsWidth : -rowSkipsWidth;
-                mf.curve.isHeadingSameWay = !mf.curve.isHeadingSameWay;
-
-                mf.ABLine.howManyPathsAway += (isTurnLeft ^ mf.ABLine.isHeadingSameWay) ? rowSkipsWidth : -rowSkipsWidth;
-                mf.ABLine.isHeadingSameWay = !mf.ABLine.isHeadingSameWay;
-
-                if (skipMode == SkipMode.Alternative && rowSkipsWidth2 > 1)
-                {
-                    if (--turnSkips == 0)
-                    {
-                        isTurnLeft = !isTurnLeft;
-                        turnSkips = rowSkipsWidth2 * 2 - 1;
-                    }
-                    else if (previousBigSkip = !previousBigSkip)
-                        rowSkipsWidth = rowSkipsWidth2 - 1;
-                    else
-                        rowSkipsWidth = rowSkipsWidth2;
-                }
-                else isTurnLeft = !isTurnLeft;
+                if (mf.tnl.IsFeatureOn) turnLineSwapPending = true;
+                else ApplyTriggerLineSwap();
             }
+        }
+
+        private void ApplyTriggerLineSwap()
+        {
+            mf.curve.howManyPathsAway += (isTurnLeft ^ mf.curve.isHeadingSameWay) ? rowSkipsWidth : -rowSkipsWidth;
+            mf.curve.isHeadingSameWay = !mf.curve.isHeadingSameWay;
+
+            mf.ABLine.howManyPathsAway += (isTurnLeft ^ mf.ABLine.isHeadingSameWay) ? rowSkipsWidth : -rowSkipsWidth;
+            mf.ABLine.isHeadingSameWay = !mf.ABLine.isHeadingSameWay;
+
+            if (skipMode == SkipMode.Alternative && rowSkipsWidth2 > 1)
+            {
+                if (--turnSkips == 0)
+                {
+                    isTurnLeft = !isTurnLeft;
+                    turnSkips = rowSkipsWidth2 * 2 - 1;
+                }
+                else if (previousBigSkip = !previousBigSkip)
+                    rowSkipsWidth = rowSkipsWidth2 - 1;
+                else
+                    rowSkipsWidth = rowSkipsWidth2;
+            }
+            else isTurnLeft = !isTurnLeft;
         }
 
         // Restores path state to before the trigger when user cancels a turn in progress
@@ -2472,6 +3062,8 @@ namespace AgOpenGPS
         //Normal copmpletion of youturn
         public void CompleteYouTurn()
         {
+            //safety: a completed turn must always end up on the new line
+            if (turnLineSwapPending) { turnLineSwapPending = false; ApplyTriggerLineSwap(); }
             isYouTurnTriggered = false;
             ResetCreatedYouTurn();
             mf.sounds.isBoundAlarming = false;
@@ -2507,6 +3099,15 @@ namespace AgOpenGPS
             isOutSameCurve = false;
             isGoingStraightThrough = false;
             maxProgressIndexReached = 0;
+            afterStopStopped = false;
+            turnOvershot = false;
+            turnArmed = false;
+            kPart2List?.Clear();
+            kTurnStage = 0;
+            kRevReached = false;
+            ytRedIndex = -1;
+            part2RedIndex = -1;
+            turnLineSwapPending = false;
         }
 
         public void FailCreate()
@@ -2628,6 +3229,94 @@ namespace AgOpenGPS
 
             if (ptCount > 0)
             {
+                //NV: the maneuver has really begun once the vehicle has TURNED OFF the row
+                //(heading delta to the row > 15 deg = into the exit radius). Before that the
+                //pattern is forward-only: reversing or creeping (< 0.4 km/h) un-triggers the
+                //turn (guidance returns to the ORIGINAL row line, the built turn stays armed;
+                //driving forward re-triggers it). After turning off, reversing in the K stage
+                //machine goes straight to the guided reverse leg instead.
+                bool turnedOff = Math.Abs(AngleDiff(mf.fixHeading, ytList[0].heading)) > 0.26;
+                if (mf.tnl.IsFeatureOn && (kTurnStage == 0 || kTurnStage == 1) && !turnedOff
+                    && (mf.isReverse || Math.Abs(mf.avgSpeed) < 0.4))
+                {
+                    //nothing was swapped yet if the swap is still pending - just un-trigger
+                    if (!turnLineSwapPending) RestorePreTriggerState();
+                    turnLineSwapPending = false;
+                    isYouTurnTriggered = false;
+                    maxProgressIndexReached = 0;
+                    return false;
+                }
+
+                //the vehicle has turned off the row -> NOW the new line becomes active
+                if (mf.tnl.IsFeatureOn && turnLineSwapPending && turnedOff)
+                {
+                    turnLineSwapPending = false;
+                    ApplyTriggerLineSwap();
+                }
+
+                //NV rigid K split: part 1 forward -> GUIDED reverse back along the tangent
+                //line -> swap to part 2 -> forward again. Autosteer stays on the whole time.
+                if (mf.tnl.IsFeatureOn && kTurnStage > 0)
+                {
+                    vec3 kPiv = mf.isStanleyUsed ? mf.steerAxlePos : mf.pivotAxlePos;
+
+                    if (kTurnStage == 1 && mf.isReverse)
+                    {
+                        kTurnStage = 2;
+                        //guidance for the reverse leg = the straight tangent line from the
+                        //reverse stop point (start of part 2) to the end of part 1; ordered
+                        //forward so the follower's reverse walk (backward) guides correctly
+                        if (kPart2List.Count > 0 && ytList.Count > 1)
+                        {
+                            vec3 pEnd = ytList[ytList.Count - 1];
+                            vec3 rStop = kPart2List[0];
+                            double dxr = pEnd.easting - rStop.easting, dyr = pEnd.northing - rStop.northing;
+                            double lenR = Math.Sqrt(dxr * dxr + dyr * dyr);
+                            if (lenR > 1.0)
+                            {
+                                //extend the leg 15 m BEHIND the reverse stop point so
+                                //reversing too far never loses guidance
+                                double ux = dxr / lenR, uy = dyr / lenR;
+                                double sx = rStop.easting - ux * 15.0, sy = rStop.northing - uy * 15.0;
+                                double tot = lenR + 15.0;
+                                double hR = Math.Atan2(dxr, dyr);
+                                if (hR < 0) hR += glm.twoPI;
+                                int nR = Math.Max(2, (int)(tot / 0.5));
+                                ytList.Clear();
+                                for (int i2 = 0; i2 <= nR; i2++)
+                                    ytList.Add(new vec3(sx + ux * tot * i2 / nR, sy + uy * tot * i2 / nR, hR));
+                                ytRedIndex = -1;
+                                ptCount = ytList.Count;
+                            }
+                        }
+                    }
+
+                    if (kTurnStage == 2)
+                    {
+                        //full search each frame - the closest point walks BACK down the leg
+                        maxProgressIndexReached = 0;
+
+                        if (!kRevReached && kPart2List.Count > 3 && glm.Distance(kPiv, kPart2List[0]) < 2.0)
+                            kRevReached = true;
+
+                        //the reverse guide line stays active while still reversing;
+                        //part 2 (new-row entry) activates only once the vehicle STOPS
+                        if (kRevReached && Math.Abs(mf.avgSpeed) < 0.3)
+                        {
+                            kRevReached = false;
+                            ytList.Clear();
+                            ytList.AddRange(kPart2List);
+                            kPart2List.Clear();
+                            ytRedIndex = part2RedIndex;
+                            part2RedIndex = -1;
+                            kTurnStage = 3;
+                            A = 0; B = 1;
+                            ptCount = ytList.Count;
+                        }
+                    }
+                }
+                bool kSplitHold = mf.tnl.IsFeatureOn && (kTurnStage == 1 || kTurnStage == 2);
+
                 if (mf.isStanleyUsed)
                 {
                     vec3 pivot = mf.steerAxlePos;
@@ -2693,16 +3382,35 @@ namespace AgOpenGPS
                     bool hasProgressedEnough = maxProgressIndexReached > (ptCount / 2);
 
                     //return and reset if too far away or end of the line
-                    if (B >= ptCount - 1 && hasProgressedEnough)
+                    //(K split holds at the end of part 1 - the reverse leg follows)
+                    if (B >= ptCount - 1 && hasProgressedEnough && !kSplitHold)
                     {
                         CompleteYouTurn();
                         return false;
                     }
 
-                    if (uTurnStyle == 1 && mf.isReverse)
+                    //turn limit lines: a U-turn has no reverse phase, so backing up after the
+                    //arc means the driver is on the new row - end the turn, hand back to the line
+                    if (mf.tnl.IsFeatureOn && activeTurnStyle == 0 && mf.isReverse && hasProgressedEnough)
                     {
                         CompleteYouTurn();
-                        return true;
+                        return false;
+                    }
+
+                    if (activeTurnStyle == 1 && mf.isReverse)
+                    {
+                        if (!mf.tnl.IsFeatureOn)
+                        {
+                            CompleteYouTurn();
+                            return true;
+                        }
+                        //rigid K: stage 1/2 reverse is GUIDED (keep steering along the path);
+                        //stage 0/3 after the crossing -> hand the guided reverse to the AB line
+                        if (kTurnStage != 1 && kTurnStage != 2 && hasProgressedEnough)
+                        {
+                            CompleteYouTurn();
+                            return false;
+                        }
                     }
 
                     //get the distance from currently active AB line, precalc the norm of line
@@ -2797,7 +3505,25 @@ namespace AgOpenGPS
                     // This prevents premature completion when start and end positions are the same
                     bool hasProgressedEnough = maxProgressIndexReached > (ptCount / 2);
 
-                    if (((A > 0 && distancePiv > 2) || (B >= ptCount - 1)) && hasProgressedEnough)
+                    //(K split holds at the end of part 1 - the reverse leg follows)
+                    if (((A > 0 && distancePiv > 2) || (B >= ptCount - 1)) && hasProgressedEnough && !kSplitHold)
+                    {
+                        CompleteYouTurn();
+                        return false;
+                    }
+
+                    //turn limit lines: U-turn has no reverse phase - backing up after the arc
+                    //ends the turn and hands guidance back to the AB/curve line
+                    if (mf.tnl.IsFeatureOn && activeTurnStyle == 0 && mf.isReverse && hasProgressedEnough)
+                    {
+                        CompleteYouTurn();
+                        return false;
+                    }
+
+                    //rigid K: stage 1/2 reverse is GUIDED; stage 0/3 after the crossing ->
+                    //hand the guided reverse to the AB line (stock case stays in the goal loop)
+                    if (mf.tnl.IsFeatureOn && activeTurnStyle == 1 && mf.isReverse
+                        && kTurnStage != 1 && kTurnStage != 2 && hasProgressedEnough)
                     {
                         CompleteYouTurn();
                         return false;
@@ -2855,11 +3581,19 @@ namespace AgOpenGPS
 
                         if (i == ptCount - 1)//goalPointDistance is longer than remaining u-turn
                         {
+                            if (kSplitHold)
+                            {
+                                //K split: hold at the end of part 1, aim at the last point
+                                //until the driver reverses (guided) back toward part 2
+                                goalPointYT.easting = ytList[ptCount - 1].easting;
+                                goalPointYT.northing = ytList[ptCount - 1].northing;
+                                break;
+                            }
                             CompleteYouTurn();
                             return false;
                         }
 
-                        if (uTurnStyle == 1 && mf.isReverse)
+                        if (!mf.tnl.IsFeatureOn && activeTurnStyle == 1 && mf.isReverse)
                         {
                             CompleteYouTurn();
                             return true;
@@ -2915,11 +3649,13 @@ namespace AgOpenGPS
             GL.PointSize(mf.ABLine.lineWidth + 2);
 
             if (isYouTurnTriggered)
-                GL.Color3(0.95f, 0.5f, 0.95f);
-            else if (isOutOfBounds)
-                GL.Color3(0.9495f, 0.395f, 0.325f);
+                GL.Color3(0.95f, 0.5f, 0.95f);            //maneuver running
+            else if (isOutOfBounds || turnOvershot)
+                GL.Color3(0.9495f, 0.395f, 0.325f);      //red: overshot (reverse) or out of bounds
+            else if (turnArmed)
+                GL.Color3(1.0f, 0.55f, 0.0f);            //orange: in the trigger window - turn is next (even stopped)
             else
-                GL.Color3(0.395f, 0.925f, 0.30f);
+                GL.Color3(0.395f, 0.925f, 0.30f);        //green: approaching, turn will arm
 
             GL.Begin(PrimitiveType.Points);
             for (int i = 0; i < ytList.Count; i++)
@@ -2927,6 +3663,27 @@ namespace AgOpenGPS
                 GL.Vertex3(ytList[i].easting, ytList[i].northing, 0);
             }
             GL.End();
+
+            //NV rigid turns: red tail = overshoot / crossing past the new row (reverse there)
+            if (ytRedIndex > 0 && ytRedIndex < ytList.Count)
+            {
+                GL.Color3(0.9495f, 0.395f, 0.325f);
+                GL.Begin(PrimitiveType.Points);
+                for (int i = ytRedIndex; i < ytList.Count; i++)
+                    GL.Vertex3(ytList[i].easting, ytList[i].northing, 0);
+                GL.End();
+            }
+
+            //K split: pending part 2 drawn sparse/dim (dotted) until the reverse is driven
+            if (kTurnStage > 0 && kTurnStage < 3 && kPart2List.Count > 0)
+            {
+                GL.PointSize(mf.ABLine.lineWidth);
+                GL.Color3(0.75f, 0.75f, 0.75f);
+                GL.Begin(PrimitiveType.Points);
+                for (int i = 0; i < kPart2List.Count; i += 3)
+                    GL.Vertex3(kPart2List[i].easting, kPart2List[i].northing, 0);
+                GL.End();
+            }
 
             //GL.PointSize(12.0f);
             //GL.Begin(PrimitiveType.Points);

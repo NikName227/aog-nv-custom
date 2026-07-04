@@ -1259,6 +1259,9 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsParcelsHidden" xml:space="preserve">
     <value>Čestice skrivene.</value>
   </data>
+  <data name="gsNoParcelCache" xml:space="preserve">
+    <value>Nema spremljenih čestica - prvo ih učitaj u Map App-u.</value>
+  </data>
   <data name="gsParcelsError" xml:space="preserve">
     <value>Greška kod čestica</value>
   </data>
@@ -1399,5 +1402,83 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   </data>
   <data name="gsFreePoint" xml:space="preserve">
     <value>slobodna točka</value>
+  </data>
+  <data name="gsTurnLimitLines" xml:space="preserve">
+    <value>Linije okretanja</value>
+  </data>
+  <data name="gsActivateTurn" xml:space="preserve">
+    <value>Aktiviraj okretanje</value>
+  </data>
+  <data name="gsAutomaticTurn" xml:space="preserve">
+    <value>Automatski okret</value>
+  </data>
+  <data name="gsTurnAfterStop" xml:space="preserve">
+    <value>Okret nakon zaustavljanja</value>
+  </data>
+  <data name="gsAddLine" xml:space="preserve">
+    <value>Dodaj liniju</value>
+  </data>
+  <data name="gsDeleteLine" xml:space="preserve">
+    <value>Obriši liniju</value>
+  </data>
+  <data name="gsKTurnPrimary" xml:space="preserve">
+    <value>K-okret primarno</value>
+  </data>
+  <data name="gsCombinedUK" xml:space="preserve">
+    <value>Kombinirano U/K</value>
+  </data>
+  <data name="gsTurnRadiusInfo" xml:space="preserve">
+    <value>Radijus okretanja</value>
+  </data>
+  <data name="gsParameters" xml:space="preserve">
+    <value>Parametri</value>
+  </data>
+  <data name="gsMapView" xml:space="preserve">
+    <value>Karta</value>
+  </data>
+  <data name="gsTurnStyleK" xml:space="preserve">
+    <value>K-okret</value>
+  </data>
+  <data name="gsTurnStyleU" xml:space="preserve">
+    <value>U-okret</value>
+  </data>
+  <data name="gsTurnStyleRS" xml:space="preserve">
+    <value>RS (uskoro)</value>
+  </data>
+  <data name="gsExitRadius" xml:space="preserve">
+    <value>Izlazni radijus</value>
+  </data>
+  <data name="gsEntryRadius" xml:space="preserve">
+    <value>Ulazni radijus</value>
+  </data>
+  <data name="gsEntryStartDist" xml:space="preserve">
+    <value>Početak ulaza (m prije linije)</value>
+  </data>
+  <data name="gsEntryAngle" xml:space="preserve">
+    <value>Kut ulaza (°)</value>
+  </data>
+  <data name="gsTransitionRadius" xml:space="preserve">
+    <value>Radijus prijelaza</value>
+  </data>
+  <data name="gsMinTurnRadius" xml:space="preserve">
+    <value>Min. radijus</value>
+  </data>
+  <data name="gsTriggerTolerance" xml:space="preserve">
+    <value>Tolerancija okidanja (m)</value>
+  </data>
+  <data name="gsOvershootDist" xml:space="preserve">
+    <value>Overshoot udaljenost (m)</value>
+  </data>
+  <data name="gsUTurnFits" xml:space="preserve">
+    <value>U-okret stane</value>
+  </data>
+  <data name="gsKTurnOnly" xml:space="preserve">
+    <value>samo K-okret</value>
+  </data>
+  <data name="gsTurnLinesSaved" xml:space="preserve">
+    <value>Linije okretanja spremljene</value>
+  </data>
+  <data name="gsTurnLineHint" xml:space="preserve">
+    <value>Linija = dokle kotači smiju ići pri okretu (put dozvoljen)</value>
   </data>
 </root>
