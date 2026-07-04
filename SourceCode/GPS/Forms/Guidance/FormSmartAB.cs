@@ -58,12 +58,13 @@ namespace AgOpenGPS
         private int selIndex = -1;
         private int stepPx = 10; // Coarse by default; Fine = 1
 
-        // Add-point button is tri-state: 0 = Off, 1 = on-boundary (new points within 1 m snap to the
-        // boundary), 2 = Free (place anywhere, as before). Editing later moves points freely.
+        // Add-point button is a simple ON/OFF toggle. When ON, a new point snaps to the
+        // boundary if within BoundarySnapDist (else placed where tapped). Editing later
+        // moves points freely, so a separate "free" add mode is not needed.
         private int addStage = 0;
         private bool AddActive => addStage != 0;
-        private bool AddSnap => addStage == 1;
-        private const double BoundarySnapDist = 3.0; // metres
+        private bool AddSnap => addStage != 0;
+        private const double BoundarySnapDist = 4.0; // metres
 
         // Mouse drag state.
         private int dragIndex = -1;
@@ -77,7 +78,6 @@ namespace AgOpenGPS
 
         // Phase 3: App-Map satellite background (reuse worldGrid.BingMap) + cadastral parcels.
         private BingMapVisual satVisual;
-        private bool fetchingParcels; // a background parcel WFS fetch is in flight
 
         // Phase 4: boxes where the line deviates from the boundary by > threshold (and < 3 m).
         private readonly List<vec2> checkBoxes = new List<vec2>();
@@ -192,8 +192,6 @@ namespace AgOpenGPS
             btnMakeAB.Text = L(gStr.gsABline, "AB line");
             btnMakeBndCurve.Text = L(gStr.gsCurveByBoundary, "Curve by Boundary");
             btnMakeCurve.Text = L(gStr.gsCurve, "Curve");
-            lblAddLegBTxt.Text = L(gStr.gsPointOnBoundary, "point on boundary");
-            lblAddLegFTxt.Text = L(gStr.gsFreePoint, "free point");
             lblPointMode.Text = "";
             lblActiveOp.Text = "";
         }
@@ -263,13 +261,14 @@ namespace AgOpenGPS
             GL.Translate(-mf.fieldCenterX + sX * mf.maxFieldDistance,
                          -mf.fieldCenterY + sY * mf.maxFieldDistance, 0);
 
-            // satellite background (App-Map) + cadastral parcels (Phase 3)
+            // satellite background (App-Map) + cadastral parcels (Phase 3). Parcels follow the
+            // satellite toggle: shown (from the local cache, no internet) only while sat is ON.
             if (satVisual != null)
             {
                 GL.Disable(EnableCap.CullFace); // the textured quad is back-facing here -> would be culled
                 satVisual.Draw();
                 GL.Enable(EnableCap.CullFace);
-                if (Properties.Settings.Default.setMap_showParcelsOnMain && mf.parcels.Segments.Length >= 2)
+                if (mf.parcels.Segments.Length >= 2)
                 {
                     GL.LineWidth(1);
                     GL.Color4(0f, 0.75f, 1f, 0.9f);
@@ -439,12 +438,12 @@ namespace AgOpenGPS
                 if (AddActive)
                 {
                     vec2 np = ScreenToWorld(e.X, e.Y);
-                    if (AddSnap) np = SnapToBoundary(np, BoundarySnapDist); // on-boundary mode
+                    np = SnapToBoundary(np, BoundarySnapDist); // snap to boundary if within range
                     pts.Add(np);
                     RecomputeAB();
                     UpdateLineButtons();
                     Regenerate();           // new point -> update the line
-                    lblActiveOp.Text = AddSnap ? (gStr.gsPointOnBoundary ?? "point on boundary") : gStr.gsAddPoint;
+                    lblActiveOp.Text = gStr.gsAddPoint;
                 }
                 else if (btnDeletePoint.Checked)
                 {
@@ -583,11 +582,11 @@ namespace AgOpenGPS
         }
 
         // ── Add / Delete toggles ──────────────────────────────────────────
-        // Cycle Off -> on-boundary (orange) -> Free (yellow) -> Off.
+        // Add point is a plain ON/OFF toggle (add on boundary).
         private void btnAddPoint_Click(object sender, EventArgs e)
         {
             if (!btnAddPoint.Enabled) return;
-            addStage = (addStage + 1) % 3;
+            addStage = addStage == 0 ? 1 : 0; // toggle ON/OFF
             if (addStage != 0)
             {
                 btnDeletePoint.Checked = false;
@@ -599,20 +598,15 @@ namespace AgOpenGPS
 
         private void ApplyAddStageVisual()
         {
-            switch (addStage)
+            if (addStage != 0)
             {
-                case 1: // on-boundary: snap new points to the boundary
-                    btnAddPoint.BackColor = Color.Orange;
-                    lblActiveOp.Text = gStr.gsPointOnBoundary ?? "point on boundary";
-                    break;
-                case 2: // free add (unchanged behaviour)
-                    btnAddPoint.BackColor = Color.Gold;
-                    lblActiveOp.Text = gStr.gsAddPoint;
-                    break;
-                default:
-                    btnAddPoint.BackColor = Color.AliceBlue;
-                    if (!btnDeletePoint.Checked) lblActiveOp.Text = "";
-                    break;
+                btnAddPoint.BackColor = Color.Orange;
+                lblActiveOp.Text = gStr.gsAddPoint;
+            }
+            else
+            {
+                btnAddPoint.BackColor = Color.AliceBlue;
+                if (!btnDeletePoint.Checked) lblActiveOp.Text = "";
             }
         }
 
@@ -658,37 +652,36 @@ namespace AgOpenGPS
             oglSelf.Invalidate();
         }
 
-        // If the Map-App parcel overlay is enabled but no parcels are loaded yet, fetch them for the
-        // field's bbox in the background (so the user doesn't have to open Map App and wait first).
+        // Load cadastral parcels from the local cache (Parcels.txt, written by Map App). This
+        // window never goes to the internet: if there is no cache, show a message. Shown
+        // whenever a cache exists (independent of the Map App ON/OFF setting).
         private void EnsureParcelsLoaded()
         {
-            if (!Properties.Settings.Default.setMap_showParcelsOnMain) return;
             if (mf.parcels.Segments != null && mf.parcels.Segments.Length >= 2) return; // already have them
-            if (fetchingParcels) return;
 
-            var bb = mf.FieldBoundingBox;
-            if (bb.IsEmpty) return;
-
-            // field bbox corners -> WGS84 lat/lon bbox
-            Wgs84 c0 = mf.AppModel.LocalPlane.ConvertGeoCoordToWgs84(new GeoCoord(bb.MinNorthing, bb.MinEasting));
-            Wgs84 c1 = mf.AppModel.LocalPlane.ConvertGeoCoordToWgs84(new GeoCoord(bb.MaxNorthing, bb.MaxEasting));
-            double minLat = Math.Min(c0.Latitude, c1.Latitude), maxLat = Math.Max(c0.Latitude, c1.Latitude);
-            double minLon = Math.Min(c0.Longitude, c1.Longitude), maxLon = Math.Max(c0.Longitude, c1.Longitude);
-            string wfsUrl = Properties.Settings.Default.setMap_parcelWfsUrl;
-
-            fetchingParcels = true;
-            lblActiveOp.Text = "Loading parcels…";
-            Task.Run(() =>
+            string path = ParcelCachePath();
+            if (path != null && System.IO.File.Exists(path))
             {
-                var parcels = CadastralWfsClient.GetParcels(wfsUrl, minLat, minLon, maxLat, maxLon, out string err);
-                if (!IsHandleCreated) return;
-                BeginInvoke((MethodInvoker)(() => ApplyParcels(parcels, err)));
-            });
+                var cached = CadastralWfsClient.LoadParcels(path, out string err);
+                if (err == null && cached != null && cached.Count > 0)
+                {
+                    ApplyParcels(cached, null);
+                    return;
+                }
+            }
+            lblActiveOp.Text = gStr.gsNoParcelCache;
+        }
+
+        // Full path of the per-field parcel cache file (or null if no field).
+        private string ParcelCachePath()
+        {
+            var dir = mf?.AppCore?.ActiveField?.FieldDirectory;
+            if (dir == null) return null;
+            return System.IO.Path.Combine(dir.FullName, "Parcels.txt");
         }
 
         private void ApplyParcels(System.Collections.Generic.List<CadastralParcel> parcels, string err)
         {
-            fetchingParcels = false;
             if (err != null || parcels == null) { lblActiveOp.Text = "Parcels: " + (err ?? "none"); return; }
 
             var segs = new System.Collections.Generic.List<GeoCoord>();

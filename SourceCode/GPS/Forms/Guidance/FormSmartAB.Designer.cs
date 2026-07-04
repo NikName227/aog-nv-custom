@@ -33,10 +33,6 @@ namespace AgOpenGPS
             this.btnCoarse = new System.Windows.Forms.Button();
             this.btnMeasure = new System.Windows.Forms.Button();
             this.lblMeasure = new System.Windows.Forms.Label();
-            this.lblAddLegB = new System.Windows.Forms.Label();
-            this.lblAddLegBTxt = new System.Windows.Forms.Label();
-            this.lblAddLegF = new System.Windows.Forms.Label();
-            this.lblAddLegFTxt = new System.Windows.Forms.Label();
             this.btnNavUp = new System.Windows.Forms.Button();
             this.btnNavDown = new System.Windows.Forms.Button();
             this.btnNavLeft = new System.Windows.Forms.Button();
@@ -288,44 +284,6 @@ namespace AgOpenGPS
             this.lblMeasure.TabIndex = 8;
             this.lblMeasure.Text = "";
             this.lblMeasure.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
-            //
-            // lblAddLegB (Add-point legend: boundary swatch)
-            //
-            this.lblAddLegB.BackColor = System.Drawing.Color.Orange;
-            this.lblAddLegB.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
-            this.lblAddLegB.Location = new System.Drawing.Point(684, 286);
-            this.lblAddLegB.Name = "lblAddLegB";
-            this.lblAddLegB.Size = new System.Drawing.Size(12, 12);
-            this.lblAddLegB.TabIndex = 40;
-            //
-            // lblAddLegBTxt
-            //
-            this.lblAddLegBTxt.AutoSize = false;
-            this.lblAddLegBTxt.Font = new System.Drawing.Font("Tahoma", 7F);
-            this.lblAddLegBTxt.Location = new System.Drawing.Point(700, 285);
-            this.lblAddLegBTxt.Name = "lblAddLegBTxt";
-            this.lblAddLegBTxt.Size = new System.Drawing.Size(100, 14);
-            this.lblAddLegBTxt.TabIndex = 41;
-            this.lblAddLegBTxt.Text = "point on boundary";
-            //
-            // lblAddLegF (Add-point legend: free swatch)
-            //
-            this.lblAddLegF.BackColor = System.Drawing.Color.Gold;
-            this.lblAddLegF.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
-            this.lblAddLegF.Location = new System.Drawing.Point(684, 301);
-            this.lblAddLegF.Name = "lblAddLegF";
-            this.lblAddLegF.Size = new System.Drawing.Size(12, 12);
-            this.lblAddLegF.TabIndex = 42;
-            //
-            // lblAddLegFTxt
-            //
-            this.lblAddLegFTxt.AutoSize = false;
-            this.lblAddLegFTxt.Font = new System.Drawing.Font("Tahoma", 7F);
-            this.lblAddLegFTxt.Location = new System.Drawing.Point(700, 300);
-            this.lblAddLegFTxt.Name = "lblAddLegFTxt";
-            this.lblAddLegFTxt.Size = new System.Drawing.Size(100, 14);
-            this.lblAddLegFTxt.TabIndex = 43;
-            this.lblAddLegFTxt.Text = "free point";
             //
             // btnNavUp
             //
@@ -691,10 +649,6 @@ namespace AgOpenGPS
             this.Controls.Add(this.btnCoarse);
             this.Controls.Add(this.btnMeasure);
             this.Controls.Add(this.lblMeasure);
-            this.Controls.Add(this.lblAddLegB);
-            this.Controls.Add(this.lblAddLegBTxt);
-            this.Controls.Add(this.lblAddLegF);
-            this.Controls.Add(this.lblAddLegFTxt);
             this.Controls.Add(this.btnNavUp);
             this.Controls.Add(this.btnNavLeft);
             this.Controls.Add(this.btnPoint);
@@ -757,10 +711,6 @@ namespace AgOpenGPS
         private System.Windows.Forms.Button btnCoarse;
         private System.Windows.Forms.Button btnMeasure;
         private System.Windows.Forms.Label lblMeasure;
-        private System.Windows.Forms.Label lblAddLegB;
-        private System.Windows.Forms.Label lblAddLegBTxt;
-        private System.Windows.Forms.Label lblAddLegF;
-        private System.Windows.Forms.Label lblAddLegFTxt;
         private System.Windows.Forms.Button btnNavUp;
         private System.Windows.Forms.Button btnNavDown;
         private System.Windows.Forms.Button btnNavLeft;

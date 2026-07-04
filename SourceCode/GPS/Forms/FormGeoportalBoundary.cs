@@ -164,9 +164,8 @@ namespace AgOpenGPS
             vehicleOverlay.Markers.Add(vehicleMarker);
             vehicleTimer.Start();
 
-            // Re-fetch parcels after the user pans/zooms (debounced)
-            gMapControl.OnPositionChanged += p => DebounceRefresh();
-            gMapControl.OnMapZoomChanged += () => DebounceRefresh();
+            // Parcels come from the local cache (only Map App fetches from the URL); pan/zoom
+            // does NOT auto-fetch. Use Refresh to pull a new area from the WFS when outside it.
             gMapControl.MouseClick += gMap_MouseClick;
             gMapControl.MouseDown += gMap_MouseDown;
             gMapControl.MouseMove += gMap_MouseMove;
@@ -177,6 +176,9 @@ namespace AgOpenGPS
             TrySetBool(gMapControl, "TouchEnabled", true);
 
             UpdateArrowColors();
+
+            // Add point is always available: with no boundary it starts a manual polygon.
+            btnAddPoint.Enabled = true;
 
             UpdateSelInfo();
             isLoading = false;
@@ -192,7 +194,7 @@ namespace AgOpenGPS
 
             // WMS tiles often don't render until the view changes - nudge once.
             ForceMapRefresh();
-            RefreshParcels();
+            LoadParcelsFromCache();
         }
 
         private void ForceMapRefresh()
@@ -210,7 +212,38 @@ namespace AgOpenGPS
             refreshTimer.Start();
         }
 
-        // ── Parcels (WFS vector) ──────────────────────────────────────────
+        // ── Parcels: local cache (default) ────────────────────────────────
+        // Only Map App pulls parcels from the URL and writes the cache. Here we read the
+        // saved Parcels.txt; if there is none we show a message (manual polygon still works).
+        private void LoadParcelsFromCache()
+        {
+            string path = ParcelCachePath();
+            if (path != null && File.Exists(path))
+            {
+                var cached = CadastralWfsClient.LoadParcels(path, out string err);
+                if (err == null && cached != null && cached.Count > 0)
+                {
+                    parcels = cached;
+                    RenderParcels();
+                    lblStatus.Text = parcels.Count + " " + gStr.gsParcels + ".";
+                    return;
+                }
+            }
+            parcels = new List<CadastralParcel>();
+            parcelOverlay.Polygons.Clear();
+            gMapControl.Invalidate();
+            lblStatus.Text = gStr.gsNoParcelCache;
+        }
+
+        // Full path of the per-field parcel cache file (or null if no field).
+        private string ParcelCachePath()
+        {
+            var dir = mf?.AppCore?.ActiveField?.FieldDirectory;
+            if (dir == null) return null;
+            return Path.Combine(dir.FullName, "Parcels.txt");
+        }
+
+        // ── Parcels (WFS vector) — internet, only on explicit Refresh ─────
         private void RefreshParcels()
         {
             if (fetching || !chkParcels.Checked) return;
@@ -704,7 +737,7 @@ namespace AgOpenGPS
 
         private void EnableEditButtons(bool on)
         {
-            btnAddPoint.Enabled = on;
+            btnAddPoint.Enabled = true; // always available (also starts a manual polygon)
             btnDeletePoint.Enabled = on;
             btnUndo.Enabled = on && undoStack.Count > 0;
         }
@@ -756,9 +789,37 @@ namespace AgOpenGPS
                 chkMarkParcel.Checked = false; // exclusive tap mode
                 btnDeletePoint.Checked = false;
                 ResetPointEdit();
+                // With no boundary yet, start a manual polygon: spawn a triangle the user can
+                // expand (drag corners) and add points to. (Otherwise taps insert points.)
+                if (madeRing == null) CreateManualTriangle();
                 lblStatus.Text = gStr.gsAddPoint;
             }
             UpdateDragButton();
+        }
+
+        // Spawn a default triangle in the centre of the view (~1/3 of it) as the start of a
+        // manual boundary. Reuses the Phase-4 edit machinery (handles, move/add/delete/undo).
+        private void CreateManualTriangle()
+        {
+            var area = gMapControl.ViewArea;
+            double cLat = (area.LocationTopLeft.Lat + area.LocationRightBottom.Lat) / 2;
+            double cLon = (area.LocationTopLeft.Lng + area.LocationRightBottom.Lng) / 2;
+            double hLat = Math.Abs(area.LocationTopLeft.Lat - area.LocationRightBottom.Lat) / 6;
+            double hLon = Math.Abs(area.LocationRightBottom.Lng - area.LocationTopLeft.Lng) / 6;
+
+            madeRing = new List<Wgs84>
+            {
+                new Wgs84(cLat + hLat, cLon),        // top
+                new Wgs84(cLat - hLat, cLon - hLon), // bottom-left
+                new Wgs84(cLat - hLat, cLon + hLon), // bottom-right
+            };
+
+            DrawMadeBoundary();
+            BuildMadeHandles();
+            undoStack.Clear();
+            EnableEditButtons(true);
+            btnSaveBoundary.Enabled = true;
+            lblStatus.Text = gStr.gsBoundaryReady;
         }
 
         // Delete point is a tap mode: while active, a tap on a vertex deletes it (keeps deleting).
@@ -964,7 +1025,7 @@ namespace AgOpenGPS
         {
             if (chkParcels.Checked)
             {
-                RefreshParcels();
+                LoadParcelsFromCache();
             }
             else
             {
@@ -974,6 +1035,9 @@ namespace AgOpenGPS
             }
         }
 
+        // Refresh = the one place this window goes to the internet: pull parcels for the
+        // current view from the WFS (e.g. when panned outside the cached area). Cache is not
+        // written here (only Map App writes it).
         private void btnRefresh_Click(object sender, EventArgs e)
         {
             RefreshParcels();
@@ -984,7 +1048,6 @@ namespace AgOpenGPS
             gMapControl.Position = new PointLatLng(
                 mf.AppModel.CurrentLatLon.Latitude,
                 mf.AppModel.CurrentLatLon.Longitude);
-            RefreshParcels();
         }
 
         private void btnZoomIn_Click(object sender, EventArgs e)

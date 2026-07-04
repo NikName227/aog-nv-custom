@@ -243,5 +243,85 @@ namespace AgOpenGPS
         }
 
         private static string F(double v) => v.ToString("F2", CultureInfo.InvariantCulture);
+
+        // ── Per-field parcel cache (WGS84 outlines) ─────────────────────────
+        // Parcels are saved next to the field so turning them ON later loads from
+        // disk (instant) instead of re-fetching from the WFS over the internet.
+
+        /// <summary>Write parcels (WGS84 outer rings) to a cache file in the field folder.</summary>
+        public static bool SaveParcels(string filePath, IEnumerable<CadastralParcel> parcels, out string error)
+        {
+            error = null;
+            try
+            {
+                var list = new List<CadastralParcel>();
+                foreach (var p in parcels)
+                    if (p != null && p.Outer.Count >= 3) list.Add(p);
+
+                using (var sw = new System.IO.StreamWriter(filePath, false))
+                {
+                    sw.WriteLine("$Parcels");
+                    sw.WriteLine(list.Count.ToString(CultureInfo.InvariantCulture));
+                    foreach (var p in list)
+                    {
+                        sw.WriteLine(p.Outer.Count.ToString(CultureInfo.InvariantCulture));
+                        foreach (var pt in p.Outer)
+                            sw.WriteLine(pt.Lat.ToString("F8", CultureInfo.InvariantCulture) + "," +
+                                         pt.Lng.ToString("F8", CultureInfo.InvariantCulture));
+                    }
+                }
+                return true;
+            }
+            catch (Exception ex) { error = ex.Message; return false; }
+        }
+
+        /// <summary>Read parcels from the cache file. Rebuilds the WGS84 outline and the
+        /// EPSG:3765 geometry (so hit-test/union still work). Returns null on error.</summary>
+        public static List<CadastralParcel> LoadParcels(string filePath, out string error)
+        {
+            error = null;
+            var parcels = new List<CadastralParcel>();
+            try
+            {
+                using (var sr = new System.IO.StreamReader(filePath))
+                {
+                    sr.ReadLine(); // header $Parcels
+                    int count = int.Parse(sr.ReadLine(), CultureInfo.InvariantCulture);
+                    for (int k = 0; k < count; k++)
+                    {
+                        int n = int.Parse(sr.ReadLine(), CultureInfo.InvariantCulture);
+                        var p = new CadastralParcel();
+                        var cs = new List<Coordinate>(n + 1);
+                        for (int i = 0; i < n; i++)
+                        {
+                            var parts = sr.ReadLine().Split(',');
+                            double lat = double.Parse(parts[0], CultureInfo.InvariantCulture);
+                            double lon = double.Parse(parts[1], CultureInfo.InvariantCulture);
+                            p.Outer.Add(new PointLatLng(lat, lon));
+                            var (e, nn) = To3765.MathTransform.Transform(lon, lat);
+                            cs.Add(new Coordinate(e, nn));
+                        }
+                        if (cs.Count >= 3)
+                        {
+                            cs.Add(new Coordinate(cs[0].X, cs[0].Y)); // close ring
+                            try
+                            {
+                                var poly = GeomFactory.CreatePolygon(cs.ToArray());
+                                if (!poly.IsValid)
+                                {
+                                    Geometry g = poly.Buffer(0);
+                                    if (g is Polygon pg && !pg.IsEmpty) poly = pg;
+                                }
+                                p.Geom3765 = poly;
+                            }
+                            catch { }
+                        }
+                        parcels.Add(p);
+                    }
+                }
+                return parcels;
+            }
+            catch (Exception ex) { error = ex.Message; return null; }
+        }
     }
 }

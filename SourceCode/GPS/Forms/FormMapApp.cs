@@ -58,7 +58,7 @@ namespace AgOpenGPS
             vehicleTimer.Tick += vehicleTimer_Tick;
 
             parcelTimer.Interval = 700; // debounce parcel re-fetch on pan/zoom
-            parcelTimer.Tick += (s, e) => { parcelTimer.Stop(); RefreshParcels(); };
+            parcelTimer.Tick += (s, e) => { parcelTimer.Stop(); RefreshParcels(false); };
 
             this.KeyPreview = true;
             this.KeyDown += (s, e) => { if (e.KeyCode == Keys.Escape) Close(); };
@@ -114,7 +114,7 @@ namespace AgOpenGPS
 
             if (mf == null || !mf.isJobStarted) return;
             ForceMapRefresh();
-            if (chkParcels.Checked) RefreshParcels();
+            if (chkParcels.Checked) EnableParcels();
         }
 
         private void ForceMapRefresh()
@@ -427,7 +427,7 @@ namespace AgOpenGPS
 
             if (chkParcels.Checked)
             {
-                RefreshParcels();
+                EnableParcels();
             }
             else
             {
@@ -437,17 +437,52 @@ namespace AgOpenGPS
             }
         }
 
+        // Cache-first enable: load parcels from the field's cache file (instant, no
+        // internet); if there is none, fetch from the WFS and save the cache.
+        private void EnableParcels()
+        {
+            if (fetchingParcels || mf == null || !mf.isJobStarted) return;
+
+            string path = ParcelCachePath();
+            if (path != null && System.IO.File.Exists(path))
+            {
+                var cached = CadastralWfsClient.LoadParcels(path, out string err);
+                if (err == null && cached != null && cached.Count > 0)
+                {
+                    DrawParcels(cached, null, false);
+                    return;
+                }
+            }
+            RefreshParcels(true); // no cache -> internet, then save
+        }
+
+        // Full path of the per-field parcel cache file (or null if no field).
+        private string ParcelCachePath()
+        {
+            var dir = mf?.AppCore?.ActiveField?.FieldDirectory;
+            if (dir == null) return null;
+            return System.IO.Path.Combine(dir.FullName, "Parcels.txt");
+        }
+
         private void btnParcelRefresh_Click(object sender, EventArgs e)
         {
-            if (!chkParcels.Checked) chkParcels.Checked = true;
-            else RefreshParcels();
+            // Refresh always goes to the internet and overwrites the cache (use when the
+            // cadastre changed). Turn parcels on without triggering the cache-first load.
+            if (!chkParcels.Checked)
+            {
+                isLoading = true;
+                chkParcels.Checked = true; // CheckedChanged updates text/visibility, skips auto-load
+                isLoading = false;
+                Properties.Settings.Default.setMap_showParcelsOnMain = true;
+            }
+            RefreshParcels(true);
         }
 
         private void tboxParcelUrl_Leave(object sender, EventArgs e)
         {
             if (isLoading) return;
             Properties.Settings.Default.setMap_parcelWfsUrl = tboxParcelUrl.Text.Trim();
-            if (chkParcels.Checked) RefreshParcels();
+            if (chkParcels.Checked) RefreshParcels(true); // new URL -> fetch and refresh cache
         }
 
         private void DebounceParcels()
@@ -457,7 +492,9 @@ namespace AgOpenGPS
             parcelTimer.Start();
         }
 
-        private void RefreshParcels()
+        // saveAfter: write the fetched parcels to the field cache (on explicit enable/refresh,
+        // not on pan/zoom re-fetch so the cache keeps the field area).
+        private void RefreshParcels(bool saveAfter)
         {
             if (fetchingParcels || !chkParcels.Checked || mf == null || !mf.isJobStarted) return;
 
@@ -475,11 +512,11 @@ namespace AgOpenGPS
             {
                 var parcels = CadastralWfsClient.GetParcels(wfsUrl, minLat, minLon, maxLat, maxLon, out string err);
                 if (!IsHandleCreated) return;
-                BeginInvoke((MethodInvoker)(() => DrawParcels(parcels, err)));
+                BeginInvoke((MethodInvoker)(() => DrawParcels(parcels, err, saveAfter)));
             });
         }
 
-        private void DrawParcels(List<CadastralParcel> parcels, string err)
+        private void DrawParcels(List<CadastralParcel> parcels, string err, bool saveAfter)
         {
             fetchingParcels = false;
             parcelOverlay.Polygons.Clear();
@@ -506,6 +543,13 @@ namespace AgOpenGPS
 
             lblStatus.Text = parcels.Count + " " + gStr.gsParcels + ".";
             gMapControl.Invalidate();
+
+            // Cache the fetched parcels next to the field for instant load next time.
+            if (saveAfter && parcels.Count > 0)
+            {
+                string path = ParcelCachePath();
+                if (path != null) CadastralWfsClient.SaveParcels(path, parcels, out _);
+            }
         }
 
         // Convert the captured parcels to local line segments for the crisp main-map vector draw.
