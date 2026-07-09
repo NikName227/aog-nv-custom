@@ -485,6 +485,22 @@ namespace AgOpenGPS
             PanelUpdateRightAndBottom();
         }
 
+        // Orchard Planner (Feature 50): draw/import fixed tree rows, generate mid-inter-row guidance
+        // lines. Like Smart AB it works with free points, so it needs a field but not a boundary.
+        private void btnOrchard_Click(object sender, EventArgs e)
+        {
+            if (ct.isContourBtnOn) { if (ct.isContourBtnOn) btnContour.PerformClick(); }
+
+            if (flp1.Visible) flp1.Visible = false;
+
+            using (var form = new FormOrchardPlanner(this))
+            {
+                form.ShowDialog(this);
+            }
+
+            PanelUpdateRightAndBottom();
+        }
+
         private void btnABDraw_Click(object sender, EventArgs e)
         {
             if (bnd.bndList.Count == 0)

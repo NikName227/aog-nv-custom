@@ -273,6 +273,26 @@ namespace AgOpenGPS
                 rowSkipsWidth = GetNextNotWorkedTrack(isTurnLeft, Properties.Settings.Default.set_youSkipWidth, false);
             }
 
+            //NV follow plan: the plan picks the next row - skip UI/modes are ignored
+            //while ON. The plan only ever targets a pass that exists inside the field,
+            //so when nothing is left to do on this track we must NOT fall through to the
+            //stock skip (it extrapolates onto a lane outside the boundary). Abort the
+            //turn instead - the vehicle just runs out at the boundary.
+            if (mf.plan.IsRuntimeOn)
+            {
+                if (mf.plan.TryNextTarget(mf.curve.howManyPathsAway, out int planTargetC))
+                {
+                    int delta = planTargetC - mf.curve.howManyPathsAway;
+                    isTurnLeft = delta > 0 ? !mf.curve.isHeadingSameWay : mf.curve.isHeadingSameWay;
+                    rowSkipsWidth = Math.Abs(delta);
+                }
+                else
+                {
+                    ResetCreatedYouTurn();
+                    return false;
+                }
+            }
+
             //TODO: is calculated many taimes after the priveous turn is complete
             //grab the vehicle widths and offsets
             double turnOffset = (mf.tool.width - mf.tool.overlap) * rowSkipsWidth + (isTurnLeft ? -mf.tool.offset * 2.0 : mf.tool.offset * 2.0);
@@ -319,6 +339,26 @@ namespace AgOpenGPS
                 }
 
                 rowSkipsWidth = GetNextNotWorkedTrack(isTurnLeft, Properties.Settings.Default.set_youSkipWidth, true);
+            }
+
+            //NV follow plan: the plan picks the next row - skip UI/modes are ignored
+            //while ON. The plan only ever targets a pass that exists inside the field,
+            //so when nothing is left to do on this track we must NOT fall through to the
+            //stock skip (it extrapolates onto a lane outside the boundary). Abort the
+            //turn instead - the vehicle just runs out at the boundary.
+            if (mf.plan.IsRuntimeOn)
+            {
+                if (mf.plan.TryNextTarget(mf.ABLine.howManyPathsAway, out int planTargetAB))
+                {
+                    int delta = planTargetAB - mf.ABLine.howManyPathsAway;
+                    isTurnLeft = delta > 0 ? !mf.ABLine.isHeadingSameWay : mf.ABLine.isHeadingSameWay;
+                    rowSkipsWidth = Math.Abs(delta);
+                }
+                else
+                {
+                    ResetCreatedYouTurn();
+                    return false;
+                }
             }
 
             double turnOffset = (mf.tool.width - mf.tool.overlap) * rowSkipsWidth

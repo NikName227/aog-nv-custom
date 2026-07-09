@@ -71,7 +71,13 @@ namespace AgOpenGPS
         {
             Reset();
             if (data == null) return;
+#if NV_HIDE_TURN
+            //NV: release builds never activate the WIP turn feature, even when a
+            //field file has it enabled (the editor window is hidden too)
+            isTurnActive = false;
+#else
             isTurnActive = data.active;
+#endif
             isAutomatic = data.automatic;
             isKPrimary = data.kPrimary;
             isCombined = data.combined;

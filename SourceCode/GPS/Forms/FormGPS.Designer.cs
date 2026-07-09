@@ -158,6 +158,7 @@ namespace AgOpenGPS
             this.btnNudge = new System.Windows.Forms.Button();
             this.btnABDraw = new System.Windows.Forms.Button();
             this.btnSmartAB = new System.Windows.Forms.Button();
+            this.btnOrchard = new System.Windows.Forms.Button();
             this.btnPlusAB = new System.Windows.Forms.Button();
             this.btnBuildTracks = new System.Windows.Forms.Button();
             this.btnTracksOff = new System.Windows.Forms.Button();
@@ -2000,6 +2001,7 @@ namespace AgOpenGPS
             this.flp1.Controls.Add(this.btnNudge);
             this.flp1.Controls.Add(this.btnABDraw);
             this.flp1.Controls.Add(this.btnSmartAB);
+            this.flp1.Controls.Add(this.btnOrchard);
             this.flp1.Controls.Add(this.btnPlusAB);
             this.flp1.Controls.Add(this.btnBuildTracks);
             this.flp1.Controls.Add(this.btnTracksOff);
@@ -2077,6 +2079,25 @@ namespace AgOpenGPS
             this.btnSmartAB.TextAlign = System.Drawing.ContentAlignment.TopCenter;
             this.btnSmartAB.UseVisualStyleBackColor = false;
             this.btnSmartAB.Click += new System.EventHandler(this.btnSmartAB_Click);
+            //
+            // btnOrchard (Feature 50 — orchard row planner; text button, no image)
+            //
+            this.btnOrchard.Anchor = System.Windows.Forms.AnchorStyles.None;
+            this.btnOrchard.BackColor = System.Drawing.Color.Honeydew;
+            this.btnOrchard.Enabled = false;
+            this.btnOrchard.FlatAppearance.BorderColor = System.Drawing.Color.ForestGreen;
+            this.btnOrchard.FlatAppearance.BorderSize = 2;
+            this.btnOrchard.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnOrchard.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
+            this.btnOrchard.ImeMode = System.Windows.Forms.ImeMode.NoControl;
+            this.btnOrchard.Location = new System.Drawing.Point(3, 340);
+            this.btnOrchard.Name = "btnOrchard";
+            this.btnOrchard.Size = new System.Drawing.Size(80, 72);
+            this.btnOrchard.TabIndex = 547;
+            this.btnOrchard.Text = "Orchard";
+            this.btnOrchard.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.btnOrchard.UseVisualStyleBackColor = false;
+            this.btnOrchard.Click += new System.EventHandler(this.btnOrchard_Click);
             //
             // btnPlusAB
             //
@@ -3044,6 +3065,7 @@ namespace AgOpenGPS
         public System.Windows.Forms.Button btnSectionMasterManual;
         public System.Windows.Forms.Button btnABDraw;
         public System.Windows.Forms.Button btnSmartAB;
+        public System.Windows.Forms.Button btnOrchard;
         public System.Windows.Forms.ToolStripMenuItem menustripLanguage;
         public System.Windows.Forms.Button btnCycleLines;
         private System.Windows.Forms.StatusStrip statusStripLeft;

@@ -210,7 +210,17 @@ namespace AgOpenGPS
                             break;
 
                         case 3:
-                            lblCurrentField.Text = "";
+                            //NV follow plan: "pass X/N - zone Z" in the rotating HUD text
+                            if (plan.IsRuntimeOn)
+                            {
+                                CPlanEntry cur = plan.CurrentEntry() ?? plan.NextEntry();
+                                lblCurrentField.Text = cur == null
+                                    ? gStr.gsPasses + ": " + plan.WorkedCount() + "/" + plan.entries.Count
+                                    : gStr.gsPasses + ": " + cur.order + "/" + plan.entries.Count
+                                        + "  ·  " + gStr.gsZone + " " + cur.zone
+                                        + "  ·  " + plan.WorkedCount() + " ✓";
+                            }
+                            else lblCurrentField.Text = "";
                             break;
 
 

@@ -4669,6 +4669,72 @@ namespace AgOpenGPS.Core.Translations {
             }
         }
 
+        public static string gsEditBoundary {
+            get {
+                return ResourceManager.GetString("gsEditBoundary", resourceCulture);
+            }
+        }
+
+        public static string gsAddObstacle {
+            get {
+                return ResourceManager.GetString("gsAddObstacle", resourceCulture);
+            }
+        }
+
+        public static string gsDeleteObstacle {
+            get {
+                return ResourceManager.GetString("gsDeleteObstacle", resourceCulture);
+            }
+        }
+
+        public static string gsObstacleNeedsBoundary {
+            get {
+                return ResourceManager.GetString("gsObstacleNeedsBoundary", resourceCulture);
+            }
+        }
+
+        public static string gsObstacleOutside {
+            get {
+                return ResourceManager.GetString("gsObstacleOutside", resourceCulture);
+            }
+        }
+
+        public static string gsRadius {
+            get {
+                return ResourceManager.GetString("gsRadius", resourceCulture);
+            }
+        }
+
+        public static string gsAdd {
+            get {
+                return ResourceManager.GetString("gsAdd", resourceCulture);
+            }
+        }
+
+        public static string gsMake {
+            get {
+                return ResourceManager.GetString("gsMake", resourceCulture);
+            }
+        }
+
+        public static string gsSave {
+            get {
+                return ResourceManager.GetString("gsSave", resourceCulture);
+            }
+        }
+
+        public static string gsObstacle {
+            get {
+                return ResourceManager.GetString("gsObstacle", resourceCulture);
+            }
+        }
+
+        public static string gsBoundaryGroup {
+            get {
+                return ResourceManager.GetString("gsBoundaryGroup", resourceCulture);
+            }
+        }
+
         public static string gsSmartAB {
             get {
                 return ResourceManager.GetString("gsSmartAB", resourceCulture);
@@ -4876,6 +4942,72 @@ namespace AgOpenGPS.Core.Translations {
         public static string gsTurnLineHint {
             get {
                 return ResourceManager.GetString("gsTurnLineHint", resourceCulture);
+            }
+        }
+
+        public static string gsRowByRow {
+            get {
+                return ResourceManager.GetString("gsRowByRow", resourceCulture);
+            }
+        }
+
+        public static string gsZonesSkip {
+            get {
+                return ResourceManager.GetString("gsZonesSkip", resourceCulture);
+            }
+        }
+
+        public static string gsContour {
+            get {
+                return ResourceManager.GetString("gsContour", resourceCulture);
+            }
+        }
+
+        public static string gsGeneratePlan {
+            get {
+                return ResourceManager.GetString("gsGeneratePlan", resourceCulture);
+            }
+        }
+
+        public static string gsFollowPlan {
+            get {
+                return ResourceManager.GetString("gsFollowPlan", resourceCulture);
+            }
+        }
+
+        public static string gsZoneWidth {
+            get {
+                return ResourceManager.GetString("gsZoneWidth", resourceCulture);
+            }
+        }
+
+        public static string gsPassesPerZone {
+            get {
+                return ResourceManager.GetString("gsPassesPerZone", resourceCulture);
+            }
+        }
+
+        public static string gsNoPlanHint {
+            get {
+                return ResourceManager.GetString("gsNoPlanHint", resourceCulture);
+            }
+        }
+
+        public static string gsInsideHeadland {
+            get {
+                return ResourceManager.GetString("gsInsideHeadland", resourceCulture);
+            }
+        }
+
+        public static string gsAddPath {
+            get {
+                return ResourceManager.GetString("gsAddPath", resourceCulture);
+            }
+        }
+
+        public static string gsDeletePath {
+            get {
+                return ResourceManager.GetString("gsDeletePath", resourceCulture);
             }
         }
     }

@@ -1,0 +1,595 @@
+namespace AgOpenGPS
+{
+    partial class FormOrchardPlanner
+    {
+        private System.ComponentModel.IContainer components = null;
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && (components != null)) components.Dispose();
+            base.Dispose(disposing);
+        }
+
+        #region Windows Form Designer generated code
+
+        private void InitializeComponent()
+        {
+            this.oglSelf = new OpenTK.GLControl();
+            this.lblActiveOp = new System.Windows.Forms.Label();
+            this.btnZoomIn = new System.Windows.Forms.Button();
+            this.btnZoomOut = new System.Windows.Forms.Button();
+            this.btnZoomRestore = new System.Windows.Forms.Button();
+            this.btnSat = new System.Windows.Forms.CheckBox();
+            this.btnWinFull = new System.Windows.Forms.Button();
+            this.btnWinClose = new System.Windows.Forms.Button();
+            this.lblName = new System.Windows.Forms.Label();
+            this.tboxName = new System.Windows.Forms.TextBox();
+            this.lblLegCap = new System.Windows.Forms.Label();
+            this.lblLegRow = new System.Windows.Forms.Label();
+            this.lblLegMid = new System.Windows.Forms.Label();
+            this.lblLegTree = new System.Windows.Forms.Label();
+            this.btnFine = new System.Windows.Forms.Button();
+            this.btnCoarse = new System.Windows.Forms.Button();
+            this.btnMeasure = new System.Windows.Forms.Button();
+            this.lblMeasure = new System.Windows.Forms.Label();
+            this.btnNavUp = new System.Windows.Forms.Button();
+            this.btnNavDown = new System.Windows.Forms.Button();
+            this.btnNavLeft = new System.Windows.Forms.Button();
+            this.btnNavRight = new System.Windows.Forms.Button();
+            this.btnPoint = new System.Windows.Forms.Button();
+            this.lblPointMode = new System.Windows.Forms.Label();
+            this.btnAddPoint = new System.Windows.Forms.CheckBox();
+            this.btnDeletePoint = new System.Windows.Forms.CheckBox();
+            this.btnImportKml = new System.Windows.Forms.Button();
+            this.btnMakePath = new System.Windows.Forms.Button();
+            this.lblWarn = new System.Windows.Forms.Label();
+            this.btnNewRow = new System.Windows.Forms.Button();
+            this.btnEdit = new System.Windows.Forms.Button();
+            this.btnPrevRow = new System.Windows.Forms.Button();
+            this.btnNextRow = new System.Windows.Forms.Button();
+            this.btnDeleteRow = new System.Windows.Forms.Button();
+            this.btnCancel = new System.Windows.Forms.Button();
+            this.btnAccept = new System.Windows.Forms.Button();
+            this.SuspendLayout();
+            //
+            // oglSelf
+            //
+            this.oglSelf.BackColor = System.Drawing.Color.Black;
+            this.oglSelf.Cursor = System.Windows.Forms.Cursors.Cross;
+            this.oglSelf.Location = new System.Drawing.Point(8, 8);
+            this.oglSelf.Margin = new System.Windows.Forms.Padding(0);
+            this.oglSelf.Name = "oglSelf";
+            this.oglSelf.Size = new System.Drawing.Size(660, 660);
+            this.oglSelf.TabIndex = 0;
+            this.oglSelf.VSync = false;
+            this.oglSelf.Load += new System.EventHandler(this.oglSelf_Load);
+            this.oglSelf.Paint += new System.Windows.Forms.PaintEventHandler(this.oglSelf_Paint);
+            this.oglSelf.MouseDown += new System.Windows.Forms.MouseEventHandler(this.oglSelf_MouseDown);
+            this.oglSelf.MouseMove += new System.Windows.Forms.MouseEventHandler(this.oglSelf_MouseMove);
+            this.oglSelf.MouseUp += new System.Windows.Forms.MouseEventHandler(this.oglSelf_MouseUp);
+            this.oglSelf.Resize += new System.EventHandler(this.oglSelf_Resize);
+            //
+            // lblActiveOp
+            //
+            this.lblActiveOp.AutoSize = true;
+            this.lblActiveOp.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.lblActiveOp.ForeColor = System.Drawing.Color.DimGray;
+            this.lblActiveOp.Location = new System.Drawing.Point(8, 674);
+            this.lblActiveOp.Name = "lblActiveOp";
+            this.lblActiveOp.Size = new System.Drawing.Size(0, 18);
+            this.lblActiveOp.TabIndex = 1;
+            //
+            // btnZoomIn
+            //
+            this.btnZoomIn.BackColor = System.Drawing.Color.White;
+            this.btnZoomIn.Font = new System.Drawing.Font("Tahoma", 20F, System.Drawing.FontStyle.Bold);
+            this.btnZoomIn.Location = new System.Drawing.Point(604, 544);
+            this.btnZoomIn.Name = "btnZoomIn";
+            this.btnZoomIn.Size = new System.Drawing.Size(56, 56);
+            this.btnZoomIn.TabIndex = 2;
+            this.btnZoomIn.Text = "+";
+            this.btnZoomIn.UseVisualStyleBackColor = false;
+            this.btnZoomIn.Click += new System.EventHandler(this.btnZoomIn_Click);
+            //
+            // btnZoomOut
+            //
+            this.btnZoomOut.BackColor = System.Drawing.Color.White;
+            this.btnZoomOut.Font = new System.Drawing.Font("Tahoma", 20F, System.Drawing.FontStyle.Bold);
+            this.btnZoomOut.Location = new System.Drawing.Point(604, 606);
+            this.btnZoomOut.Name = "btnZoomOut";
+            this.btnZoomOut.Size = new System.Drawing.Size(56, 56);
+            this.btnZoomOut.TabIndex = 3;
+            this.btnZoomOut.Text = "−";
+            this.btnZoomOut.UseVisualStyleBackColor = false;
+            this.btnZoomOut.Click += new System.EventHandler(this.btnZoomOut_Click);
+            //
+            // btnZoomRestore
+            //
+            this.btnZoomRestore.BackColor = System.Drawing.Color.White;
+            this.btnZoomRestore.Font = new System.Drawing.Font("Tahoma", 16F, System.Drawing.FontStyle.Bold);
+            this.btnZoomRestore.Location = new System.Drawing.Point(604, 575);
+            this.btnZoomRestore.Name = "btnZoomRestore";
+            this.btnZoomRestore.Size = new System.Drawing.Size(56, 56);
+            this.btnZoomRestore.TabIndex = 4;
+            this.btnZoomRestore.Text = "○";
+            this.btnZoomRestore.UseVisualStyleBackColor = false;
+            this.btnZoomRestore.Click += new System.EventHandler(this.btnZoomRestore_Click);
+            //
+            // btnSat
+            //
+            this.btnSat.Appearance = System.Windows.Forms.Appearance.Button;
+            this.btnSat.BackColor = System.Drawing.Color.White;
+            this.btnSat.FlatAppearance.CheckedBackColor = System.Drawing.Color.MediumAquamarine;
+            this.btnSat.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnSat.Font = new System.Drawing.Font("Tahoma", 8F, System.Drawing.FontStyle.Bold);
+            this.btnSat.Location = new System.Drawing.Point(604, 14);
+            this.btnSat.Name = "btnSat";
+            this.btnSat.Size = new System.Drawing.Size(56, 50);
+            this.btnSat.TabIndex = 5;
+            this.btnSat.Text = "SAT";
+            this.btnSat.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.btnSat.UseVisualStyleBackColor = false;
+            this.btnSat.CheckedChanged += new System.EventHandler(this.btnSat_CheckedChanged);
+            //
+            // btnWinFull
+            //
+            this.btnWinFull.BackColor = System.Drawing.Color.Gainsboro;
+            this.btnWinFull.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnWinFull.Font = new System.Drawing.Font("Tahoma", 14F, System.Drawing.FontStyle.Bold);
+            this.btnWinFull.Location = new System.Drawing.Point(880, 6);
+            this.btnWinFull.Name = "btnWinFull";
+            this.btnWinFull.Size = new System.Drawing.Size(50, 38);
+            this.btnWinFull.TabIndex = 31;
+            this.btnWinFull.Text = "❐";
+            this.btnWinFull.UseVisualStyleBackColor = false;
+            this.btnWinFull.Click += new System.EventHandler(this.btnWinFull_Click);
+            //
+            // btnWinClose
+            //
+            this.btnWinClose.BackColor = System.Drawing.Color.MistyRose;
+            this.btnWinClose.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnWinClose.Font = new System.Drawing.Font("Tahoma", 14F, System.Drawing.FontStyle.Bold);
+            this.btnWinClose.Location = new System.Drawing.Point(938, 6);
+            this.btnWinClose.Name = "btnWinClose";
+            this.btnWinClose.Size = new System.Drawing.Size(50, 38);
+            this.btnWinClose.TabIndex = 32;
+            this.btnWinClose.Text = "✕";
+            this.btnWinClose.UseVisualStyleBackColor = false;
+            this.btnWinClose.Click += new System.EventHandler(this.btnWinClose_Click);
+            //
+            // lblName
+            //
+            this.lblName.AutoSize = true;
+            this.lblName.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
+            this.lblName.Location = new System.Drawing.Point(684, 600);
+            this.lblName.Name = "lblName";
+            this.lblName.Size = new System.Drawing.Size(43, 16);
+            this.lblName.TabIndex = 33;
+            this.lblName.Text = "Name";
+            //
+            // tboxName
+            //
+            this.tboxName.Font = new System.Drawing.Font("Tahoma", 11.25F);
+            this.tboxName.Location = new System.Drawing.Point(740, 596);
+            this.tboxName.Name = "tboxName";
+            this.tboxName.Size = new System.Drawing.Size(246, 26);
+            this.tboxName.TabIndex = 34;
+            //
+            // lblLegCap
+            //
+            this.lblLegCap.AutoSize = true;
+            this.lblLegCap.Font = new System.Drawing.Font("Tahoma", 9F, System.Drawing.FontStyle.Bold);
+            this.lblLegCap.ForeColor = System.Drawing.Color.DimGray;
+            this.lblLegCap.Location = new System.Drawing.Point(684, 8);
+            this.lblLegCap.Name = "lblLegCap";
+            this.lblLegCap.Size = new System.Drawing.Size(50, 15);
+            this.lblLegCap.TabIndex = 35;
+            this.lblLegCap.Text = "Legend";
+            //
+            // lblLegRow
+            //
+            this.lblLegRow.BackColor = System.Drawing.Color.LimeGreen;
+            this.lblLegRow.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            this.lblLegRow.Font = new System.Drawing.Font("Tahoma", 8.25F, System.Drawing.FontStyle.Bold);
+            this.lblLegRow.Location = new System.Drawing.Point(684, 26);
+            this.lblLegRow.Name = "lblLegRow";
+            this.lblLegRow.Size = new System.Drawing.Size(60, 24);
+            this.lblLegRow.TabIndex = 36;
+            this.lblLegRow.Text = "Row";
+            this.lblLegRow.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            //
+            // lblLegMid
+            //
+            this.lblLegMid.BackColor = System.Drawing.Color.Gold;
+            this.lblLegMid.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            this.lblLegMid.Font = new System.Drawing.Font("Tahoma", 8.25F, System.Drawing.FontStyle.Bold);
+            this.lblLegMid.Location = new System.Drawing.Point(748, 26);
+            this.lblLegMid.Name = "lblLegMid";
+            this.lblLegMid.Size = new System.Drawing.Size(70, 24);
+            this.lblLegMid.TabIndex = 37;
+            this.lblLegMid.Text = "Mid-line";
+            this.lblLegMid.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            //
+            // lblLegTree
+            //
+            this.lblLegTree.BackColor = System.Drawing.Color.RosyBrown;
+            this.lblLegTree.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            this.lblLegTree.Font = new System.Drawing.Font("Tahoma", 8.25F, System.Drawing.FontStyle.Bold);
+            this.lblLegTree.Location = new System.Drawing.Point(822, 26);
+            this.lblLegTree.Name = "lblLegTree";
+            this.lblLegTree.Size = new System.Drawing.Size(60, 24);
+            this.lblLegTree.TabIndex = 38;
+            this.lblLegTree.Text = "Tree";
+            this.lblLegTree.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            //
+            // btnFine
+            //
+            this.btnFine.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnFine.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Bold);
+            this.btnFine.Location = new System.Drawing.Point(684, 100);
+            this.btnFine.Name = "btnFine";
+            this.btnFine.Size = new System.Drawing.Size(80, 44);
+            this.btnFine.TabIndex = 6;
+            this.btnFine.Text = "Fine";
+            this.btnFine.UseVisualStyleBackColor = true;
+            this.btnFine.Click += new System.EventHandler(this.btnFine_Click);
+            //
+            // btnCoarse
+            //
+            this.btnCoarse.BackColor = System.Drawing.Color.LightSteelBlue;
+            this.btnCoarse.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnCoarse.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Bold);
+            this.btnCoarse.Location = new System.Drawing.Point(684, 150);
+            this.btnCoarse.Name = "btnCoarse";
+            this.btnCoarse.Size = new System.Drawing.Size(80, 44);
+            this.btnCoarse.TabIndex = 7;
+            this.btnCoarse.Text = "Coarse";
+            this.btnCoarse.UseVisualStyleBackColor = false;
+            this.btnCoarse.Click += new System.EventHandler(this.btnCoarse_Click);
+            //
+            // btnMeasure
+            //
+            this.btnMeasure.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
+            this.btnMeasure.Location = new System.Drawing.Point(684, 212);
+            this.btnMeasure.Name = "btnMeasure";
+            this.btnMeasure.Size = new System.Drawing.Size(80, 44);
+            this.btnMeasure.TabIndex = 8;
+            this.btnMeasure.Text = "Measure";
+            this.btnMeasure.UseVisualStyleBackColor = true;
+            this.btnMeasure.Click += new System.EventHandler(this.btnMeasure_Click);
+            //
+            // lblMeasure
+            //
+            this.lblMeasure.Font = new System.Drawing.Font("Tahoma", 11F, System.Drawing.FontStyle.Bold);
+            this.lblMeasure.ForeColor = System.Drawing.Color.Firebrick;
+            this.lblMeasure.Location = new System.Drawing.Point(684, 260);
+            this.lblMeasure.Name = "lblMeasure";
+            this.lblMeasure.Size = new System.Drawing.Size(104, 22);
+            this.lblMeasure.TabIndex = 9;
+            this.lblMeasure.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            //
+            // btnNavUp
+            //
+            this.btnNavUp.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnNavUp.Font = new System.Drawing.Font("Tahoma", 20F, System.Drawing.FontStyle.Bold);
+            this.btnNavUp.ForeColor = System.Drawing.Color.RoyalBlue;
+            this.btnNavUp.Location = new System.Drawing.Point(854, 92);
+            this.btnNavUp.Name = "btnNavUp";
+            this.btnNavUp.Size = new System.Drawing.Size(60, 60);
+            this.btnNavUp.TabIndex = 10;
+            this.btnNavUp.Text = "▲";
+            this.btnNavUp.UseVisualStyleBackColor = true;
+            this.btnNavUp.Click += new System.EventHandler(this.btnNavUp_Click);
+            //
+            // btnNavLeft
+            //
+            this.btnNavLeft.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnNavLeft.Font = new System.Drawing.Font("Tahoma", 20F, System.Drawing.FontStyle.Bold);
+            this.btnNavLeft.ForeColor = System.Drawing.Color.RoyalBlue;
+            this.btnNavLeft.Location = new System.Drawing.Point(790, 156);
+            this.btnNavLeft.Name = "btnNavLeft";
+            this.btnNavLeft.Size = new System.Drawing.Size(60, 60);
+            this.btnNavLeft.TabIndex = 11;
+            this.btnNavLeft.Text = "◄";
+            this.btnNavLeft.UseVisualStyleBackColor = true;
+            this.btnNavLeft.Click += new System.EventHandler(this.btnNavLeft_Click);
+            //
+            // btnPoint
+            //
+            this.btnPoint.BackColor = System.Drawing.Color.Gainsboro;
+            this.btnPoint.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnPoint.Font = new System.Drawing.Font("Tahoma", 18F, System.Drawing.FontStyle.Bold);
+            this.btnPoint.Location = new System.Drawing.Point(854, 156);
+            this.btnPoint.Name = "btnPoint";
+            this.btnPoint.Size = new System.Drawing.Size(60, 60);
+            this.btnPoint.TabIndex = 12;
+            this.btnPoint.Text = "●";
+            this.btnPoint.UseVisualStyleBackColor = false;
+            this.btnPoint.Click += new System.EventHandler(this.btnPoint_Click);
+            //
+            // btnNavRight
+            //
+            this.btnNavRight.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnNavRight.Font = new System.Drawing.Font("Tahoma", 20F, System.Drawing.FontStyle.Bold);
+            this.btnNavRight.ForeColor = System.Drawing.Color.RoyalBlue;
+            this.btnNavRight.Location = new System.Drawing.Point(918, 156);
+            this.btnNavRight.Name = "btnNavRight";
+            this.btnNavRight.Size = new System.Drawing.Size(60, 60);
+            this.btnNavRight.TabIndex = 13;
+            this.btnNavRight.Text = "►";
+            this.btnNavRight.UseVisualStyleBackColor = true;
+            this.btnNavRight.Click += new System.EventHandler(this.btnNavRight_Click);
+            //
+            // btnNavDown
+            //
+            this.btnNavDown.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnNavDown.Font = new System.Drawing.Font("Tahoma", 20F, System.Drawing.FontStyle.Bold);
+            this.btnNavDown.ForeColor = System.Drawing.Color.RoyalBlue;
+            this.btnNavDown.Location = new System.Drawing.Point(854, 220);
+            this.btnNavDown.Name = "btnNavDown";
+            this.btnNavDown.Size = new System.Drawing.Size(60, 60);
+            this.btnNavDown.TabIndex = 14;
+            this.btnNavDown.Text = "▼";
+            this.btnNavDown.UseVisualStyleBackColor = true;
+            this.btnNavDown.Click += new System.EventHandler(this.btnNavDown_Click);
+            //
+            // lblPointMode
+            //
+            this.lblPointMode.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.lblPointMode.ForeColor = System.Drawing.Color.DimGray;
+            this.lblPointMode.Location = new System.Drawing.Point(786, 286);
+            this.lblPointMode.Name = "lblPointMode";
+            this.lblPointMode.Size = new System.Drawing.Size(200, 24);
+            this.lblPointMode.TabIndex = 15;
+            this.lblPointMode.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            //
+            // btnAddPoint
+            //
+            this.btnAddPoint.Appearance = System.Windows.Forms.Appearance.Button;
+            this.btnAddPoint.AutoCheck = false;
+            this.btnAddPoint.BackColor = System.Drawing.Color.AliceBlue;
+            this.btnAddPoint.FlatAppearance.CheckedBackColor = System.Drawing.Color.Gold;
+            this.btnAddPoint.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnAddPoint.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Bold);
+            this.btnAddPoint.Location = new System.Drawing.Point(684, 316);
+            this.btnAddPoint.Name = "btnAddPoint";
+            this.btnAddPoint.Size = new System.Drawing.Size(145, 44);
+            this.btnAddPoint.TabIndex = 16;
+            this.btnAddPoint.Text = "Add point";
+            this.btnAddPoint.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.btnAddPoint.UseVisualStyleBackColor = false;
+            this.btnAddPoint.Click += new System.EventHandler(this.btnAddPoint_Click);
+            //
+            // btnDeletePoint
+            //
+            this.btnDeletePoint.Appearance = System.Windows.Forms.Appearance.Button;
+            this.btnDeletePoint.BackColor = System.Drawing.Color.AliceBlue;
+            this.btnDeletePoint.FlatAppearance.CheckedBackColor = System.Drawing.Color.IndianRed;
+            this.btnDeletePoint.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnDeletePoint.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Bold);
+            this.btnDeletePoint.Location = new System.Drawing.Point(835, 316);
+            this.btnDeletePoint.Name = "btnDeletePoint";
+            this.btnDeletePoint.Size = new System.Drawing.Size(145, 44);
+            this.btnDeletePoint.TabIndex = 17;
+            this.btnDeletePoint.Text = "Delete point";
+            this.btnDeletePoint.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.btnDeletePoint.UseVisualStyleBackColor = false;
+            this.btnDeletePoint.CheckedChanged += new System.EventHandler(this.btnDeletePoint_CheckedChanged);
+            //
+            // btnImportKml
+            //
+            this.btnImportKml.BackColor = System.Drawing.Color.AliceBlue;
+            this.btnImportKml.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnImportKml.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
+            this.btnImportKml.Location = new System.Drawing.Point(684, 372);
+            this.btnImportKml.Name = "btnImportKml";
+            this.btnImportKml.Size = new System.Drawing.Size(145, 56);
+            this.btnImportKml.TabIndex = 18;
+            this.btnImportKml.Text = "Import KML";
+            this.btnImportKml.UseVisualStyleBackColor = false;
+            this.btnImportKml.Click += new System.EventHandler(this.btnImportKml_Click);
+            //
+            // btnMakePath
+            //
+            this.btnMakePath.BackColor = System.Drawing.Color.LightGoldenrodYellow;
+            this.btnMakePath.Enabled = false;
+            this.btnMakePath.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnMakePath.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
+            this.btnMakePath.Location = new System.Drawing.Point(835, 372);
+            this.btnMakePath.Name = "btnMakePath";
+            this.btnMakePath.Size = new System.Drawing.Size(145, 56);
+            this.btnMakePath.TabIndex = 19;
+            this.btnMakePath.Text = "Make path";
+            this.btnMakePath.UseVisualStyleBackColor = false;
+            this.btnMakePath.Click += new System.EventHandler(this.btnMakePath_Click);
+            //
+            // lblWarn
+            //
+            this.lblWarn.AutoSize = false;
+            this.lblWarn.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
+            this.lblWarn.ForeColor = System.Drawing.Color.Firebrick;
+            this.lblWarn.Location = new System.Drawing.Point(684, 436);
+            this.lblWarn.Name = "lblWarn";
+            this.lblWarn.Size = new System.Drawing.Size(300, 40);
+            this.lblWarn.TabIndex = 20;
+            //
+            // btnNewRow
+            //
+            this.btnNewRow.BackColor = System.Drawing.Color.Honeydew;
+            this.btnNewRow.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnNewRow.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.btnNewRow.Location = new System.Drawing.Point(684, 548);
+            this.btnNewRow.Name = "btnNewRow";
+            this.btnNewRow.Size = new System.Drawing.Size(146, 42);
+            this.btnNewRow.TabIndex = 21;
+            this.btnNewRow.Text = "New row";
+            this.btnNewRow.UseVisualStyleBackColor = false;
+            this.btnNewRow.Click += new System.EventHandler(this.btnNewRow_Click);
+            //
+            // btnEdit
+            //
+            this.btnEdit.BackColor = System.Drawing.Color.AliceBlue;
+            this.btnEdit.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnEdit.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.btnEdit.Location = new System.Drawing.Point(838, 548);
+            this.btnEdit.Name = "btnEdit";
+            this.btnEdit.Size = new System.Drawing.Size(146, 42);
+            this.btnEdit.TabIndex = 22;
+            this.btnEdit.Text = "Edit row";
+            this.btnEdit.UseVisualStyleBackColor = false;
+            this.btnEdit.Click += new System.EventHandler(this.btnEdit_Click);
+            //
+            // btnPrevRow
+            //
+            this.btnPrevRow.Enabled = false;
+            this.btnPrevRow.Font = new System.Drawing.Font("Tahoma", 14F, System.Drawing.FontStyle.Bold);
+            this.btnPrevRow.Location = new System.Drawing.Point(684, 640);
+            this.btnPrevRow.Name = "btnPrevRow";
+            this.btnPrevRow.Size = new System.Drawing.Size(90, 46);
+            this.btnPrevRow.TabIndex = 23;
+            this.btnPrevRow.Text = "|◄◄";
+            this.btnPrevRow.UseVisualStyleBackColor = true;
+            this.btnPrevRow.Click += new System.EventHandler(this.btnPrevRow_Click);
+            //
+            // btnDeleteRow
+            //
+            this.btnDeleteRow.Enabled = false;
+            this.btnDeleteRow.Font = new System.Drawing.Font("Tahoma", 12F, System.Drawing.FontStyle.Bold);
+            this.btnDeleteRow.Location = new System.Drawing.Point(790, 640);
+            this.btnDeleteRow.Name = "btnDeleteRow";
+            this.btnDeleteRow.Size = new System.Drawing.Size(90, 46);
+            this.btnDeleteRow.TabIndex = 24;
+            this.btnDeleteRow.Text = "Del";
+            this.btnDeleteRow.UseVisualStyleBackColor = true;
+            this.btnDeleteRow.Click += new System.EventHandler(this.btnDeleteRow_Click);
+            //
+            // btnNextRow
+            //
+            this.btnNextRow.Enabled = false;
+            this.btnNextRow.Font = new System.Drawing.Font("Tahoma", 14F, System.Drawing.FontStyle.Bold);
+            this.btnNextRow.Location = new System.Drawing.Point(896, 640);
+            this.btnNextRow.Name = "btnNextRow";
+            this.btnNextRow.Size = new System.Drawing.Size(90, 46);
+            this.btnNextRow.TabIndex = 25;
+            this.btnNextRow.Text = "►►|";
+            this.btnNextRow.UseVisualStyleBackColor = true;
+            this.btnNextRow.Click += new System.EventHandler(this.btnNextRow_Click);
+            //
+            // btnCancel
+            //
+            this.btnCancel.BackColor = System.Drawing.Color.MistyRose;
+            this.btnCancel.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.btnCancel.Location = new System.Drawing.Point(790, 700);
+            this.btnCancel.Name = "btnCancel";
+            this.btnCancel.Size = new System.Drawing.Size(90, 50);
+            this.btnCancel.TabIndex = 26;
+            this.btnCancel.Text = "✕";
+            this.btnCancel.UseVisualStyleBackColor = false;
+            this.btnCancel.Click += new System.EventHandler(this.btnCancel_Click);
+            //
+            // btnAccept
+            //
+            this.btnAccept.BackColor = System.Drawing.Color.Honeydew;
+            this.btnAccept.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.btnAccept.Location = new System.Drawing.Point(896, 700);
+            this.btnAccept.Name = "btnAccept";
+            this.btnAccept.Size = new System.Drawing.Size(90, 50);
+            this.btnAccept.TabIndex = 27;
+            this.btnAccept.Text = "✓";
+            this.btnAccept.UseVisualStyleBackColor = false;
+            this.btnAccept.Click += new System.EventHandler(this.btnAccept_Click);
+            //
+            // FormOrchardPlanner
+            //
+            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
+            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+            this.BackColor = System.Drawing.Color.WhiteSmoke;
+            this.ClientSize = new System.Drawing.Size(1000, 760);
+            this.Controls.Add(this.btnZoomIn);
+            this.Controls.Add(this.btnZoomOut);
+            this.Controls.Add(this.btnZoomRestore);
+            this.Controls.Add(this.btnSat);
+            this.Controls.Add(this.btnWinFull);
+            this.Controls.Add(this.btnWinClose);
+            this.Controls.Add(this.lblLegCap);
+            this.Controls.Add(this.lblLegRow);
+            this.Controls.Add(this.lblLegMid);
+            this.Controls.Add(this.lblLegTree);
+            this.Controls.Add(this.lblName);
+            this.Controls.Add(this.tboxName);
+            this.Controls.Add(this.lblActiveOp);
+            this.Controls.Add(this.btnFine);
+            this.Controls.Add(this.btnCoarse);
+            this.Controls.Add(this.btnMeasure);
+            this.Controls.Add(this.lblMeasure);
+            this.Controls.Add(this.btnNavUp);
+            this.Controls.Add(this.btnNavLeft);
+            this.Controls.Add(this.btnPoint);
+            this.Controls.Add(this.btnNavRight);
+            this.Controls.Add(this.btnNavDown);
+            this.Controls.Add(this.lblPointMode);
+            this.Controls.Add(this.btnAddPoint);
+            this.Controls.Add(this.btnDeletePoint);
+            this.Controls.Add(this.btnImportKml);
+            this.Controls.Add(this.btnMakePath);
+            this.Controls.Add(this.lblWarn);
+            this.Controls.Add(this.btnNewRow);
+            this.Controls.Add(this.btnEdit);
+            this.Controls.Add(this.btnPrevRow);
+            this.Controls.Add(this.btnDeleteRow);
+            this.Controls.Add(this.btnNextRow);
+            this.Controls.Add(this.btnCancel);
+            this.Controls.Add(this.btnAccept);
+            this.Controls.Add(this.oglSelf);
+            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.None;
+            this.MinimumSize = new System.Drawing.Size(820, 560);
+            this.Name = "FormOrchardPlanner";
+            this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
+            this.Text = "Orchard Planner";
+            this.Load += new System.EventHandler(this.FormOrchardPlanner_Load);
+            this.Resize += new System.EventHandler(this.FormOrchardPlanner_Resize);
+            this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.FormOrchardPlanner_FormClosing);
+            this.ResumeLayout(false);
+            this.PerformLayout();
+        }
+
+        #endregion
+
+        private OpenTK.GLControl oglSelf;
+        private System.Windows.Forms.Label lblActiveOp;
+        private System.Windows.Forms.Button btnZoomIn;
+        private System.Windows.Forms.Button btnZoomOut;
+        private System.Windows.Forms.Button btnZoomRestore;
+        private System.Windows.Forms.CheckBox btnSat;
+        private System.Windows.Forms.Button btnWinFull;
+        private System.Windows.Forms.Button btnWinClose;
+        private System.Windows.Forms.Label lblName;
+        private System.Windows.Forms.TextBox tboxName;
+        private System.Windows.Forms.Label lblLegCap;
+        private System.Windows.Forms.Label lblLegRow;
+        private System.Windows.Forms.Label lblLegMid;
+        private System.Windows.Forms.Label lblLegTree;
+        private System.Windows.Forms.Button btnFine;
+        private System.Windows.Forms.Button btnCoarse;
+        private System.Windows.Forms.Button btnMeasure;
+        private System.Windows.Forms.Label lblMeasure;
+        private System.Windows.Forms.Button btnNavUp;
+        private System.Windows.Forms.Button btnNavDown;
+        private System.Windows.Forms.Button btnNavLeft;
+        private System.Windows.Forms.Button btnNavRight;
+        private System.Windows.Forms.Button btnPoint;
+        private System.Windows.Forms.Label lblPointMode;
+        private System.Windows.Forms.CheckBox btnAddPoint;
+        private System.Windows.Forms.CheckBox btnDeletePoint;
+        private System.Windows.Forms.Button btnImportKml;
+        private System.Windows.Forms.Button btnMakePath;
+        private System.Windows.Forms.Label lblWarn;
+        private System.Windows.Forms.Button btnNewRow;
+        private System.Windows.Forms.Button btnEdit;
+        private System.Windows.Forms.Button btnPrevRow;
+        private System.Windows.Forms.Button btnNextRow;
+        private System.Windows.Forms.Button btnDeleteRow;
+        private System.Windows.Forms.Button btnCancel;
+        private System.Windows.Forms.Button btnAccept;
+    }
+}

@@ -150,6 +150,9 @@ namespace AgOpenGPS
             // --- Turn limit lines (NV custom, needs boundaries loaded first) ---
             tnl.ApplyLoaded(TurnLinesFiles.Load(dir));
 
+            // --- Pass plan (NV custom, one file per implement working width) ---
+            plan.ApplyLoaded(TurnPlanFiles.Load(dir, tool.width - tool.overlap));
+
             // --- Headlands ---
             TryRun("Headland.txt", LoadCriticality.Optional, () => HeadlandFiles.AttachLoad(dir, boundaries));
 
@@ -314,6 +317,12 @@ namespace AgOpenGPS
         public void FileSaveTurnLines()
         {
             TurnLinesFiles.Save(GetFieldDir(true), tnl);
+        }
+
+        // Save the pass plan (NV custom, one file per implement working width).
+        public void FileSaveTurnPlan()
+        {
+            TurnPlanFiles.Save(GetFieldDir(true), plan, tool.width - tool.overlap);
         }
 
         // Save tram data.

@@ -127,6 +127,15 @@ namespace AgOpenGPS
 
                 if (RefDist < 0) howManyPathsAway = (int)(RefDist - 0.5);
                 else howManyPathsAway = (int)(RefDist + 0.5);
+
+                //NV follow plan: before autosteer is engaged, lead the driver to the
+                //plan's first not-worked pass instead of the nearest one (spec 4.3).
+                //Gated to autosteer OFF and no active turn so it only reshapes the line
+                //the driver aims at - never commands a cross-track jerk. Once aligned and
+                //steering, physical nearest = plan target, so this is a no-op from then on.
+                if (!mf.isBtnAutoSteerOn && !mf.yt.isYouTurnTriggered
+                    && mf.plan.TryGuidanceOffset(out int planIdx))
+                    howManyPathsAway = planIdx;
             }
 
             if (!isABValid || howManyPathsAway != lastHowManyPathsAway || (isHeadingSameWay != lastIsHeadingSameWay && mf.tool.offset != 0))

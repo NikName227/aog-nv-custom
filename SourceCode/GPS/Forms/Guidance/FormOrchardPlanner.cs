@@ -1,0 +1,855 @@
+using AgLibrary.Logging;
+using AgOpenGPS.Controls;
+using AgOpenGPS.Core.DrawLib;
+using AgOpenGPS.Core.Models;
+using AgOpenGPS.Core.Translations;
+using AgOpenGPS.Core.Visuals;
+using AgOpenGPS.Helpers;
+using AgOpenGPS.Visuals;
+using OpenTK;
+using OpenTK.Graphics.OpenGL;
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
+
+namespace AgOpenGPS
+{
+    /// <summary>
+    /// Feature 50 — Orchard Navigation, Phase 1 (MVP "sredina"). A new window (à la Smart AB;
+    /// FormSmartAB is untouched) to draw/import FIXED tree ROWS, then generate one mid-inter-row
+    /// guidance line per gap ("Make path"). The result is ordinary AOG Curve tracks, driven by the
+    /// existing guidance + K-turn. Rows are saved under the field (Orchard.txt). Multi-pass /
+    /// safe-space / turns / implement shift are later phases.
+    /// </summary>
+    public partial class FormOrchardPlanner : Form
+    {
+        private readonly FormGPS mf;
+
+        // GL view: camera distance factor + normalized pan offsets (same scheme as Smart AB).
+        private const double InitZoom = 2.0;
+        private double zoom = InitZoom, sX = 0, sY = 0;
+
+        // All committed rows. Editing works on one row's control points (pts) at a time.
+        private readonly List<OrchRow> rows = new List<OrchRow>();
+        private readonly List<vec2> pts = new List<vec2>(); // control points of the row being built/edited
+        private readonly List<vec2> trees = new List<vec2>(); // loose imported tree positions (display aid)
+
+        // Generated mid-inter-row path (yellow). Rebuilt by "Make path"; committed on Accept.
+        private readonly List<CTrk> midlines = new List<CTrk>();
+
+        private enum ViewMode { Browse, Build }
+        private ViewMode mode = ViewMode.Build;
+        private int activeIdx = -1; // Browse selection
+        private int workIdx = -1;   // row being built/edited (index into rows)
+
+        // Point edit (arrow-pad), same as Smart AB.
+        private enum PointEdit { Off, Mark, Move }
+        private PointEdit pointMode = PointEdit.Off;
+        private int selIndex = -1;
+        private int stepPx = 10;
+
+        private int addStage = 0;
+        private bool AddActive => addStage != 0;
+
+        // Mouse drag state.
+        private int dragIndex = -1;
+        private bool panning;
+        private Point downPt;
+        private double panStartSX, panStartSY;
+        private bool moved;
+
+        private readonly Timer redraw = new Timer();
+        private bool glReady;
+
+        private BingMapVisual satVisual;
+
+        // Measure ruler (temporary; never saved).
+        private bool measureOn;
+        private vec2 mp0, mp1;
+        private int measureDrag = -1;
+
+        [DllImport("user32.dll")] private static extern bool ReleaseCapture();
+        [DllImport("user32.dll")] private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
+        private const int WM_NCLBUTTONDOWN = 0xA1, HTCAPTION = 0x2;
+        private Dictionary<Control, Point> origLoc;
+
+        public FormOrchardPlanner(Form callingForm)
+        {
+            mf = callingForm as FormGPS;
+            InitializeComponent();
+
+            mf.CalculateMinMax();
+
+            // load rows saved under this field
+            var loaded = COrchard.LoadRows(FieldDir());
+            foreach (var r in loaded) rows.Add(r);
+
+            redraw.Interval = 250;
+            redraw.Tick += (s, e) => oglSelf.Invalidate();
+
+            this.KeyPreview = true;
+            this.KeyDown += (s, e) => { if (e.KeyCode == Keys.Escape) Close(); };
+            this.MouseDown += FormDrag_MouseDown;
+            oglSelf.MouseWheel += oglSelf_MouseWheel;
+            oglSelf.MouseEnter += (s, e) => { if (oglSelf.CanFocus) oglSelf.Focus(); };
+            tboxName.Click += (s, e) => tboxName.ShowKeyboard(this);
+        }
+
+        private string FieldDir() => mf?.AppCore?.ActiveField?.FieldDirectory?.FullName;
+
+        // ── Window controls + layout ──────────────────────────────────────
+        private void FormDrag_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left) return;
+            ReleaseCapture();
+            SendMessage(this.Handle, WM_NCLBUTTONDOWN, HTCAPTION, 0);
+        }
+
+        private void btnWinFull_Click(object sender, EventArgs e)
+        {
+            this.WindowState = this.WindowState == FormWindowState.Maximized
+                ? FormWindowState.Normal : FormWindowState.Maximized;
+        }
+
+        private void btnWinClose_Click(object sender, EventArgs e) => Close();
+
+        private void FormOrchardPlanner_Resize(object sender, EventArgs e) => LayoutControls();
+
+        private void LayoutControls()
+        {
+            if (origLoc == null)
+            {
+                origLoc = new Dictionary<Control, Point>();
+                foreach (Control c in Controls) if (c != oglSelf) origLoc[c] = c.Location;
+            }
+
+            int glW = Math.Max(300, ClientSize.Width - 332);
+            int glH = Math.Max(300, ClientSize.Height - 36);
+            oglSelf.SetBounds(8, 8, glW, glH);
+
+            int dx = ClientSize.Width - 1000;
+            foreach (var kv in origLoc)
+                if (kv.Value.X >= 676) kv.Key.Location = new Point(kv.Value.X + dx, kv.Value.Y);
+
+            btnSat.Location = new Point(oglSelf.Right - 64, oglSelf.Top + 6);
+            btnZoomIn.Location = new Point(oglSelf.Right - 64, oglSelf.Bottom - 186);
+            btnZoomRestore.Location = new Point(oglSelf.Right - 64, oglSelf.Bottom - 124);
+            btnZoomOut.Location = new Point(oglSelf.Right - 64, oglSelf.Bottom - 62);
+            lblActiveOp.Location = new Point(8, oglSelf.Bottom + 6);
+            btnWinClose.Location = new Point(ClientSize.Width - 60, 6);
+            btnWinFull.Location = new Point(ClientSize.Width - 118, 6);
+
+            SetupProjection();
+            oglSelf.Invalidate();
+        }
+
+        private void FormOrchardPlanner_Load(object sender, EventArgs e)
+        {
+            if (rows.Count > 0) { activeIdx = 0; SetMode(ViewMode.Browse); RefreshActiveName(); }
+            else SetMode(ViewMode.Build);
+
+            UpdateArrowColors();
+            UpdateNavButtons();
+            LayoutControls();
+            redraw.Start();
+
+            btnZoomIn.BringToFront();
+            btnZoomRestore.BringToFront();
+            btnZoomOut.BringToFront();
+            btnSat.BringToFront();
+            btnWinFull.BringToFront();
+            btnWinClose.BringToFront();
+        }
+
+        private void FormOrchardPlanner_FormClosing(object sender, FormClosingEventArgs e) => redraw.Stop();
+
+        // ── GL setup / render ─────────────────────────────────────────────
+        private void oglSelf_Load(object sender, EventArgs e)
+        {
+            oglSelf.MakeCurrent();
+            GL.Enable(EnableCap.CullFace);
+            GL.CullFace(CullFaceMode.Back);
+            GL.ClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+            glReady = true;
+            SetupProjection();
+        }
+
+        private void oglSelf_Resize(object sender, EventArgs e) => SetupProjection();
+
+        private void SetupProjection()
+        {
+            if (!glReady || oglSelf.Width <= 0 || oglSelf.Height <= 0) return;
+            oglSelf.MakeCurrent();
+            GL.MatrixMode(MatrixMode.Projection);
+            GL.LoadIdentity();
+            GL.Viewport(0, 0, oglSelf.Width, oglSelf.Height);
+            float aspect = (float)oglSelf.Width / oglSelf.Height;
+            Matrix4 mat = Matrix4.CreatePerspectiveFieldOfView(1.01f, aspect, 1.0f, 20000);
+            GL.LoadMatrix(ref mat);
+            GL.MatrixMode(MatrixMode.Modelview);
+        }
+
+        private void oglSelf_Paint(object sender, PaintEventArgs e)
+        {
+            if (!glReady) return;
+            oglSelf.MakeCurrent();
+            GL.Clear(ClearBufferMask.DepthBufferBit | ClearBufferMask.ColorBufferBit);
+            GL.LoadIdentity();
+
+            GL.Translate(0, 0, -mf.maxFieldDistance * zoom);
+            GL.Translate(-mf.fieldCenterX + sX * mf.maxFieldDistance,
+                         -mf.fieldCenterY + sY * mf.maxFieldDistance, 0);
+
+            if (satVisual != null)
+            {
+                GL.Disable(EnableCap.CullFace);
+                satVisual.Draw();
+                GL.Enable(EnableCap.CullFace);
+                if (mf.parcels.Segments.Length >= 2)
+                {
+                    GL.LineWidth(1);
+                    GL.Color4(0f, 0.75f, 1f, 0.9f);
+                    GLW.DrawLinesPrimitive(mf.parcels.Segments);
+                }
+            }
+
+            for (int j = 0; j < mf.bnd.bndList.Count; j++)
+            {
+                GeoCoord[] fenceLineEar = GeoRefactorHelper.ToGeoCoordArray(mf.bnd.bndList[j].fenceLineEar);
+                FenceLineVisual.DrawFenceLine(fenceLineEar, false);
+            }
+
+            VehicleDotVisual.DrawVehicleDot(mf.pivotAxlePos.ToGeoCoord());
+
+            DrawTrees();
+            DrawRows();
+            DrawMidlines();
+            if (mode == ViewMode.Build) DrawPoints();
+            DrawMeasure();
+
+            GL.Flush();
+            oglSelf.SwapBuffers();
+        }
+
+        // Rows: the row being edited (workIdx in Build) is bright green; others are dim green.
+        // In Browse only the active row is shown bright, others dim.
+        private void DrawRows()
+        {
+            for (int i = 0; i < rows.Count; i++)
+            {
+                if (rows[i].curve.Count < 2) continue;
+                bool hot = (mode == ViewMode.Build) ? (i == workIdx) : (i == activeIdx);
+                GL.LineWidth(hot ? 4 : 2);
+                if (hot) GL.Color3(0.30f, 0.97f, 0.30f);
+                else GL.Color3(0.15f, 0.45f, 0.15f);
+                GL.Begin(PrimitiveType.LineStrip);
+                foreach (vec3 p in rows[i].curve) GL.Vertex3(p.easting, p.northing, 0);
+                GL.End();
+            }
+        }
+
+        private void DrawMidlines()
+        {
+            if (midlines.Count == 0) return;
+            GL.LineWidth(3);
+            GL.Color3(1.0f, 0.85f, 0.1f); // yellow guidance
+            foreach (var t in midlines)
+            {
+                if (t.curvePts.Count < 2) continue;
+                GL.Begin(PrimitiveType.LineStrip);
+                foreach (vec3 p in t.curvePts) GL.Vertex3(p.easting, p.northing, 0);
+                GL.End();
+            }
+        }
+
+        private void DrawTrees()
+        {
+            var all = new List<vec2>(trees);
+            foreach (var r in rows) all.AddRange(r.trees);
+            if (all.Count == 0) return;
+            GL.Color3(0.55f, 0.35f, 0.15f); // brown dots
+            GL.PointSize(5f);
+            GL.Begin(PrimitiveType.Points);
+            foreach (var p in all) GL.Vertex3(p.easting, p.northing, 0);
+            GL.End();
+        }
+
+        // Control-point markers. Selected = green, first = cyan, last = orange, others white.
+        private void DrawPoints()
+        {
+            double h = 8.0 * MetersPerPixel();
+            GL.LineWidth(2);
+            for (int i = 0; i < pts.Count; i++)
+            {
+                if (i == selIndex) GL.Color3(0.2f, 1.0f, 0.2f);
+                else if (i == 0) GL.Color3(0.2f, 0.9f, 1.0f);
+                else if (i == pts.Count - 1) GL.Color3(1.0f, 0.6f, 0.1f);
+                else GL.Color3(1.0f, 1.0f, 1.0f);
+
+                double x = pts[i].easting, y = pts[i].northing;
+                GL.Begin(PrimitiveType.LineLoop);
+                GL.Vertex3(x - h, y - h, 0);
+                GL.Vertex3(x + h, y - h, 0);
+                GL.Vertex3(x + h, y + h, 0);
+                GL.Vertex3(x - h, y + h, 0);
+                GL.End();
+                GL.PointSize(4f);
+                GL.Begin(PrimitiveType.Points);
+                GL.Vertex3(x, y, 0);
+                GL.End();
+            }
+        }
+
+        // ── Coordinate transforms ─────────────────────────────────────────
+        private double MetersPerPixel()
+        {
+            double scale = oglSelf.Height * 0.903;
+            return mf.maxFieldDistance / scale * zoom;
+        }
+
+        private vec2 ScreenToWorld(int px, int py)
+        {
+            double W = oglSelf.Width, H = oglSelf.Height, k = MetersPerPixel();
+            double e = (px - W / 2.0) * k + mf.fieldCenterX - sX * mf.maxFieldDistance;
+            double n = (H / 2.0 - py) * k + mf.fieldCenterY - sY * mf.maxFieldDistance;
+            return new vec2(e, n);
+        }
+
+        private Point WorldToScreen(vec2 w)
+        {
+            double W = oglSelf.Width, H = oglSelf.Height, k = MetersPerPixel();
+            double px = (w.easting - mf.fieldCenterX + sX * mf.maxFieldDistance) / k + W / 2.0;
+            double py = H / 2.0 - (w.northing - mf.fieldCenterY + sY * mf.maxFieldDistance) / k;
+            return new Point((int)Math.Round(px), (int)Math.Round(py));
+        }
+
+        private int HitTestPoint(int px, int py)
+        {
+            for (int i = 0; i < pts.Count; i++)
+            {
+                Point sp = WorldToScreen(pts[i]);
+                if (Math.Abs(sp.X - px) <= 16 && Math.Abs(sp.Y - py) <= 16) return i;
+            }
+            return -1;
+        }
+
+        // ── Mouse ─────────────────────────────────────────────────────────
+        private void oglSelf_MouseDown(object sender, MouseEventArgs e)
+        {
+            downPt = e.Location;
+            moved = false;
+            dragIndex = -1;
+            panning = false;
+
+            if (e.Button == MouseButtons.Right)
+            {
+                panning = true; panStartSX = sX; panStartSY = sY;
+                return;
+            }
+            if (e.Button != MouseButtons.Left) return;
+
+            int mh = HitTestMeasure(e.X, e.Y);
+            if (mh >= 0) { measureDrag = mh; return; }
+
+            int hit = HitTestPoint(e.X, e.Y);
+            if (hit >= 0 && !AddActive && !btnDeletePoint.Checked)
+                dragIndex = hit;
+            else if (!AddActive && !btnDeletePoint.Checked)
+            {
+                panning = true; panStartSX = sX; panStartSY = sY;
+            }
+        }
+
+        private void oglSelf_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (measureDrag >= 0)
+            {
+                moved = true;
+                if (measureDrag == 0) mp0 = ScreenToWorld(e.X, e.Y);
+                else mp1 = ScreenToWorld(e.X, e.Y);
+                UpdateMeasureLabel();
+                oglSelf.Invalidate();
+                return;
+            }
+            if (dragIndex >= 0)
+            {
+                moved = true;
+                pts[dragIndex] = ScreenToWorld(e.X, e.Y);
+                oglSelf.Invalidate();
+            }
+            else if (panning)
+            {
+                moved = true;
+                double k = MetersPerPixel();
+                sX = panStartSX + (e.X - downPt.X) * k / mf.maxFieldDistance;
+                sY = panStartSY - (e.Y - downPt.Y) * k / mf.maxFieldDistance;
+                oglSelf.Invalidate();
+            }
+        }
+
+        private void oglSelf_MouseUp(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Right) { panning = false; return; }
+            if (e.Button != MouseButtons.Left) return;
+
+            if (measureDrag >= 0) { measureDrag = -1; moved = false; oglSelf.Invalidate(); return; }
+
+            bool wasPointDrag = dragIndex >= 0 && moved;
+
+            if (!moved)
+            {
+                if (AddActive)
+                {
+                    EnsureWorkRow();
+                    pts.Add(ScreenToWorld(e.X, e.Y));
+                    BuildActiveRow();
+                    lblActiveOp.Text = "Add point";
+                }
+                else if (btnDeletePoint.Checked)
+                {
+                    int hit = HitTestPoint(e.X, e.Y);
+                    if (hit >= 0) DeletePoint(hit);
+                }
+                else if (pointMode != PointEdit.Off)
+                {
+                    int hit = HitTestPoint(e.X, e.Y);
+                    if (hit >= 0) SelectPoint(hit);
+                }
+            }
+
+            dragIndex = -1; panning = false; moved = false;
+            if (wasPointDrag) BuildActiveRow();
+            oglSelf.Invalidate();
+        }
+
+        // ── Row build ─────────────────────────────────────────────────────
+        // Ensure there is a work row (create one on first point of a new row).
+        private void EnsureWorkRow()
+        {
+            if (workIdx >= 0 && workIdx < rows.Count) return;
+            var r = new OrchRow { source = RowSource.Manual, name = "Row " + (rows.Count + 1) };
+            rows.Add(r);
+            workIdx = rows.Count - 1;
+            UpdateNavButtons();
+        }
+
+        // Sync the edited control points into the work row and rebuild its curve.
+        private void BuildActiveRow()
+        {
+            if (workIdx < 0 || workIdx >= rows.Count) return;
+            rows[workIdx].pts = new List<vec2>(pts);
+            rows[workIdx].BuildCurve();
+            midlines.Clear();            // rows changed -> old path is stale
+            lblWarn.Text = "";
+            oglSelf.Invalidate();
+        }
+
+        private void DeletePoint(int idx)
+        {
+            if (idx < 0 || idx >= pts.Count) return;
+            pts.RemoveAt(idx);
+            if (selIndex == idx) { selIndex = -1; SetPointMode(PointEdit.Mark); }
+            else if (selIndex > idx) selIndex--;
+            BuildActiveRow();
+            lblActiveOp.Text = "Delete point";
+            oglSelf.Invalidate();
+        }
+
+        // ── Point edit (arrow-pad) ────────────────────────────────────────
+        private void btnPoint_Click(object sender, EventArgs e)
+        {
+            if (pointMode == PointEdit.Off)
+            {
+                ResetAddStage();
+                btnDeletePoint.Checked = false;
+                SetPointMode(PointEdit.Mark);
+            }
+            else { selIndex = -1; SetPointMode(PointEdit.Off); }
+            oglSelf.Invalidate();
+        }
+
+        private void SelectPoint(int idx) { selIndex = idx; SetPointMode(PointEdit.Move); oglSelf.Invalidate(); }
+
+        private void SetPointMode(PointEdit m)
+        {
+            pointMode = m;
+            switch (m)
+            {
+                case PointEdit.Off: btnPoint.BackColor = Color.Gainsboro; lblPointMode.Text = ""; lblActiveOp.Text = ""; break;
+                case PointEdit.Mark: btnPoint.BackColor = Color.IndianRed; lblPointMode.Text = "Mark point"; lblActiveOp.Text = "Mark point"; break;
+                case PointEdit.Move: btnPoint.BackColor = Color.LimeGreen; lblPointMode.Text = "Move point"; lblActiveOp.Text = "Move point"; break;
+            }
+            UpdateArrowColors();
+        }
+
+        private void UpdateArrowColors()
+        {
+            Color c = pointMode == PointEdit.Move ? Color.Green : Color.RoyalBlue;
+            btnNavUp.ForeColor = c; btnNavDown.ForeColor = c; btnNavLeft.ForeColor = c; btnNavRight.ForeColor = c;
+        }
+
+        private void btnNavUp_Click(object sender, EventArgs e) => Nav(0, -1);
+        private void btnNavDown_Click(object sender, EventArgs e) => Nav(0, 1);
+        private void btnNavLeft_Click(object sender, EventArgs e) => Nav(-1, 0);
+        private void btnNavRight_Click(object sender, EventArgs e) => Nav(1, 0);
+
+        private void Nav(int dx, int dy)
+        {
+            if (pointMode == PointEdit.Move && selIndex >= 0)
+            {
+                double k = MetersPerPixel();
+                var p = pts[selIndex];
+                pts[selIndex] = new vec2(p.easting + dx * stepPx * k, p.northing - dy * stepPx * k);
+                BuildActiveRow();
+            }
+            else
+            {
+                double dPan = 0.2 * zoom / 0.903;
+                sX += -dx * dPan;
+                sY += dy * dPan;
+            }
+            oglSelf.Invalidate();
+        }
+
+        private void btnFine_Click(object sender, EventArgs e)
+        {
+            stepPx = 1;
+            btnFine.BackColor = Color.LightSteelBlue; btnCoarse.BackColor = SystemColors.Control;
+            btnFine.UseVisualStyleBackColor = false; btnCoarse.UseVisualStyleBackColor = true;
+        }
+
+        private void btnCoarse_Click(object sender, EventArgs e)
+        {
+            stepPx = 10;
+            btnCoarse.BackColor = Color.LightSteelBlue; btnFine.BackColor = SystemColors.Control;
+            btnCoarse.UseVisualStyleBackColor = false; btnFine.UseVisualStyleBackColor = true;
+        }
+
+        // ── Add / Delete point toggles ────────────────────────────────────
+        private void btnAddPoint_Click(object sender, EventArgs e)
+        {
+            if (!btnAddPoint.Enabled) return;
+            addStage = addStage == 0 ? 1 : 0;
+            if (addStage != 0)
+            {
+                btnDeletePoint.Checked = false;
+                selIndex = -1; SetPointMode(PointEdit.Off);
+            }
+            ApplyAddStageVisual();
+            oglSelf.Invalidate();
+        }
+
+        private void ApplyAddStageVisual()
+        {
+            if (addStage != 0) { btnAddPoint.BackColor = Color.Orange; lblActiveOp.Text = "Add point"; }
+            else { btnAddPoint.BackColor = Color.AliceBlue; if (!btnDeletePoint.Checked) lblActiveOp.Text = ""; }
+        }
+
+        private void ResetAddStage() { addStage = 0; btnAddPoint.BackColor = Color.AliceBlue; }
+
+        private void btnDeletePoint_CheckedChanged(object sender, EventArgs e)
+        {
+            if (btnDeletePoint.Checked)
+            {
+                ResetAddStage();
+                selIndex = -1; SetPointMode(PointEdit.Off);
+                lblActiveOp.Text = "Delete point";
+            }
+            else if (!AddActive) lblActiveOp.Text = "";
+        }
+
+        // ── Satellite background + parcels (from local cache, no internet) ─
+        private void btnSat_CheckedChanged(object sender, EventArgs e)
+        {
+            if (btnSat.Checked)
+            {
+                if (!glReady || !mf.worldGrid.HasBingMap)
+                {
+                    btnSat.Checked = false;
+                    lblActiveOp.Text = "No background — capture it in App Map first";
+                    return;
+                }
+                oglSelf.MakeCurrent();
+                satVisual = new BingMapVisual(mf.worldGrid.BingMap);
+                lblActiveOp.Text = "Satellite ON";
+                EnsureParcelsLoaded();
+            }
+            else satVisual = null;
+            oglSelf.Invalidate();
+        }
+
+        private void EnsureParcelsLoaded()
+        {
+            if (mf.parcels.Segments != null && mf.parcels.Segments.Length >= 2) return;
+            string dir = FieldDir();
+            if (dir != null)
+            {
+                string path = System.IO.Path.Combine(dir, "Parcels.txt");
+                if (System.IO.File.Exists(path))
+                {
+                    var cached = CadastralWfsClient.LoadParcels(path, out string err);
+                    if (err == null && cached != null && cached.Count > 0) { ApplyParcels(cached); return; }
+                }
+            }
+            lblActiveOp.Text = gStr.gsNoParcelCache;
+        }
+
+        private void ApplyParcels(List<CadastralParcel> parcels)
+        {
+            var segs = new List<GeoCoord>();
+            foreach (var p in parcels)
+            {
+                int n = p.Outer.Count;
+                if (n < 3) continue;
+                var ring = new GeoCoord[n];
+                for (int i = 0; i < n; i++)
+                    ring[i] = mf.AppModel.LocalPlane.ConvertWgs84ToGeoCoord(new Wgs84(p.Outer[i].Lat, p.Outer[i].Lng));
+                for (int i = 0; i < n; i++) { segs.Add(ring[i]); segs.Add(ring[(i + 1) % n]); }
+            }
+            mf.parcels.Segments = segs.ToArray();
+            lblActiveOp.Text = parcels.Count + " parcels";
+            oglSelf.Invalidate();
+        }
+
+        // ── Measure ───────────────────────────────────────────────────────
+        private void btnMeasure_Click(object sender, EventArgs e)
+        {
+            measureOn = !measureOn;
+            if (measureOn)
+            {
+                double k = MetersPerPixel();
+                vec2 c = ScreenToWorld(oglSelf.Width / 2, oglSelf.Height / 2);
+                mp0 = new vec2(c.easting - 40 * k, c.northing);
+                mp1 = new vec2(c.easting + 40 * k, c.northing);
+                btnMeasure.BackColor = Color.IndianRed;
+                btnMeasure.UseVisualStyleBackColor = false;
+                UpdateMeasureLabel();
+            }
+            else
+            {
+                measureDrag = -1;
+                btnMeasure.BackColor = SystemColors.Control;
+                btnMeasure.UseVisualStyleBackColor = true;
+                lblMeasure.Text = "";
+            }
+            oglSelf.Invalidate();
+        }
+
+        private void UpdateMeasureLabel()
+        {
+            double d = Math.Sqrt((mp1.easting - mp0.easting) * (mp1.easting - mp0.easting)
+                               + (mp1.northing - mp0.northing) * (mp1.northing - mp0.northing));
+            lblMeasure.Text = d < 1.0 ? (d * 100.0).ToString("0") + " cm" : d.ToString("0.00") + " m";
+        }
+
+        private int HitTestMeasure(int px, int py)
+        {
+            if (!measureOn) return -1;
+            Point s0 = WorldToScreen(mp0), s1 = WorldToScreen(mp1);
+            if (Math.Abs(s0.X - px) <= 16 && Math.Abs(s0.Y - py) <= 16) return 0;
+            if (Math.Abs(s1.X - px) <= 16 && Math.Abs(s1.Y - py) <= 16) return 1;
+            return -1;
+        }
+
+        private void DrawMeasure()
+        {
+            if (!measureOn) return;
+            double h = 8.0 * MetersPerPixel();
+            GL.LineWidth(1);
+            GL.Color3(1.0f, 0.1f, 0.1f);
+            GL.Begin(PrimitiveType.Lines);
+            GL.Vertex3(mp0.easting, mp0.northing, 0);
+            GL.Vertex3(mp1.easting, mp1.northing, 0);
+            GL.End();
+            GL.LineWidth(2);
+            foreach (var p in new[] { mp0, mp1 })
+            {
+                GL.Begin(PrimitiveType.LineLoop);
+                GL.Vertex3(p.easting - h, p.northing - h, 0);
+                GL.Vertex3(p.easting + h, p.northing - h, 0);
+                GL.Vertex3(p.easting + h, p.northing + h, 0);
+                GL.Vertex3(p.easting - h, p.northing + h, 0);
+                GL.End();
+                GL.PointSize(4f);
+                GL.Begin(PrimitiveType.Points);
+                GL.Vertex3(p.easting, p.northing, 0);
+                GL.End();
+            }
+        }
+
+        // ── Zoom ──────────────────────────────────────────────────────────
+        private void btnZoomIn_Click(object sender, EventArgs e)
+        { zoom *= 0.7; if (zoom < 0.02) zoom = 0.02; oglSelf.Invalidate(); }
+
+        private void btnZoomOut_Click(object sender, EventArgs e)
+        { zoom /= 0.7; if (zoom > 6.0) zoom = 6.0; oglSelf.Invalidate(); }
+
+        private void oglSelf_MouseWheel(object sender, MouseEventArgs e)
+        {
+            if (e.Delta > 0) zoom *= 0.7; else zoom /= 0.7;
+            if (zoom < 0.02) zoom = 0.02;
+            if (zoom > 6.0) zoom = 6.0;
+            oglSelf.Invalidate();
+        }
+
+        private void btnZoomRestore_Click(object sender, EventArgs e)
+        { zoom = InitZoom; sX = 0; sY = 0; oglSelf.Invalidate(); }
+
+        // ── New / Browse / Edit / Delete rows ─────────────────────────────
+        private void SetMode(ViewMode m)
+        {
+            mode = m;
+            bool build = m == ViewMode.Build;
+            btnAddPoint.Enabled = build;
+            btnDeletePoint.Enabled = build;
+            btnPoint.Enabled = build;
+            tboxName.Enabled = true;
+            if (!build)
+            {
+                ResetAddStage(); btnDeletePoint.Checked = false;
+                selIndex = -1; pointMode = PointEdit.Off;
+                btnPoint.BackColor = Color.Gainsboro; lblPointMode.Text = "";
+            }
+            UpdateNavButtons();
+            UpdateArrowColors();
+            oglSelf.Invalidate();
+        }
+
+        private void UpdateNavButtons()
+        {
+            bool has = rows.Count > 0;
+            btnPrevRow.Enabled = has;
+            btnNextRow.Enabled = has;
+            btnDeleteRow.Enabled = has;
+            btnEdit.Enabled = has && mode == ViewMode.Browse;
+            btnMakePath.Enabled = rows.Count >= 2;
+        }
+
+        private void btnNewRow_Click(object sender, EventArgs e)
+        {
+            // commit-by-reference already done live; just start a fresh empty row buffer
+            pts.Clear(); workIdx = -1; selIndex = -1;
+            tboxName.Text = "";
+            SetMode(ViewMode.Build);
+            lblActiveOp.Text = "New row — tap Add point, then place trees-line points";
+        }
+
+        private void btnEdit_Click(object sender, EventArgs e)
+        {
+            if (activeIdx < 0 || activeIdx >= rows.Count) return;
+            workIdx = activeIdx;
+            pts.Clear();
+            pts.AddRange(rows[activeIdx].pts);
+            tboxName.Text = rows[activeIdx].name ?? "";
+            SetMode(ViewMode.Build);
+            lblActiveOp.Text = "Edit row";
+        }
+
+        private void btnPrevRow_Click(object sender, EventArgs e) => Navigate(-1);
+        private void btnNextRow_Click(object sender, EventArgs e) => Navigate(1);
+
+        private void Navigate(int dir)
+        {
+            if (rows.Count == 0) return;
+            if (mode != ViewMode.Browse) { SetMode(ViewMode.Browse); if (activeIdx < 0) activeIdx = 0; }
+            else
+            {
+                activeIdx += dir;
+                if (activeIdx < 0) activeIdx = rows.Count - 1;
+                if (activeIdx >= rows.Count) activeIdx = 0;
+            }
+            UpdateNavButtons();
+            RefreshActiveName();
+            lblActiveOp.Text = (rows[activeIdx].name ?? "row") + "  (" + (activeIdx + 1) + "/" + rows.Count + ")";
+            oglSelf.Invalidate();
+        }
+
+        private void RefreshActiveName()
+        {
+            if (activeIdx >= 0 && activeIdx < rows.Count) tboxName.Text = rows[activeIdx].name ?? "";
+        }
+
+        private void btnDeleteRow_Click(object sender, EventArgs e)
+        {
+            int target = (mode == ViewMode.Build) ? workIdx : activeIdx;
+            if (target < 0 || target >= rows.Count) return;
+            rows.RemoveAt(target);
+            workIdx = -1; pts.Clear();
+            midlines.Clear(); lblWarn.Text = "";
+            if (activeIdx >= rows.Count) activeIdx = rows.Count - 1;
+            if (rows.Count == 0) { SetMode(ViewMode.Build); lblActiveOp.Text = "no rows"; }
+            else { SetMode(ViewMode.Browse); RefreshActiveName(); lblActiveOp.Text = "row deleted"; }
+            oglSelf.Invalidate();
+        }
+
+        // ── Import KML (rows from LineStrings, trees from Points) ──────────
+        private void btnImportKml_Click(object sender, EventArgs e)
+        {
+            using (var ofd = new OpenFileDialog())
+            {
+                ofd.Filter = "KML files (*.kml)|*.kml|All files (*.*)|*.*";
+                ofd.Title = "Import orchard rows / trees from KML";
+                if (ofd.ShowDialog(this) != DialogResult.OK) return;
+
+                var newRows = COrchard.ImportKml(ofd.FileName, mf.AppModel.LocalPlane, trees, out string err);
+                if (err != null) { lblActiveOp.Text = "KML: " + err; return; }
+                foreach (var r in newRows) rows.Add(r);
+                midlines.Clear(); lblWarn.Text = "";
+                if (rows.Count > 0) { activeIdx = rows.Count - newRows.Count; if (activeIdx < 0) activeIdx = 0; SetMode(ViewMode.Browse); RefreshActiveName(); }
+                UpdateNavButtons();
+                lblActiveOp.Text = "KML: +" + newRows.Count + " rows, " + trees.Count + " trees";
+                oglSelf.Invalidate();
+            }
+        }
+
+        // ── Make path (planner "sredina") ─────────────────────────────────
+        private void btnMakePath_Click(object sender, EventArgs e)
+        {
+            if (rows.Count < 2) { lblActiveOp.Text = "Need at least 2 rows"; return; }
+            midlines.Clear();
+            double toolW = mf.tool.width > 0.1 ? mf.tool.width : 3.0;
+            var mids = COrchard.BuildMidlines(rows, toolW, out int warn);
+            foreach (var t in mids) midlines.Add(t);
+            lblWarn.Text = warn > 0 ? warn + " inter-row(s) narrower than tool" : "";
+            lblActiveOp.Text = midlines.Count + " mid-lines built";
+            oglSelf.Invalidate();
+        }
+
+        // ── Cancel / Accept ───────────────────────────────────────────────
+        private void btnCancel_Click(object sender, EventArgs e)
+        {
+            DialogResult = DialogResult.Cancel;
+            Close();
+        }
+
+        private void btnAccept_Click(object sender, EventArgs e)
+        {
+            // name the relevant row
+            int target = (mode == ViewMode.Browse) ? activeIdx : workIdx;
+            string nm = tboxName.Text.Trim();
+            if (nm.Length > 0 && target >= 0 && target < rows.Count) rows[target].name = nm;
+
+            // persist rows under the field (fixed reference lines)
+            try { COrchard.SaveRows(FieldDir(), rows); }
+            catch (Exception ex) { Log.EventWriter("Orchard SaveRows: " + ex); }
+
+            // commit the generated mid-lines as ordinary Curve tracks (driven by AOG guidance + K-turn)
+            if (midlines.Count > 0)
+            {
+                foreach (var t in midlines) mf.trk.gArr.Add(new CTrk(t));
+                mf.trk.idx = mf.trk.gArr.Count - midlines.Count; // first new mid-line
+                mf.FileSaveTracks();
+                mf.curve.isCurveValid = false;
+                mf.ABLine.isABValid = false;
+                lblActiveOp.Text = "Saved: " + rows.Count + " rows, +" + midlines.Count + " tracks";
+            }
+            else
+                lblActiveOp.Text = "Rows saved (Make path first for guidance lines)";
+
+            UpdateNavButtons();
+            oglSelf.Invalidate();
+        }
+    }
+}

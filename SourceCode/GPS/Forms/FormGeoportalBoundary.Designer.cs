@@ -25,9 +25,15 @@ namespace AgOpenGPS
             this.btnClearSel = new System.Windows.Forms.Button();
             this.btnMakeBoundary = new System.Windows.Forms.Button();
             this.btnSaveBoundary = new System.Windows.Forms.Button();
+            this.btnEditBoundary = new System.Windows.Forms.Button();
             this.btnAddPoint = new System.Windows.Forms.CheckBox();
             this.btnDeletePoint = new System.Windows.Forms.CheckBox();
             this.btnUndo = new System.Windows.Forms.Button();
+            this.btnAddObstacle = new System.Windows.Forms.Button();
+            this.btnDeleteObstacle = new System.Windows.Forms.CheckBox();
+            this.lblPointGroup = new System.Windows.Forms.Label();
+            this.lblObstacleGroup = new System.Windows.Forms.Label();
+            this.lblBoundaryGroup = new System.Windows.Forms.Label();
             this.lblSelInfo = new System.Windows.Forms.Label();
             this.gMapControl = new GMap.NET.WindowsForms.GMapControl();
             this.lblStatus = new System.Windows.Forms.Label();
@@ -130,11 +136,11 @@ namespace AgOpenGPS
             this.btnMakeBoundary.BackColor = System.Drawing.Color.Honeydew;
             this.btnMakeBoundary.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnMakeBoundary.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
-            this.btnMakeBoundary.Location = new System.Drawing.Point(12, 108);
+            this.btnMakeBoundary.Location = new System.Drawing.Point(108, 158);
             this.btnMakeBoundary.Name = "btnMakeBoundary";
-            this.btnMakeBoundary.Size = new System.Drawing.Size(200, 46);
+            this.btnMakeBoundary.Size = new System.Drawing.Size(90, 40);
             this.btnMakeBoundary.TabIndex = 6;
-            this.btnMakeBoundary.Text = "Make boundary";
+            this.btnMakeBoundary.Text = "Make";
             this.btnMakeBoundary.UseVisualStyleBackColor = false;
             this.btnMakeBoundary.Click += new System.EventHandler(this.btnMakeBoundary_Click);
             //
@@ -144,13 +150,27 @@ namespace AgOpenGPS
             this.btnSaveBoundary.Enabled = false;
             this.btnSaveBoundary.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnSaveBoundary.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
-            this.btnSaveBoundary.Location = new System.Drawing.Point(220, 108);
+            this.btnSaveBoundary.Location = new System.Drawing.Point(202, 158);
             this.btnSaveBoundary.Name = "btnSaveBoundary";
-            this.btnSaveBoundary.Size = new System.Drawing.Size(200, 46);
+            this.btnSaveBoundary.Size = new System.Drawing.Size(90, 40);
             this.btnSaveBoundary.TabIndex = 7;
-            this.btnSaveBoundary.Text = "Save boundary";
+            this.btnSaveBoundary.Text = "Save";
             this.btnSaveBoundary.UseVisualStyleBackColor = false;
             this.btnSaveBoundary.Click += new System.EventHandler(this.btnSaveBoundary_Click);
+            //
+            // btnEditBoundary
+            //
+            this.btnEditBoundary.BackColor = System.Drawing.Color.Honeydew;
+            this.btnEditBoundary.Enabled = false;
+            this.btnEditBoundary.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnEditBoundary.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.btnEditBoundary.Location = new System.Drawing.Point(296, 158);
+            this.btnEditBoundary.Name = "btnEditBoundary";
+            this.btnEditBoundary.Size = new System.Drawing.Size(90, 40);
+            this.btnEditBoundary.TabIndex = 22;
+            this.btnEditBoundary.Text = "Edit";
+            this.btnEditBoundary.UseVisualStyleBackColor = false;
+            this.btnEditBoundary.Click += new System.EventHandler(this.btnEditBoundary_Click);
             //
             // btnAddPoint
             //
@@ -160,11 +180,11 @@ namespace AgOpenGPS
             this.btnAddPoint.FlatAppearance.CheckedBackColor = System.Drawing.Color.Gold;
             this.btnAddPoint.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnAddPoint.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Bold);
-            this.btnAddPoint.Location = new System.Drawing.Point(12, 158);
+            this.btnAddPoint.Location = new System.Drawing.Point(78, 108);
             this.btnAddPoint.Name = "btnAddPoint";
-            this.btnAddPoint.Size = new System.Drawing.Size(130, 40);
+            this.btnAddPoint.Size = new System.Drawing.Size(90, 40);
             this.btnAddPoint.TabIndex = 8;
-            this.btnAddPoint.Text = "Add point";
+            this.btnAddPoint.Text = "Add";
             this.btnAddPoint.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
             this.btnAddPoint.UseVisualStyleBackColor = false;
             this.btnAddPoint.CheckedChanged += new System.EventHandler(this.btnAddPoint_CheckedChanged);
@@ -177,11 +197,11 @@ namespace AgOpenGPS
             this.btnDeletePoint.FlatAppearance.CheckedBackColor = System.Drawing.Color.IndianRed;
             this.btnDeletePoint.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnDeletePoint.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Bold);
-            this.btnDeletePoint.Location = new System.Drawing.Point(148, 158);
+            this.btnDeletePoint.Location = new System.Drawing.Point(172, 108);
             this.btnDeletePoint.Name = "btnDeletePoint";
-            this.btnDeletePoint.Size = new System.Drawing.Size(130, 40);
+            this.btnDeletePoint.Size = new System.Drawing.Size(90, 40);
             this.btnDeletePoint.TabIndex = 9;
-            this.btnDeletePoint.Text = "Delete point";
+            this.btnDeletePoint.Text = "Delete";
             this.btnDeletePoint.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
             this.btnDeletePoint.UseVisualStyleBackColor = false;
             this.btnDeletePoint.CheckedChanged += new System.EventHandler(this.btnDeletePoint_CheckedChanged);
@@ -190,7 +210,7 @@ namespace AgOpenGPS
             //
             this.btnUndo.Enabled = false;
             this.btnUndo.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Bold);
-            this.btnUndo.Location = new System.Drawing.Point(284, 158);
+            this.btnUndo.Location = new System.Drawing.Point(266, 108);
             this.btnUndo.Name = "btnUndo";
             this.btnUndo.Size = new System.Drawing.Size(90, 40);
             this.btnUndo.TabIndex = 10;
@@ -198,15 +218,75 @@ namespace AgOpenGPS
             this.btnUndo.UseVisualStyleBackColor = true;
             this.btnUndo.Click += new System.EventHandler(this.btnUndo_Click);
             //
+            // btnAddObstacle
+            //
+            this.btnAddObstacle.BackColor = System.Drawing.Color.PapayaWhip;
+            this.btnAddObstacle.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnAddObstacle.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Bold);
+            this.btnAddObstacle.Location = new System.Drawing.Point(518, 158);
+            this.btnAddObstacle.Name = "btnAddObstacle";
+            this.btnAddObstacle.Size = new System.Drawing.Size(90, 40);
+            this.btnAddObstacle.TabIndex = 23;
+            this.btnAddObstacle.Text = "Add";
+            this.btnAddObstacle.UseVisualStyleBackColor = false;
+            this.btnAddObstacle.Click += new System.EventHandler(this.btnAddObstacle_Click);
+            //
+            // btnDeleteObstacle
+            //
+            this.btnDeleteObstacle.Appearance = System.Windows.Forms.Appearance.Button;
+            this.btnDeleteObstacle.BackColor = System.Drawing.Color.AliceBlue;
+            this.btnDeleteObstacle.FlatAppearance.CheckedBackColor = System.Drawing.Color.IndianRed;
+            this.btnDeleteObstacle.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnDeleteObstacle.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Bold);
+            this.btnDeleteObstacle.Location = new System.Drawing.Point(612, 158);
+            this.btnDeleteObstacle.Name = "btnDeleteObstacle";
+            this.btnDeleteObstacle.Size = new System.Drawing.Size(90, 40);
+            this.btnDeleteObstacle.TabIndex = 24;
+            this.btnDeleteObstacle.Text = "Delete";
+            this.btnDeleteObstacle.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.btnDeleteObstacle.UseVisualStyleBackColor = false;
+            this.btnDeleteObstacle.CheckedChanged += new System.EventHandler(this.btnDeleteObstacle_CheckedChanged);
+            //
+            // lblPointGroup
+            //
+            this.lblPointGroup.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.lblPointGroup.Location = new System.Drawing.Point(12, 116);
+            this.lblPointGroup.Name = "lblPointGroup";
+            this.lblPointGroup.Size = new System.Drawing.Size(62, 24);
+            this.lblPointGroup.TabIndex = 25;
+            this.lblPointGroup.Text = "Point:";
+            this.lblPointGroup.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            //
+            // lblObstacleGroup
+            //
+            this.lblObstacleGroup.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.lblObstacleGroup.Location = new System.Drawing.Point(422, 166);
+            this.lblObstacleGroup.Name = "lblObstacleGroup";
+            this.lblObstacleGroup.Size = new System.Drawing.Size(92, 24);
+            this.lblObstacleGroup.TabIndex = 26;
+            this.lblObstacleGroup.Text = "Obstacle:";
+            this.lblObstacleGroup.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            //
+            // lblBoundaryGroup
+            //
+            this.lblBoundaryGroup.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.lblBoundaryGroup.Location = new System.Drawing.Point(12, 166);
+            this.lblBoundaryGroup.Name = "lblBoundaryGroup";
+            this.lblBoundaryGroup.Size = new System.Drawing.Size(92, 24);
+            this.lblBoundaryGroup.TabIndex = 27;
+            this.lblBoundaryGroup.Text = "Boundary:";
+            this.lblBoundaryGroup.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            //
             // lblSelInfo
             //
+            this.lblSelInfo.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
             this.lblSelInfo.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
             this.lblSelInfo.ForeColor = System.Drawing.Color.DimGray;
-            this.lblSelInfo.Location = new System.Drawing.Point(384, 162);
+            this.lblSelInfo.Location = new System.Drawing.Point(688, 674);
             this.lblSelInfo.Name = "lblSelInfo";
-            this.lblSelInfo.Size = new System.Drawing.Size(264, 30);
+            this.lblSelInfo.Size = new System.Drawing.Size(340, 22);
             this.lblSelInfo.TabIndex = 8;
-            this.lblSelInfo.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            this.lblSelInfo.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             //
             // gMapControl
             //
@@ -216,7 +296,7 @@ namespace AgOpenGPS
             this.gMapControl.Bearing = 0F;
             this.gMapControl.CanDragMap = true;
             this.gMapControl.GrayScaleMode = false;
-            this.gMapControl.Location = new System.Drawing.Point(12, 200);
+            this.gMapControl.Location = new System.Drawing.Point(12, 204);
             this.gMapControl.MarkersEnabled = true;
             this.gMapControl.MaxZoom = 22;
             this.gMapControl.MinZoom = 2;
@@ -226,7 +306,7 @@ namespace AgOpenGPS
             this.gMapControl.PolygonsEnabled = true;
             this.gMapControl.RoutesEnabled = true;
             this.gMapControl.ShowTileGridLines = false;
-            this.gMapControl.Size = new System.Drawing.Size(1016, 472);
+            this.gMapControl.Size = new System.Drawing.Size(1016, 468);
             this.gMapControl.TabIndex = 9;
             this.gMapControl.Zoom = 0D;
             //
@@ -246,7 +326,7 @@ namespace AgOpenGPS
             this.btnZoomIn.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.btnZoomIn.BackColor = System.Drawing.Color.White;
             this.btnZoomIn.Font = new System.Drawing.Font("Tahoma", 20F, System.Drawing.FontStyle.Bold);
-            this.btnZoomIn.Location = new System.Drawing.Point(960, 210);
+            this.btnZoomIn.Location = new System.Drawing.Point(960, 214);
             this.btnZoomIn.Name = "btnZoomIn";
             this.btnZoomIn.Size = new System.Drawing.Size(56, 56);
             this.btnZoomIn.TabIndex = 11;
@@ -259,7 +339,7 @@ namespace AgOpenGPS
             this.btnZoomOut.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.btnZoomOut.BackColor = System.Drawing.Color.White;
             this.btnZoomOut.Font = new System.Drawing.Font("Tahoma", 20F, System.Drawing.FontStyle.Bold);
-            this.btnZoomOut.Location = new System.Drawing.Point(960, 272);
+            this.btnZoomOut.Location = new System.Drawing.Point(960, 276);
             this.btnZoomOut.Name = "btnZoomOut";
             this.btnZoomOut.Size = new System.Drawing.Size(56, 56);
             this.btnZoomOut.TabIndex = 12;
@@ -369,9 +449,9 @@ namespace AgOpenGPS
             this.lblPointMode.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.lblPointMode.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
             this.lblPointMode.ForeColor = System.Drawing.Color.DimGray;
-            this.lblPointMode.Location = new System.Drawing.Point(654, 158);
+            this.lblPointMode.Location = new System.Drawing.Point(734, 176);
             this.lblPointMode.Name = "lblPointMode";
-            this.lblPointMode.Size = new System.Drawing.Size(140, 34);
+            this.lblPointMode.Size = new System.Drawing.Size(180, 26);
             this.lblPointMode.TabIndex = 19;
             this.lblPointMode.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
             //
@@ -428,6 +508,12 @@ namespace AgOpenGPS
             this.Controls.Add(this.btnUndo);
             this.Controls.Add(this.btnDeletePoint);
             this.Controls.Add(this.btnAddPoint);
+            this.Controls.Add(this.btnAddObstacle);
+            this.Controls.Add(this.btnDeleteObstacle);
+            this.Controls.Add(this.btnEditBoundary);
+            this.Controls.Add(this.lblPointGroup);
+            this.Controls.Add(this.lblObstacleGroup);
+            this.Controls.Add(this.lblBoundaryGroup);
             this.Controls.Add(this.btnSaveBoundary);
             this.Controls.Add(this.btnMakeBoundary);
             this.Controls.Add(this.btnClearSel);
@@ -460,9 +546,15 @@ namespace AgOpenGPS
         private System.Windows.Forms.Button btnClearSel;
         private System.Windows.Forms.Button btnMakeBoundary;
         private System.Windows.Forms.Button btnSaveBoundary;
+        private System.Windows.Forms.Button btnEditBoundary;
         private System.Windows.Forms.CheckBox btnAddPoint;
         private System.Windows.Forms.CheckBox btnDeletePoint;
         private System.Windows.Forms.Button btnUndo;
+        private System.Windows.Forms.Button btnAddObstacle;
+        private System.Windows.Forms.CheckBox btnDeleteObstacle;
+        private System.Windows.Forms.Label lblPointGroup;
+        private System.Windows.Forms.Label lblObstacleGroup;
+        private System.Windows.Forms.Label lblBoundaryGroup;
         private System.Windows.Forms.Label lblSelInfo;
         private GMap.NET.WindowsForms.GMapControl gMapControl;
         private System.Windows.Forms.Label lblStatus;

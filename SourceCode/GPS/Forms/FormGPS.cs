@@ -231,6 +231,9 @@ namespace AgOpenGPS
         /// </summary>
         public CTurnLimitLines tnl;
 
+        /// <summary>NV custom - field pass plan (F05 phase 3)</summary>
+        public CTurnPlan plan;
+
         /// <summary>
         /// Building a headland instance
         /// </summary>
@@ -331,6 +334,11 @@ namespace AgOpenGPS
             //winform initialization
             InitializeComponent();
 
+#if NV_HIDE_TURN
+            //NV: turn feature (F05) is work in progress - hidden in release builds
+            turnLinesToolStripMenuItem.Visible = false;
+#endif
+
             InitializeLanguages();
 
             AppCore = new ApplicationCore(
@@ -390,6 +398,7 @@ namespace AgOpenGPS
 
             //turn limit lines (NV custom)
             tnl = new CTurnLimitLines(this);
+            plan = new CTurnPlan(this);
 
             //nmea simulator built in.
             sim = new CSim(this);
@@ -1148,6 +1157,7 @@ namespace AgOpenGPS
             btnTrack.Enabled = true;
             btnABDraw.Enabled = true;
             btnSmartAB.Enabled = true;
+            btnOrchard.Enabled = true;
             btnCycleLines.Image = Properties.Resources.ABLineCycle;
             btnCycleLinesBk.Image = Properties.Resources.ABLineCycleBk;
 
@@ -1346,6 +1356,7 @@ namespace AgOpenGPS
             ct.isContourOn = false;
 
             btnSmartAB.Enabled = false;
+            btnOrchard.Enabled = false;
             btnABDraw.Enabled = false;
             btnCycleLines.Image = Properties.Resources.ABLineCycle;
             //btnCycleLines.Enabled = false;
@@ -1366,8 +1377,9 @@ namespace AgOpenGPS
             yt.ResetYouTurn();
             DisableYouTurnButtons();
 
-            //turn limit lines are per field
+            //turn limit lines + pass plan are per field
             tnl.Reset();
+            plan.Reset();
 
             //reset acre and distance counters
             fd.workedAreaTotal = 0;

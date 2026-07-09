@@ -25,6 +25,7 @@ namespace AgOpenGPS
 
         private readonly GMapOverlay boundaryOverlay = new GMapOverlay("bnd");
         private readonly GMapOverlay parcelOverlay = new GMapOverlay("parcels");
+        private readonly GMapOverlay planOverlay = new GMapOverlay("plan");
         private readonly GMapOverlay previewOverlay = new GMapOverlay("preview");
         private readonly GMapOverlay lineOverlay = new GMapOverlay("lines");
         private readonly GMapOverlay vehicleOverlay = new GMapOverlay("vehicle");
@@ -98,7 +99,17 @@ namespace AgOpenGPS
             lblRadius.Text = gStr.gsTurnRadiusInfo + ": " + mf.yt.youTurnRadius.ToString("N1") + " m";
             lblStatus.Text = gStr.gsTurnLineHint;
 
-            btnParamsView.Text = gStr.gsParameters;
+            lblTrack.Text = gStr.gsTrack;
+            btnMode1.Text = gStr.gsRowByRow;
+            btnMode3.Text = gStr.gsZonesSkip;
+            btnMode2.Text = gStr.gsContour;
+            lblZones.Text = gStr.gsZones;
+            chkHeadlandClip.Text = gStr.gsInsideHeadland;
+            btnGeneratePlan.Text = gStr.gsGeneratePlan;
+            btnAddPath.Text = gStr.gsAddPath;
+            btnDeletePath.Text = gStr.gsDeletePath;
+            chkFollowPlan.Text = gStr.gsFollowPlan;
+
             btnStyleK.Text = gStr.gsTurnStyleK;
             btnStyleU.Text = gStr.gsTurnStyleU;
             btnStyleRS.Text = gStr.gsTurnStyleRS;
@@ -133,6 +144,7 @@ namespace AgOpenGPS
 
             gMapControl.Overlays.Add(parcelOverlay);
             gMapControl.Overlays.Add(boundaryOverlay);
+            gMapControl.Overlays.Add(planOverlay);
             gMapControl.Overlays.Add(previewOverlay);
             gMapControl.Overlays.Add(lineOverlay);
             gMapControl.Overlays.Add(vehicleOverlay);
@@ -162,6 +174,24 @@ namespace AgOpenGPS
             LoadBoundary();
             LoadExistingLines();
             CenterOnField();
+
+            // PATH tab: current per-field plan state
+            FillTrackCombo();
+            btnMode1.Checked = mf.plan.mode == CTurnPlan.ModeSequential;
+            btnMode2.Checked = mf.plan.mode == CTurnPlan.ModeContour;
+            btnMode3.Checked = mf.plan.mode == CTurnPlan.ModeZones;
+            if (mf.plan.zoneCount >= (int)nudZones.Minimum && mf.plan.zoneCount <= (int)nudZones.Maximum)
+                nudZones.Value = mf.plan.zoneCount;
+            chkFollowPlan.Checked = mf.plan.isFollowPlan;
+
+            // headland clip only makes sense with a headland defined
+            bool hasHeadland = mf.bnd.bndList.Count > 0 && mf.bnd.bndList[0].hdLine.Count > 2;
+            chkHeadlandClip.Enabled = hasHeadland;
+            chkHeadlandClip.Checked = hasHeadland && mf.plan.clipToHeadland;
+            UpdatePlanInfo();
+            if (mf.plan.HasPlan)
+                mf.plan.RebuildGeometry();
+            DrawPlanOverlay();   // also highlights the active AB line even without a plan
         }
 
         private void FormTurnLine_Shown(object sender, EventArgs e)
@@ -651,6 +681,9 @@ namespace AgOpenGPS
 
             SaveTurnParams();
 
+            mf.plan.isFollowPlan = chkFollowPlan.Checked;
+            mf.FileSaveTurnPlan();
+
             mf.FileSaveTurnLines();
             mf.TimedMessageBox(1500, gStr.gsTurnLimitLines, gStr.gsTurnLinesSaved);
             Close();
@@ -743,23 +776,289 @@ namespace AgOpenGPS
             vehicleTimer.Stop();
         }
 
-        // ── Params tab: switch map <-> parameters, K/U/RS subtabs, number inputs ──
-        private bool paramsShown = false;
+        // ── MAP / PARAMS / PATH icon tabs ─────────────────────────────────
+        private enum ViewTab { Map, Params, Path }
+        private ViewTab activeTab = ViewTab.Map;
 
-        private void btnParamsView_Click(object sender, EventArgs e)
+        private void ShowTab(ViewTab tab)
         {
-            paramsShown = !paramsShown;
-            pnlParams.Visible = paramsShown;
-            gMapControl.Visible = !paramsShown;
-            btnZoomIn.Visible = !paramsShown;
-            btnZoomOut.Visible = !paramsShown;
-            btnParamsView.Text = paramsShown ? gStr.gsMapView : gStr.gsParameters;
+            activeTab = tab;
+            bool mapVisible = tab != ViewTab.Params;
 
-            if (paramsShown)
+            pnlParams.Visible = tab == ViewTab.Params;
+            pnlPath.Visible = tab == ViewTab.Path;
+            gMapControl.Visible = mapVisible;
+            btnZoomIn.Visible = mapVisible;
+            btnZoomOut.Visible = mapVisible;
+
+            btnTabMap.BackColor = tab == ViewTab.Map ? Color.Gold : Color.Lavender;
+            btnTabParams.BackColor = tab == ViewTab.Params ? Color.Gold : Color.Lavender;
+            btnTabPath.BackColor = tab == ViewTab.Path ? Color.Gold : Color.Lavender;
+
+            if (tab == ViewTab.Params)
             {
                 if (!btnStyleK.Checked && !btnStyleU.Checked && !btnStyleRS.Checked)
                     btnStyleK.Checked = true;
                 pnlParams.BringToFront();
+            }
+            else if (tab == ViewTab.Path)
+            {
+                pnlPath.BringToFront();
+                UpdatePlanInfo();
+            }
+        }
+
+        private void btnTabMap_Click(object sender, EventArgs e)
+        {
+            ShowTab(ViewTab.Map);
+        }
+
+        private void btnTabParams_Click(object sender, EventArgs e)
+        {
+            ShowTab(ViewTab.Params);
+        }
+
+        private void btnTabPath_Click(object sender, EventArgs e)
+        {
+            ShowTab(ViewTab.Path);
+        }
+
+        // ── PATH tab: mode select, zone info, plan generation + display ────
+        private static readonly Color[] zoneColors =
+        {
+            Color.DodgerBlue, Color.DarkOrange, Color.MediumSeaGreen, Color.MediumOrchid,
+            Color.Goldenrod, Color.Tomato, Color.DarkTurquoise, Color.SlateBlue, Color.HotPink
+        };
+
+        // three-way exclusive mode toggle (Sequential / Contour / Zones); always one on
+        private void btnMode1_CheckedChanged(object sender, EventArgs e)
+        {
+            if (btnMode1.Checked) { btnMode2.Checked = false; btnMode3.Checked = false; }
+            else if (!btnMode2.Checked && !btnMode3.Checked) btnMode1.Checked = true;
+        }
+
+        private void btnMode2_CheckedChanged(object sender, EventArgs e)
+        {
+            if (btnMode2.Checked) { btnMode1.Checked = false; btnMode3.Checked = false; }
+            else if (!btnMode1.Checked && !btnMode3.Checked) btnMode2.Checked = true;
+        }
+
+        private void btnMode3_CheckedChanged(object sender, EventArgs e)
+        {
+            if (btnMode3.Checked) { btnMode1.Checked = false; btnMode2.Checked = false; }
+            else if (!btnMode1.Checked && !btnMode2.Checked) btnMode3.Checked = true;
+        }
+
+        private void nudZones_ValueChanged(object sender, EventArgs e)
+        {
+            UpdatePlanInfo();
+        }
+
+        // all usable guidance lines; select the plan's line, else the active one
+        private void FillTrackCombo()
+        {
+            cboTrack.Items.Clear();
+            int select = -1;
+            for (int i = 0; i < mf.trk.gArr.Count; i++)
+            {
+                var t = mf.trk.gArr[i];
+                if (t.mode != TrackMode.AB && t.curvePts.Count < 2) continue;
+                int at = cboTrack.Items.Add(t.name);
+                if (t.name == mf.plan.trackName) select = at;
+                if (select < 0 && i == mf.trk.idx) select = at;
+            }
+            if (select < 0 && cboTrack.Items.Count > 0) select = 0;
+            if (select >= 0) cboTrack.SelectedIndex = select;
+
+            cboTrack.SelectedIndexChanged += (s, e) =>
+            {
+                mf.plan.trackName = cboTrack.SelectedItem?.ToString() ?? "";
+                DrawPlanOverlay();
+                UpdatePlanInfo();
+            };
+            mf.plan.trackName = cboTrack.SelectedItem?.ToString() ?? "";
+        }
+
+        private void UpdatePlanInfo()
+        {
+            if (mf.plan.TryZoneInfo((int)nudZones.Value, out double zoneWidth, out int passesPerZone))
+            {
+                lblPlanInfo.Text = gStr.gsZoneWidth + ": " + zoneWidth.ToString("N1") + " m\n"
+                    + passesPerZone + " " + gStr.gsPassesPerZone;
+            }
+            else
+            {
+                lblPlanInfo.Text = gStr.gsNoPlanHint;
+            }
+
+            lblPlanStatus.Text = mf.plan.HasPlan
+                ? mf.plan.entries.Count + " " + gStr.gsPasses + " · "
+                    + mf.plan.zoneCount + " " + gStr.gsZones
+                : "";
+        }
+
+        private void btnGeneratePlan_Click(object sender, EventArgs e)
+        {
+            mf.plan.mode = btnMode1.Checked ? CTurnPlan.ModeSequential
+                         : btnMode2.Checked ? CTurnPlan.ModeContour
+                         : CTurnPlan.ModeZones;
+            mf.plan.zoneCount = (int)nudZones.Value;
+            mf.plan.trackName = cboTrack.SelectedItem?.ToString() ?? "";
+            mf.plan.clipToHeadland = chkHeadlandClip.Enabled && chkHeadlandClip.Checked;
+
+            if (!mf.plan.Generate(out string error))
+            {
+                lblPlanStatus.Text = error;
+                planOverlay.Routes.Clear();
+                planOverlay.Markers.Clear();
+                gMapControl.Invalidate();
+                return;
+            }
+
+            DrawPlanOverlay();
+            UpdatePlanInfo();
+        }
+
+        // one manual closing pass beside the line selected in the combo; every
+        // further click adds the next one, following the same offset rules
+        private void btnAddPath_Click(object sender, EventArgs e)
+        {
+            string tName = cboTrack.SelectedItem?.ToString() ?? "";
+            if (!mf.plan.AddManualPass(tName, out string error))
+            {
+                lblPlanStatus.Text = error;
+                return;
+            }
+
+            DrawPlanOverlay();
+            UpdatePlanInfo();
+        }
+
+        // undo the last manually added pass (for when the user tapped Add path too often)
+        private void btnDeletePath_Click(object sender, EventArgs e)
+        {
+            if (!mf.plan.DeleteLastManualPass(out string error))
+            {
+                lblPlanStatus.Text = error;
+                return;
+            }
+
+            DrawPlanOverlay();
+            UpdatePlanInfo();
+        }
+
+        /// <summary>
+        /// Draw the plan on the map: pass polylines colored per zone (worked = gray),
+        /// an order-number bubble at the pass middle and a direction arrow beside it.
+        /// </summary>
+        private void DrawPlanOverlay()
+        {
+            planOverlay.Routes.Clear();
+            planOverlay.Markers.Clear();
+
+            // highlight which AB line the plan is built on (red dashed)
+            if (mf.plan.TryGetActiveLineGeometry(out List<List<vec3>> lineSegs))
+            {
+                foreach (var seg in lineSegs)
+                {
+                    var route = new List<PointLatLng>(seg.Count);
+                    for (int i = 0; i < seg.Count; i++)
+                        route.Add(LocalToLatLng(seg[i].easting, seg[i].northing));
+                    planOverlay.Routes.Add(new GMapRoute(route, "activeLine")
+                    {
+                        Stroke = new Pen(Color.Red, 3f) { DashStyle = DashStyle.Dash }
+                    });
+                }
+            }
+
+            foreach (var p in mf.plan.entries)
+            {
+                if (p.segments.Count == 0) continue;
+                Color c = p.isWorked
+                    ? Color.DarkGray
+                    : zoneColors[(p.zone - 1) % zoneColors.Length];
+
+                foreach (var seg in p.segments)
+                {
+                    var route = new List<PointLatLng>(seg.Count);
+                    for (int i = 0; i < seg.Count; i++)
+                        route.Add(LocalToLatLng(seg[i].easting, seg[i].northing));
+                    planOverlay.Routes.Add(new GMapRoute(route, "pass")
+                    {
+                        Stroke = new Pen(Color.FromArgb(200, c), 4f)
+                    });
+                }
+
+                // number bubble + arrow at the middle of the longest segment
+                List<vec3> main = p.segments[0];
+                double bestLen = -1;
+                foreach (var seg in p.segments)
+                {
+                    double len = 0;
+                    for (int i = 1; i < seg.Count; i++) len += glm.Distance(seg[i - 1], seg[i]);
+                    if (len > bestLen) { bestLen = len; main = seg; }
+                }
+
+                int mid = main.Count / 2;
+                int nxt = Math.Min(mid + 1, main.Count - 1);
+                if (nxt == mid) continue;
+
+                double dx = main[nxt].easting - main[mid].easting;
+                double dy = main[nxt].northing - main[mid].northing;
+                double dLen = Math.Sqrt(dx * dx + dy * dy);
+                if (dLen < 0.01) continue;
+                dx /= dLen; dy /= dLen;
+                if (!p.isSameWay) { dx = -dx; dy = -dy; }
+
+                planOverlay.Markers.Add(new PlanNumMarker(
+                    LocalToLatLng(main[mid].easting, main[mid].northing),
+                    p.order.ToString(), c));
+
+                // arrow: shaft + head, a few meters past the number bubble
+                double ax = main[mid].easting + dx * 7.0, ay = main[mid].northing + dy * 7.0;
+                double tx = ax + dx * 8.0, ty = ay + dy * 8.0;
+                double px = -dy, py = dx;
+                planOverlay.Routes.Add(new GMapRoute(new List<PointLatLng>
+                {
+                    LocalToLatLng(ax, ay),
+                    LocalToLatLng(tx, ty),
+                    LocalToLatLng(tx - dx * 3.0 + px * 2.0, ty - dy * 3.0 + py * 2.0),
+                    LocalToLatLng(tx, ty),
+                    LocalToLatLng(tx - dx * 3.0 - px * 2.0, ty - dy * 3.0 - py * 2.0)
+                }, "arrow")
+                {
+                    Stroke = new Pen(c, 3f)
+                });
+            }
+
+            gMapControl.Invalidate();
+        }
+
+        // order-number bubble drawn over the pass
+        private class PlanNumMarker : GMapMarker
+        {
+            private readonly string text;
+            private readonly Color color;
+
+            public PlanNumMarker(PointLatLng pos, string t, Color c) : base(pos)
+            {
+                text = t;
+                color = c;
+            }
+
+            public override void OnRender(Graphics g)
+            {
+                using (var f = new Font("Tahoma", 9f, FontStyle.Bold))
+                {
+                    SizeF sz = g.MeasureString(text, f);
+                    float r = Math.Max(sz.Width, sz.Height) * 0.55f + 3f;
+                    using (var back = new SolidBrush(Color.FromArgb(235, Color.White)))
+                        g.FillEllipse(back, LocalPosition.X - r, LocalPosition.Y - r, 2f * r, 2f * r);
+                    using (var pen = new Pen(color, 2.5f))
+                        g.DrawEllipse(pen, LocalPosition.X - r, LocalPosition.Y - r, 2f * r, 2f * r);
+                    g.DrawString(text, f, Brushes.Black,
+                        LocalPosition.X - sz.Width / 2f, LocalPosition.Y - sz.Height / 2f);
+                }
             }
         }
 
@@ -843,6 +1142,7 @@ namespace AgOpenGPS
             MakeKeypadField(nudInU, 0.5);
             MakeKeypadField(nudOvershootU, 0.5);
             MakeKeypadField(nudTolerance, 0.5);
+            MakeKeypadField(nudZones, 1);
         }
 
         private void MakeKeypadField(System.Windows.Forms.NumericUpDown nud, double step)

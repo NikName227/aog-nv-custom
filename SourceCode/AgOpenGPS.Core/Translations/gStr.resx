@@ -1743,6 +1743,39 @@ USE AT OWN RISK.</value>
   <data name="gsUndo" xml:space="preserve">
     <value>Undo</value>
   </data>
+  <data name="gsEditBoundary" xml:space="preserve">
+    <value>Edit boundary</value>
+  </data>
+  <data name="gsAddObstacle" xml:space="preserve">
+    <value>Add obstacle</value>
+  </data>
+  <data name="gsDeleteObstacle" xml:space="preserve">
+    <value>Delete obstacle</value>
+  </data>
+  <data name="gsObstacleNeedsBoundary" xml:space="preserve">
+    <value>Create or load a boundary first.</value>
+  </data>
+  <data name="gsObstacleOutside" xml:space="preserve">
+    <value>Obstacle must be inside the boundary and not overlap others.</value>
+  </data>
+  <data name="gsRadius" xml:space="preserve">
+    <value>Radius</value>
+  </data>
+  <data name="gsAdd" xml:space="preserve">
+    <value>Add</value>
+  </data>
+  <data name="gsMake" xml:space="preserve">
+    <value>Make</value>
+  </data>
+  <data name="gsSave" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="gsObstacle" xml:space="preserve">
+    <value>Obstacle</value>
+  </data>
+  <data name="gsBoundaryGroup" xml:space="preserve">
+    <value>Boundary</value>
+  </data>
   <data name="gsSmartAB" xml:space="preserve">
     <value>Smart AB</value>
   </data>
@@ -1847,5 +1880,38 @@ USE AT OWN RISK.</value>
   </data>
   <data name="gsTurnLineHint" xml:space="preserve">
     <value>Line = how far the wheels may go while turning (road allowed)</value>
+  </data>
+  <data name="gsRowByRow" xml:space="preserve">
+    <value>Row by row</value>
+  </data>
+  <data name="gsZonesSkip" xml:space="preserve">
+    <value>Zones (skip)</value>
+  </data>
+  <data name="gsContour" xml:space="preserve">
+    <value>Contour</value>
+  </data>
+  <data name="gsGeneratePlan" xml:space="preserve">
+    <value>Generate plan</value>
+  </data>
+  <data name="gsFollowPlan" xml:space="preserve">
+    <value>Follow plan</value>
+  </data>
+  <data name="gsZoneWidth" xml:space="preserve">
+    <value>Zone width</value>
+  </data>
+  <data name="gsPassesPerZone" xml:space="preserve">
+    <value>passes per zone</value>
+  </data>
+  <data name="gsNoPlanHint" xml:space="preserve">
+    <value>Needs a boundary and an active AB line or curve</value>
+  </data>
+  <data name="gsInsideHeadland" xml:space="preserve">
+    <value>Inside headland</value>
+  </data>
+  <data name="gsAddPath" xml:space="preserve">
+    <value>Add path</value>
+  </data>
+  <data name="gsDeletePath" xml:space="preserve">
+    <value>Delete path</value>
   </data>
 </root>

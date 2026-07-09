@@ -14,6 +14,9 @@
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
     <DebugType>none</DebugType>
+    <!-- NV: turn feature (F05, work in progress) is hidden in release builds;
+         the code stays in, Debug/test builds keep the option. -->
+    <DefineConstants>$(DefineConstants);NV_HIDE_TURN</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
@@ -117,10 +120,11 @@
   </ItemGroup>
 
   <!-- NV custom: copy build output to the shared test folder for laptop testing.
-       ContinueOnError so the build still passes when Z: is not mounted. -->
+       ContinueOnError so the build still passes when S: is not mounted. -->
   <Target Name="CopyToTestTemp" AfterTargets="Build" Condition="'$(Configuration)' == 'Debug'">
     <PropertyGroup>
-      <TestTempDir>Z:\02_AgOpenGPS\AgOpenGPS_softw\Dev\test_temp</TestTempDir>
+      <TestTempDir Condition="Exists('S:\Test')">S:\Test\AgOpenGPS_test</TestTempDir>
+      <TestTempDir Condition="'$(TestTempDir)' == ''">\\wsl.localhost\Ubuntu\mnt\shared\Test\AgOpenGPS_test</TestTempDir>
     </PropertyGroup>
     <ItemGroup>
       <TestTempFiles Include="$(OutDir)**\*.*" />

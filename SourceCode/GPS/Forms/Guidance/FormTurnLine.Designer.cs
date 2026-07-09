@@ -1,4 +1,4 @@
-namespace AgOpenGPS
+﻿namespace AgOpenGPS
 {
     partial class FormTurnLine
     {
@@ -36,8 +36,25 @@ namespace AgOpenGPS
             this.btnZoomOut = new System.Windows.Forms.Button();
             this.btnWinFull = new System.Windows.Forms.Button();
             this.btnWinClose = new System.Windows.Forms.Button();
-            this.btnParamsView = new System.Windows.Forms.Button();
+            this.btnTabMap = new System.Windows.Forms.Button();
+            this.btnTabParams = new System.Windows.Forms.Button();
+            this.btnTabPath = new System.Windows.Forms.Button();
             this.pnlParams = new System.Windows.Forms.Panel();
+            this.pnlPath = new System.Windows.Forms.Panel();
+            this.lblTrack = new System.Windows.Forms.Label();
+            this.cboTrack = new System.Windows.Forms.ComboBox();
+            this.btnMode1 = new System.Windows.Forms.CheckBox();
+            this.btnMode2 = new System.Windows.Forms.CheckBox();
+            this.btnMode3 = new System.Windows.Forms.CheckBox();
+            this.lblZones = new System.Windows.Forms.Label();
+            this.nudZones = new System.Windows.Forms.NumericUpDown();
+            this.chkHeadlandClip = new System.Windows.Forms.CheckBox();
+            this.lblPlanInfo = new System.Windows.Forms.Label();
+            this.btnGeneratePlan = new System.Windows.Forms.Button();
+            this.btnAddPath = new System.Windows.Forms.Button();
+            this.btnDeletePath = new System.Windows.Forms.Button();
+            this.chkFollowPlan = new System.Windows.Forms.CheckBox();
+            this.lblPlanStatus = new System.Windows.Forms.Label();
             this.btnStyleK = new System.Windows.Forms.CheckBox();
             this.btnStyleU = new System.Windows.Forms.CheckBox();
             this.btnStyleRS = new System.Windows.Forms.CheckBox();
@@ -356,20 +373,43 @@ namespace AgOpenGPS
             ((System.ComponentModel.ISupportInitialize)(this.nudMinRS)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudTolerance)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudOvershootU)).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)(this.nudZones)).BeginInit();
             //
-            // btnParamsView
+            // btnTabMap / btnTabParams / btnTabPath (icon tab buttons)
             //
-            this.btnParamsView.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
-            this.btnParamsView.BackColor = System.Drawing.Color.Lavender;
-            this.btnParamsView.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnParamsView.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
-            this.btnParamsView.Location = new System.Drawing.Point(886, 112);
-            this.btnParamsView.Name = "btnParamsView";
-            this.btnParamsView.Size = new System.Drawing.Size(142, 44);
-            this.btnParamsView.TabIndex = 19;
-            this.btnParamsView.Text = "Parameters";
-            this.btnParamsView.UseVisualStyleBackColor = false;
-            this.btnParamsView.Click += new System.EventHandler(this.btnParamsView_Click);
+            this.btnTabMap.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.btnTabMap.BackColor = System.Drawing.Color.Gold;
+            this.btnTabMap.BackgroundImage = global::AgOpenGPS.Properties.Resources.MappingOn;
+            this.btnTabMap.BackgroundImageLayout = System.Windows.Forms.ImageLayout.Zoom;
+            this.btnTabMap.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnTabMap.Location = new System.Drawing.Point(886, 112);
+            this.btnTabMap.Name = "btnTabMap";
+            this.btnTabMap.Size = new System.Drawing.Size(46, 44);
+            this.btnTabMap.TabIndex = 19;
+            this.btnTabMap.UseVisualStyleBackColor = false;
+            this.btnTabMap.Click += new System.EventHandler(this.btnTabMap_Click);
+            this.btnTabParams.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.btnTabParams.BackColor = System.Drawing.Color.Lavender;
+            this.btnTabParams.BackgroundImage = global::AgOpenGPS.Properties.Resources.Settings48;
+            this.btnTabParams.BackgroundImageLayout = System.Windows.Forms.ImageLayout.Zoom;
+            this.btnTabParams.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnTabParams.Location = new System.Drawing.Point(934, 112);
+            this.btnTabParams.Name = "btnTabParams";
+            this.btnTabParams.Size = new System.Drawing.Size(46, 44);
+            this.btnTabParams.TabIndex = 20;
+            this.btnTabParams.UseVisualStyleBackColor = false;
+            this.btnTabParams.Click += new System.EventHandler(this.btnTabParams_Click);
+            this.btnTabPath.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.btnTabPath.BackColor = System.Drawing.Color.Lavender;
+            this.btnTabPath.BackgroundImage = global::AgOpenGPS.Properties.Resources.ABTracks;
+            this.btnTabPath.BackgroundImageLayout = System.Windows.Forms.ImageLayout.Zoom;
+            this.btnTabPath.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnTabPath.Location = new System.Drawing.Point(982, 112);
+            this.btnTabPath.Name = "btnTabPath";
+            this.btnTabPath.Size = new System.Drawing.Size(46, 44);
+            this.btnTabPath.TabIndex = 21;
+            this.btnTabPath.UseVisualStyleBackColor = false;
+            this.btnTabPath.Click += new System.EventHandler(this.btnTabPath_Click);
             //
             // pnlParams
             //
@@ -391,6 +431,200 @@ namespace AgOpenGPS
             this.pnlParams.Controls.Add(this.pnlK);
             this.pnlParams.Controls.Add(this.pnlU);
             this.pnlParams.Controls.Add(this.pnlRS);
+            //
+            // pnlPath (left strip over the map; the plan draws on the map itself)
+            //
+            this.pnlPath.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom)
+                        | System.Windows.Forms.AnchorStyles.Left)));
+            this.pnlPath.BackColor = System.Drawing.Color.WhiteSmoke;
+            this.pnlPath.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            this.pnlPath.Location = new System.Drawing.Point(12, 164);
+            this.pnlPath.Name = "pnlPath";
+            this.pnlPath.Size = new System.Drawing.Size(310, 508);
+            this.pnlPath.TabIndex = 22;
+            this.pnlPath.Visible = false;
+            this.pnlPath.Controls.Add(this.lblTrack);
+            this.pnlPath.Controls.Add(this.cboTrack);
+            this.pnlPath.Controls.Add(this.btnMode1);
+            this.pnlPath.Controls.Add(this.btnMode3);
+            this.pnlPath.Controls.Add(this.btnMode2);
+            this.pnlPath.Controls.Add(this.lblZones);
+            this.pnlPath.Controls.Add(this.nudZones);
+            this.pnlPath.Controls.Add(this.chkHeadlandClip);
+            this.pnlPath.Controls.Add(this.lblPlanInfo);
+            this.pnlPath.Controls.Add(this.btnGeneratePlan);
+            this.pnlPath.Controls.Add(this.btnAddPath);
+            this.pnlPath.Controls.Add(this.btnDeletePath);
+            this.pnlPath.Controls.Add(this.chkFollowPlan);
+            this.pnlPath.Controls.Add(this.lblPlanStatus);
+            //
+            // lblTrack + cboTrack (which line the plan is generated from)
+            //
+            this.lblTrack.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.lblTrack.Location = new System.Drawing.Point(10, 58);
+            this.lblTrack.Name = "lblTrack";
+            this.lblTrack.Size = new System.Drawing.Size(64, 30);
+            this.lblTrack.TabIndex = 9;
+            this.lblTrack.Text = "Track";
+            this.lblTrack.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            this.cboTrack.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.cboTrack.Font = new System.Drawing.Font("Tahoma", 11.25F);
+            this.cboTrack.Location = new System.Drawing.Point(80, 56);
+            this.cboTrack.Name = "cboTrack";
+            this.cboTrack.Size = new System.Drawing.Size(218, 34);
+            this.cboTrack.TabIndex = 10;
+            //
+            // btnMode1 / btnMode3 / btnMode2 (processing mode)
+            //
+            this.btnMode1.Appearance = System.Windows.Forms.Appearance.Button;
+            this.btnMode1.BackColor = System.Drawing.Color.AliceBlue;
+            this.btnMode1.FlatAppearance.CheckedBackColor = System.Drawing.Color.Gold;
+            this.btnMode1.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnMode1.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.btnMode1.Location = new System.Drawing.Point(10, 98);
+            this.btnMode1.Name = "btnMode1";
+            this.btnMode1.Size = new System.Drawing.Size(288, 38);
+            this.btnMode1.TabIndex = 0;
+            this.btnMode1.Text = "Row by row";
+            this.btnMode1.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.btnMode1.UseVisualStyleBackColor = false;
+            this.btnMode1.CheckedChanged += new System.EventHandler(this.btnMode1_CheckedChanged);
+            this.btnMode3.Appearance = System.Windows.Forms.Appearance.Button;
+            this.btnMode3.BackColor = System.Drawing.Color.AliceBlue;
+            this.btnMode3.Checked = true;
+            this.btnMode3.CheckState = System.Windows.Forms.CheckState.Checked;
+            this.btnMode3.FlatAppearance.CheckedBackColor = System.Drawing.Color.Gold;
+            this.btnMode3.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnMode3.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.btnMode3.Location = new System.Drawing.Point(10, 140);
+            this.btnMode3.Name = "btnMode3";
+            this.btnMode3.Size = new System.Drawing.Size(288, 38);
+            this.btnMode3.TabIndex = 1;
+            this.btnMode3.Text = "Zones (skip)";
+            this.btnMode3.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.btnMode3.UseVisualStyleBackColor = false;
+            this.btnMode3.CheckedChanged += new System.EventHandler(this.btnMode3_CheckedChanged);
+            this.btnMode2.Appearance = System.Windows.Forms.Appearance.Button;
+            this.btnMode2.BackColor = System.Drawing.Color.AliceBlue;
+            this.btnMode2.FlatAppearance.CheckedBackColor = System.Drawing.Color.Gold;
+            this.btnMode2.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnMode2.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.btnMode2.Location = new System.Drawing.Point(10, 182);
+            this.btnMode2.Name = "btnMode2";
+            this.btnMode2.Size = new System.Drawing.Size(288, 38);
+            this.btnMode2.TabIndex = 2;
+            this.btnMode2.Text = "Contour";
+            this.btnMode2.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.btnMode2.UseVisualStyleBackColor = false;
+            this.btnMode2.CheckedChanged += new System.EventHandler(this.btnMode2_CheckedChanged);
+            //
+            // lblZones + nudZones
+            //
+            this.lblZones.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.lblZones.Location = new System.Drawing.Point(10, 230);
+            this.lblZones.Name = "lblZones";
+            this.lblZones.Size = new System.Drawing.Size(104, 30);
+            this.lblZones.TabIndex = 3;
+            this.lblZones.Text = "Zones";
+            this.lblZones.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            this.nudZones.Font = new System.Drawing.Font("Tahoma", 12F);
+            this.nudZones.Location = new System.Drawing.Point(120, 226);
+            this.nudZones.Maximum = new decimal(new int[] { 9, 0, 0, 0 });
+            this.nudZones.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
+            this.nudZones.Name = "nudZones";
+            this.nudZones.Size = new System.Drawing.Size(84, 34);
+            this.nudZones.TabIndex = 4;
+            this.nudZones.Value = new decimal(new int[] { 2, 0, 0, 0 });
+            this.nudZones.ValueChanged += new System.EventHandler(this.nudZones_ValueChanged);
+            //
+            // chkHeadlandClip (generate passes only inside the headland line)
+            //
+            this.chkHeadlandClip.Appearance = System.Windows.Forms.Appearance.Button;
+            this.chkHeadlandClip.BackColor = System.Drawing.Color.AliceBlue;
+            this.chkHeadlandClip.Checked = true;
+            this.chkHeadlandClip.CheckState = System.Windows.Forms.CheckState.Checked;
+            this.chkHeadlandClip.FlatAppearance.CheckedBackColor = System.Drawing.Color.MediumAquamarine;
+            this.chkHeadlandClip.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.chkHeadlandClip.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Bold);
+            this.chkHeadlandClip.Location = new System.Drawing.Point(10, 268);
+            this.chkHeadlandClip.Name = "chkHeadlandClip";
+            this.chkHeadlandClip.Size = new System.Drawing.Size(288, 38);
+            this.chkHeadlandClip.TabIndex = 11;
+            this.chkHeadlandClip.Text = "Inside headland";
+            this.chkHeadlandClip.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.chkHeadlandClip.UseVisualStyleBackColor = false;
+            //
+            // btnAddPath (one manual closing pass beside the selected line)
+            //
+            this.btnAddPath.BackColor = System.Drawing.Color.PapayaWhip;
+            this.btnAddPath.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnAddPath.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.btnAddPath.Location = new System.Drawing.Point(10, 398);
+            this.btnAddPath.Name = "btnAddPath";
+            this.btnAddPath.Size = new System.Drawing.Size(140, 38);
+            this.btnAddPath.TabIndex = 12;
+            this.btnAddPath.Text = "Add path";
+            this.btnAddPath.UseVisualStyleBackColor = false;
+            this.btnAddPath.Click += new System.EventHandler(this.btnAddPath_Click);
+            //
+            // btnDeletePath (undo the last manually added pass)
+            //
+            this.btnDeletePath.BackColor = System.Drawing.Color.MistyRose;
+            this.btnDeletePath.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnDeletePath.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.btnDeletePath.Location = new System.Drawing.Point(158, 398);
+            this.btnDeletePath.Name = "btnDeletePath";
+            this.btnDeletePath.Size = new System.Drawing.Size(140, 38);
+            this.btnDeletePath.TabIndex = 13;
+            this.btnDeletePath.Text = "Delete path";
+            this.btnDeletePath.UseVisualStyleBackColor = false;
+            this.btnDeletePath.Click += new System.EventHandler(this.btnDeletePath_Click);
+            //
+            // lblPlanInfo
+            //
+            this.lblPlanInfo.Font = new System.Drawing.Font("Tahoma", 9.75F);
+            this.lblPlanInfo.ForeColor = System.Drawing.Color.DimGray;
+            this.lblPlanInfo.Location = new System.Drawing.Point(10, 312);
+            this.lblPlanInfo.Name = "lblPlanInfo";
+            this.lblPlanInfo.Size = new System.Drawing.Size(288, 44);
+            this.lblPlanInfo.TabIndex = 5;
+            //
+            // btnGeneratePlan
+            //
+            this.btnGeneratePlan.BackColor = System.Drawing.Color.PapayaWhip;
+            this.btnGeneratePlan.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnGeneratePlan.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.btnGeneratePlan.Location = new System.Drawing.Point(10, 358);
+            this.btnGeneratePlan.Name = "btnGeneratePlan";
+            this.btnGeneratePlan.Size = new System.Drawing.Size(288, 38);
+            this.btnGeneratePlan.TabIndex = 6;
+            this.btnGeneratePlan.Text = "Generate plan";
+            this.btnGeneratePlan.UseVisualStyleBackColor = false;
+            this.btnGeneratePlan.Click += new System.EventHandler(this.btnGeneratePlan_Click);
+            //
+            // chkFollowPlan
+            //
+            this.chkFollowPlan.Appearance = System.Windows.Forms.Appearance.Button;
+            this.chkFollowPlan.BackColor = System.Drawing.Color.AliceBlue;
+            this.chkFollowPlan.FlatAppearance.CheckedBackColor = System.Drawing.Color.MediumSeaGreen;
+            this.chkFollowPlan.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.chkFollowPlan.Font = new System.Drawing.Font("Tahoma", 12F, System.Drawing.FontStyle.Bold);
+            this.chkFollowPlan.Location = new System.Drawing.Point(10, 12);
+            this.chkFollowPlan.Name = "chkFollowPlan";
+            this.chkFollowPlan.Size = new System.Drawing.Size(288, 38);
+            this.chkFollowPlan.TabIndex = 7;
+            this.chkFollowPlan.Text = "Follow plan";
+            this.chkFollowPlan.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.chkFollowPlan.UseVisualStyleBackColor = false;
+            //
+            // lblPlanStatus
+            //
+            this.lblPlanStatus.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
+            this.lblPlanStatus.ForeColor = System.Drawing.Color.DimGray;
+            this.lblPlanStatus.Location = new System.Drawing.Point(10, 442);
+            this.lblPlanStatus.Name = "lblPlanStatus";
+            this.lblPlanStatus.Size = new System.Drawing.Size(288, 28);
+            this.lblPlanStatus.TabIndex = 8;
             //
             // btnStyleK
             //
@@ -666,8 +900,11 @@ namespace AgOpenGPS
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.Color.WhiteSmoke;
             this.ClientSize = new System.Drawing.Size(1040, 684);
+            this.Controls.Add(this.pnlPath);
             this.Controls.Add(this.pnlParams);
-            this.Controls.Add(this.btnParamsView);
+            this.Controls.Add(this.btnTabMap);
+            this.Controls.Add(this.btnTabParams);
+            this.Controls.Add(this.btnTabPath);
             this.Controls.Add(this.btnWinFull);
             this.Controls.Add(this.btnWinClose);
             this.Controls.Add(this.btnZoomIn);
@@ -705,6 +942,7 @@ namespace AgOpenGPS
             ((System.ComponentModel.ISupportInitialize)(this.nudMinRS)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudTolerance)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudOvershootU)).EndInit();
+            ((System.ComponentModel.ISupportInitialize)(this.nudZones)).EndInit();
             this.ResumeLayout(false);
         }
 
@@ -729,8 +967,25 @@ namespace AgOpenGPS
         private System.Windows.Forms.Button btnZoomOut;
         private System.Windows.Forms.Button btnWinFull;
         private System.Windows.Forms.Button btnWinClose;
-        private System.Windows.Forms.Button btnParamsView;
+        private System.Windows.Forms.Button btnTabMap;
+        private System.Windows.Forms.Button btnTabParams;
+        private System.Windows.Forms.Button btnTabPath;
         private System.Windows.Forms.Panel pnlParams;
+        private System.Windows.Forms.Panel pnlPath;
+        private System.Windows.Forms.Label lblTrack;
+        private System.Windows.Forms.ComboBox cboTrack;
+        private System.Windows.Forms.CheckBox btnMode1;
+        private System.Windows.Forms.CheckBox btnMode2;
+        private System.Windows.Forms.CheckBox btnMode3;
+        private System.Windows.Forms.Label lblZones;
+        private System.Windows.Forms.NumericUpDown nudZones;
+        private System.Windows.Forms.CheckBox chkHeadlandClip;
+        private System.Windows.Forms.Label lblPlanInfo;
+        private System.Windows.Forms.Button btnGeneratePlan;
+        private System.Windows.Forms.Button btnAddPath;
+        private System.Windows.Forms.Button btnDeletePath;
+        private System.Windows.Forms.CheckBox chkFollowPlan;
+        private System.Windows.Forms.Label lblPlanStatus;
         private System.Windows.Forms.CheckBox btnStyleK;
         private System.Windows.Forms.CheckBox btnStyleU;
         private System.Windows.Forms.CheckBox btnStyleRS;

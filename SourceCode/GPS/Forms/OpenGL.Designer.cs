@@ -346,6 +346,9 @@ namespace AgOpenGPS
                         //turn limit lines (NV custom)
                         tnl.DrawTurnLines();
 
+                        //follow plan (NV custom): only the NEXT pass shows on the main map
+                        plan.DrawNextPass();
+
                         GL.LineWidth(ABLine.lineWidth);
 
                         //draw the turnLines

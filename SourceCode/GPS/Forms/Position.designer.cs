@@ -1018,6 +1018,9 @@ namespace AgOpenGPS
 
             #endregion
 
+            //NV follow plan: track how much of the current pass is driven
+            plan.UpdateProgress();
+
             #region Youturn
 
             //if an outer boundary is set, then apply critical stop logic
@@ -1046,7 +1049,10 @@ namespace AgOpenGPS
                             {
                                 yt.ResetCreatedYouTurn();
                             }
-                            else
+                            //no valid guidance line selected yet -> never build/arm a
+                            //youturn (a restored Follow-plan field can reach here with
+                            //trk.idx == -1 before a line is picked -> stock deref crash)
+                            else if (trk.idx > -1 && trk.idx < trk.gArr.Count)
                             {
                                 if (trk.gArr[trk.idx].mode == TrackMode.AB)
                                 {

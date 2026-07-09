@@ -65,6 +65,40 @@ namespace AgOpenGPS
         private int selCorner = -1;
         private int stepPx = 20; // Coarse by default; Fine = 5
 
+        // Existing field boundary shown for reference; "Edit boundary" loads the outer ring
+        // into madeRing so the Phase-4 edit machinery works on it. Inner boundaries
+        // (obstacles) are shown too and can be deleted in delete-obstacle mode.
+        private readonly GMapOverlay existingOverlay = new GMapOverlay("existing");
+        private List<Wgs84> existingOuterRing;
+        private GMapPolygon existingOuterPoly;
+
+        private class ExistingInner
+        {
+            public int BndIndex;                 // index into mf.bnd.bndList
+            public List<PointLatLng> Pts;
+            public GMapPolygon Poly;
+        }
+        private readonly List<ExistingInner> existingInners = new List<ExistingInner>();
+        private readonly List<int> deletedInnerIdx = new List<int>(); // applied on Save
+
+        // New obstacle circles (center handle to move, edge handle to resize). Saved as
+        // inner boundaries (bndList[1..], non drive-thru) = avoidance areas.
+        private readonly GMapOverlay obstacleOverlay = new GMapOverlay("obstacles");
+        private class ObstacleCircle
+        {
+            public PointLatLng Center;
+            public double RadiusM;
+            public GMapPolygon Poly;
+            public CornerMarker CenterMarker;
+            public CornerMarker RadiusMarker;
+        }
+        private readonly List<ObstacleCircle> obstacles = new List<ObstacleCircle>();
+        private ObstacleCircle dragObstacle;
+        private bool dragObstacleRadius;
+        private ObstacleCircle selObstacle;     // arrow-pad selection
+        private bool selObstacleRadius;
+        private const int ObstacleCirclePts = 24;
+
         private class BridgeRect
         {
             public readonly List<PointLatLng> Corners = new List<PointLatLng>(4);
@@ -121,13 +155,21 @@ namespace AgOpenGPS
             chkMarkParcel.Text = gStr.gsMarkParcel;
             btnAddBridge.Text = gStr.gsAddBridge;
             btnClearSel.Text = gStr.gsClearSelection;
-            btnMakeBoundary.Text = gStr.gsMakeBoundary;
-            btnSaveBoundary.Text = gStr.gsSaveBoundary;
             btnFine.Text = gStr.gsFine;
             btnCoarse.Text = gStr.gsCoarse;
-            btnAddPoint.Text = gStr.gsAddPoint;
-            btnDeletePoint.Text = gStr.gsDeletePoint;
+
+            // Grouped rows: a bold label carries the context, the buttons get short verbs.
+            lblPointGroup.Text = gStr.gsPoint + ":";
+            btnAddPoint.Text = gStr.gsAdd;
+            btnDeletePoint.Text = gStr.gsDelete;
             btnUndo.Text = gStr.gsUndo;
+            lblObstacleGroup.Text = gStr.gsObstacle + ":";
+            btnAddObstacle.Text = gStr.gsAdd;
+            btnDeleteObstacle.Text = gStr.gsDelete;
+            lblBoundaryGroup.Text = gStr.gsBoundaryGroup + ":";
+            btnMakeBoundary.Text = gStr.gsMake;
+            btnSaveBoundary.Text = gStr.gsSave;
+            btnEditBoundary.Text = gStr.gsEdit;
             lblPointMode.Text = "";
         }
 
@@ -153,8 +195,10 @@ namespace AgOpenGPS
             gMapControl.DragButton = MouseButtons.Left;
 
             gMapControl.Overlays.Add(parcelOverlay);
+            gMapControl.Overlays.Add(existingOverlay);
             gMapControl.Overlays.Add(bridgeOverlay);
             gMapControl.Overlays.Add(madeOverlay);
+            gMapControl.Overlays.Add(obstacleOverlay);
             gMapControl.Overlays.Add(editOverlay);
             gMapControl.Overlays.Add(vehicleOverlay);
 
@@ -179,6 +223,8 @@ namespace AgOpenGPS
 
             // Add point is always available: with no boundary it starts a manual polygon.
             btnAddPoint.Enabled = true;
+
+            LoadExistingField();
 
             UpdateSelInfo();
             isLoading = false;
@@ -332,6 +378,18 @@ namespace AgOpenGPS
                 return;
             }
 
+            // Delete-obstacle mode: a tap on an obstacle (new circle or existing inner) removes it.
+            if (btnDeleteObstacle.Checked)
+            {
+                DeleteObstacleAt(e.X, e.Y);
+                return;
+            }
+
+            if (HitTestObstacleHandle(e.X, e.Y, out var hitOb, out bool hitObRadius))
+            {
+                if (pointMode != PointEdit.Off) SelectObstacleHandle(hitOb, hitObRadius);
+                return;
+            }
             if (HitTestCorner(e.X, e.Y, out var hitRect, out int hitCorner))
             {
                 // In point-edit mode a click on a handle selects it for the arrow-pad.
@@ -375,7 +433,11 @@ namespace AgOpenGPS
 
         private void chkMarkParcel_CheckedChanged(object sender, EventArgs e)
         {
-            if (chkMarkParcel.Checked) { btnAddPoint.Checked = false; btnDeletePoint.Checked = false; }
+            if (chkMarkParcel.Checked)
+            {
+                btnAddPoint.Checked = false; btnDeletePoint.Checked = false;
+                btnDeleteObstacle.Checked = false;
+            }
             // In mark mode left-click selects parcels, so pan with the right button.
             UpdateDragButton();
             lblStatus.Text = chkMarkParcel.Checked
@@ -449,7 +511,14 @@ namespace AgOpenGPS
         private void gMap_MouseDown(object sender, MouseEventArgs e)
         {
             if (e.Button != MouseButtons.Left) return;
-            if (btnAddPoint.Checked || btnDeletePoint.Checked) return; // tap modes; don't drag-grab
+            // tap modes; don't drag-grab
+            if (btnAddPoint.Checked || btnDeletePoint.Checked || btnDeleteObstacle.Checked) return;
+            if (HitTestObstacleHandle(e.X, e.Y, out var ob, out bool obRadius))
+            {
+                dragObstacle = ob; dragObstacleRadius = obRadius;
+                gMapControl.CanDragMap = false;
+                return;
+            }
             if (HitTestCorner(e.X, e.Y, out var r, out int c))
             {
                 dragRect = r; dragCorner = c;
@@ -485,13 +554,23 @@ namespace AgOpenGPS
                 RedrawMadeBoundary();
                 gMapControl.Invalidate();
             }
+            else if (dragObstacle != null)
+            {
+                PointLatLng pt = gMapControl.FromLocalToLatLng(e.X, e.Y);
+                if (dragObstacleRadius)
+                    dragObstacle.RadiusM = Math.Max(1.0, MetersBetween(dragObstacle.Center, pt));
+                else
+                    dragObstacle.Center = pt;
+                RedrawObstacle(dragObstacle);
+                gMapControl.Invalidate();
+            }
         }
 
         private void gMap_MouseUp(object sender, MouseEventArgs e)
         {
-            if (dragRect != null || dragVertex >= 0)
+            if (dragRect != null || dragVertex >= 0 || dragObstacle != null)
             {
-                dragRect = null; dragCorner = -1; dragVertex = -1;
+                dragRect = null; dragCorner = -1; dragVertex = -1; dragObstacle = null;
                 gMapControl.CanDragMap = true;
             }
         }
@@ -547,6 +626,7 @@ namespace AgOpenGPS
         {
             if (selMarker != null) { selMarker.Selected = false; selMarker = null; }
             selRect = null; selCorner = -1; selVertex = -1;
+            selObstacle = null; selObstacleRadius = false;
             pointMode = PointEdit.Off;
             btnPoint.BackColor = Color.Gainsboro;
             lblPointMode.Text = "";
@@ -557,7 +637,7 @@ namespace AgOpenGPS
         private void SelectCorner(BridgeRect rect, int corner)
         {
             if (selMarker != null) selMarker.Selected = false;
-            selRect = rect; selCorner = corner; selVertex = -1;
+            selRect = rect; selCorner = corner; selVertex = -1; selObstacle = null;
             selMarker = rect.Markers[corner];
             selMarker.Selected = true;
             SetPointMode(PointEdit.Move);
@@ -568,7 +648,7 @@ namespace AgOpenGPS
         private void SelectVertex(int idx)
         {
             if (selMarker != null) selMarker.Selected = false;
-            selRect = null; selCorner = -1; selVertex = idx;
+            selRect = null; selCorner = -1; selVertex = idx; selObstacle = null;
             selMarker = madeMarkers[idx];
             selMarker.Selected = true;
             PushUndo();
@@ -623,6 +703,14 @@ namespace AgOpenGPS
                 selRect.Corners[selCorner] = pt;
                 RedrawRect(selRect);
                 InvalidateMadeBoundary();
+            }
+            else if (selObstacle != null) // obstacle: move the center or stretch the radius
+            {
+                if (selObstacleRadius)
+                    selObstacle.RadiusM = Math.Max(1.0, MetersBetween(selObstacle.Center, pt));
+                else
+                    selObstacle.Center = pt;
+                RedrawObstacle(selObstacle);
             }
             gMapControl.Invalidate();
         }
@@ -757,8 +845,16 @@ namespace AgOpenGPS
         {
             madeRing = null;
             madeOverlay.Polygons.Clear();
-            btnSaveBoundary.Enabled = false;
+            ShowExistingOuter(true); // no preview ring anymore -> show the field's own boundary
+            UpdateSaveEnabled();
             ClearMadeEdit();
+        }
+
+        // Save applies the made ring and/or the obstacle changes.
+        private void UpdateSaveEnabled()
+        {
+            btnSaveBoundary.Enabled = madeRing != null
+                || obstacles.Count > 0 || deletedInnerIdx.Count > 0;
         }
 
         // ── Phase 4: boundary vertex add / delete / undo ──────────────────
@@ -788,6 +884,7 @@ namespace AgOpenGPS
             {
                 chkMarkParcel.Checked = false; // exclusive tap mode
                 btnDeletePoint.Checked = false;
+                btnDeleteObstacle.Checked = false;
                 ResetPointEdit();
                 // With no boundary yet, start a manual polygon: spawn a triangle the user can
                 // expand (drag corners) and add points to. (Otherwise taps insert points.)
@@ -829,8 +926,22 @@ namespace AgOpenGPS
             {
                 btnAddPoint.Checked = false;
                 chkMarkParcel.Checked = false;
+                btnDeleteObstacle.Checked = false;
                 ResetPointEdit();
                 lblStatus.Text = gStr.gsDeletePoint;
+            }
+            UpdateDragButton();
+        }
+
+        private void btnDeleteObstacle_CheckedChanged(object sender, EventArgs e)
+        {
+            if (btnDeleteObstacle.Checked)
+            {
+                btnAddPoint.Checked = false;
+                btnDeletePoint.Checked = false;
+                chkMarkParcel.Checked = false;
+                ResetPointEdit();
+                lblStatus.Text = gStr.gsDeleteObstacle;
             }
             UpdateDragButton();
         }
@@ -894,14 +1005,363 @@ namespace AgOpenGPS
 
         private void UpdateDragButton()
         {
-            gMapControl.DragButton = (chkMarkParcel.Checked || btnAddPoint.Checked || btnDeletePoint.Checked)
+            gMapControl.DragButton = (chkMarkParcel.Checked || btnAddPoint.Checked
+                || btnDeletePoint.Checked || btnDeleteObstacle.Checked)
                 ? MouseButtons.Right : MouseButtons.Left;
+        }
+
+        // ── Existing field boundary + obstacles (inner boundaries) ────────
+        // Show the field's current outer boundary and its inner boundaries (obstacles) so
+        // both can be edited here: "Edit boundary" loads the outer ring into madeRing,
+        // "Add/Delete obstacle" manages circles saved as inner boundaries.
+        private void LoadExistingField()
+        {
+            if (mf.bnd.bndList.Count == 0 || mf.bnd.bndList[0].fenceLine.Count < 3)
+            {
+                btnEditBoundary.Enabled = false;
+                return;
+            }
+
+            existingOuterRing = new List<Wgs84>(mf.bnd.bndList[0].fenceLine.Count);
+            var pts = new List<PointLatLng>(mf.bnd.bndList[0].fenceLine.Count);
+            foreach (var v in mf.bnd.bndList[0].fenceLine)
+            {
+                Wgs84 w = mf.AppModel.LocalPlane.ConvertGeoCoordToWgs84(v.ToGeoCoord());
+                existingOuterRing.Add(w);
+                pts.Add(new PointLatLng(w.Latitude, w.Longitude));
+            }
+            existingOuterPoly = new GMapPolygon(pts, "fieldOuter")
+            {
+                Fill = new SolidBrush(Color.FromArgb(15, Color.ForestGreen)),
+                Stroke = new Pen(Color.ForestGreen, 3f)
+            };
+            existingOverlay.Polygons.Add(existingOuterPoly);
+            btnEditBoundary.Enabled = true;
+
+            for (int i = 1; i < mf.bnd.bndList.Count; i++)
+            {
+                if (mf.bnd.bndList[i].fenceLine.Count < 3) continue;
+                var ipts = new List<PointLatLng>(mf.bnd.bndList[i].fenceLine.Count);
+                foreach (var v in mf.bnd.bndList[i].fenceLine)
+                {
+                    Wgs84 w = mf.AppModel.LocalPlane.ConvertGeoCoordToWgs84(v.ToGeoCoord());
+                    ipts.Add(new PointLatLng(w.Latitude, w.Longitude));
+                }
+                var poly = new GMapPolygon(ipts, "fieldInner")
+                {
+                    Fill = new SolidBrush(Color.FromArgb(70, Color.OrangeRed)),
+                    Stroke = new Pen(Color.OrangeRed, 2.5f)
+                };
+                existingOverlay.Polygons.Add(poly);
+                existingInners.Add(new ExistingInner { BndIndex = i, Pts = ipts, Poly = poly });
+            }
+        }
+
+        private void ShowExistingOuter(bool show)
+        {
+            if (existingOuterPoly == null) return;
+            bool shown = existingOverlay.Polygons.Contains(existingOuterPoly);
+            if (show && !shown) existingOverlay.Polygons.Add(existingOuterPoly);
+            else if (!show && shown) existingOverlay.Polygons.Remove(existingOuterPoly);
+        }
+
+        // Load the field's outer boundary into madeRing: all Phase-4 editing (handles,
+        // move/add/delete/undo) now works on it. Clicking again reverts to the original.
+        private void btnEditBoundary_Click(object sender, EventArgs e)
+        {
+            if (existingOuterRing == null) return;
+            madeRing = new List<Wgs84>(existingOuterRing);
+            ShowExistingOuter(false);
+            DrawMadeBoundary();
+            BuildMadeHandles();
+            undoStack.Clear();
+            EnableEditButtons(true);
+            UpdateSaveEnabled();
+            lblStatus.Text = gStr.gsBoundaryReady;
+        }
+
+        // ── Obstacles: circle = center handle (move) + edge handle (radius) ──
+        private void btnAddObstacle_Click(object sender, EventArgs e)
+        {
+            if (existingOuterRing == null && madeRing == null)
+            {
+                lblStatus.Text = gStr.gsObstacleNeedsBoundary;
+                return;
+            }
+
+            var area = gMapControl.ViewArea;
+            var ob = new ObstacleCircle
+            {
+                Center = new PointLatLng(
+                    (area.LocationTopLeft.Lat + area.LocationRightBottom.Lat) / 2.0,
+                    (area.LocationTopLeft.Lng + area.LocationRightBottom.Lng) / 2.0),
+                RadiusM = 10.0
+            };
+            BuildObstacleVisuals(ob);
+            obstacles.Add(ob);
+            UpdateSaveEnabled();
+            gMapControl.Invalidate();
+            lblStatus.Text = gStr.gsRadius + ": " + ob.RadiusM.ToString("F1") + " m";
+        }
+
+        private void BuildObstacleVisuals(ObstacleCircle ob)
+        {
+            ob.Poly = new GMapPolygon(CirclePoints(ob), "obstacle")
+            {
+                Fill = new SolidBrush(Color.FromArgb(70, Color.OrangeRed)),
+                Stroke = new Pen(Color.OrangeRed, 2.5f)
+            };
+            obstacleOverlay.Polygons.Add(ob.Poly);
+
+            ob.CenterMarker = new CornerMarker(ob.Center);
+            ob.RadiusMarker = new CornerMarker(RadiusHandlePos(ob));
+            obstacleOverlay.Markers.Add(ob.CenterMarker);
+            obstacleOverlay.Markers.Add(ob.RadiusMarker);
+        }
+
+        private void RedrawObstacle(ObstacleCircle ob)
+        {
+            ob.Poly.Points.Clear();
+            ob.Poly.Points.AddRange(CirclePoints(ob));
+            gMapControl.UpdatePolygonLocalPosition(ob.Poly);
+
+            ob.CenterMarker.Position = ob.Center;
+            ob.RadiusMarker.Position = RadiusHandlePos(ob);
+            gMapControl.UpdateMarkerLocalPosition(ob.CenterMarker);
+            gMapControl.UpdateMarkerLocalPosition(ob.RadiusMarker);
+            lblStatus.Text = gStr.gsRadius + ": " + ob.RadiusM.ToString("F1") + " m";
+        }
+
+        private static List<PointLatLng> CirclePoints(ObstacleCircle ob)
+        {
+            double mLat = ob.RadiusM / 111320.0;
+            double mLon = ob.RadiusM / (111320.0 * Math.Cos(ob.Center.Lat * Math.PI / 180.0));
+            var pts = new List<PointLatLng>(ObstacleCirclePts);
+            for (int k = 0; k < ObstacleCirclePts; k++)
+            {
+                double a = 2.0 * Math.PI * k / ObstacleCirclePts;
+                pts.Add(new PointLatLng(ob.Center.Lat + mLat * Math.Cos(a),
+                                        ob.Center.Lng + mLon * Math.Sin(a)));
+            }
+            return pts;
+        }
+
+        // The resize handle sits on the east edge of the circle.
+        private static PointLatLng RadiusHandlePos(ObstacleCircle ob)
+        {
+            double mLon = ob.RadiusM / (111320.0 * Math.Cos(ob.Center.Lat * Math.PI / 180.0));
+            return new PointLatLng(ob.Center.Lat, ob.Center.Lng + mLon);
+        }
+
+        private bool HitTestObstacleHandle(int x, int y, out ObstacleCircle ob, out bool isRadius)
+        {
+            foreach (var o in obstacles)
+            {
+                GPoint rp = gMapControl.FromLatLngToLocal(o.RadiusMarker.Position);
+                if (Math.Abs(rp.X - x) <= 16 && Math.Abs(rp.Y - y) <= 16)
+                {
+                    ob = o; isRadius = true; return true;
+                }
+                GPoint cp = gMapControl.FromLatLngToLocal(o.CenterMarker.Position);
+                if (Math.Abs(cp.X - x) <= 16 && Math.Abs(cp.Y - y) <= 16)
+                {
+                    ob = o; isRadius = false; return true;
+                }
+            }
+            ob = null; isRadius = false; return false;
+        }
+
+        private void SelectObstacleHandle(ObstacleCircle ob, bool isRadius)
+        {
+            if (selMarker != null) selMarker.Selected = false;
+            selRect = null; selCorner = -1; selVertex = -1;
+            selObstacle = ob; selObstacleRadius = isRadius;
+            selMarker = isRadius ? ob.RadiusMarker : ob.CenterMarker;
+            selMarker.Selected = true;
+            SetPointMode(PointEdit.Move);
+            gMapControl.Invalidate();
+        }
+
+        // Delete-obstacle tap: a new circle (tap inside it) or an existing inner boundary.
+        private void DeleteObstacleAt(int x, int y)
+        {
+            PointLatLng pt = gMapControl.FromLocalToLatLng(x, y);
+
+            for (int i = 0; i < obstacles.Count; i++)
+            {
+                if (MetersBetween(obstacles[i].Center, pt) > obstacles[i].RadiusM) continue;
+                var ob = obstacles[i];
+                obstacleOverlay.Polygons.Remove(ob.Poly);
+                obstacleOverlay.Markers.Remove(ob.CenterMarker);
+                obstacleOverlay.Markers.Remove(ob.RadiusMarker);
+                if (selObstacle == ob) ResetPointEdit();
+                obstacles.RemoveAt(i);
+                UpdateSaveEnabled();
+                gMapControl.Invalidate();
+                lblStatus.Text = gStr.gsDeleteObstacle;
+                return;
+            }
+
+            foreach (var inner in existingInners)
+            {
+                if (!PointInLatLngRing(inner.Pts, pt)) continue;
+                deletedInnerIdx.Add(inner.BndIndex);
+                existingOverlay.Polygons.Remove(inner.Poly);
+                existingInners.Remove(inner);
+                UpdateSaveEnabled();
+                gMapControl.Invalidate();
+                lblStatus.Text = gStr.gsDeleteObstacle;
+                return;
+            }
+        }
+
+        // Equirectangular approximation - plenty for field-size distances.
+        private static double MetersBetween(PointLatLng a, PointLatLng b)
+        {
+            double dLat = (b.Lat - a.Lat) * 111320.0;
+            double dLon = (b.Lng - a.Lng) * 111320.0
+                * Math.Cos((a.Lat + b.Lat) * 0.5 * Math.PI / 180.0);
+            return Math.Sqrt(dLat * dLat + dLon * dLon);
+        }
+
+        private static bool PointInLatLngRing(List<PointLatLng> ring, PointLatLng pt)
+        {
+            bool inside = false;
+            int j = ring.Count - 1;
+            for (int i = 0; i < ring.Count; j = i++)
+            {
+                if ((ring[i].Lat > pt.Lat) != (ring[j].Lat > pt.Lat) &&
+                    pt.Lng < (ring[j].Lng - ring[i].Lng) * (pt.Lat - ring[i].Lat)
+                        / (ring[j].Lat - ring[i].Lat) + ring[i].Lng)
+                    inside = !inside;
+            }
+            return inside;
+        }
+
+        private static bool PointInWgsRing(List<Wgs84> ring, PointLatLng pt)
+        {
+            bool inside = false;
+            int j = ring.Count - 1;
+            for (int i = 0; i < ring.Count; j = i++)
+            {
+                if ((ring[i].Latitude > pt.Lat) != (ring[j].Latitude > pt.Lat) &&
+                    pt.Lng < (ring[j].Longitude - ring[i].Longitude) * (pt.Lat - ring[i].Latitude)
+                        / (ring[j].Latitude - ring[i].Latitude) + ring[i].Longitude)
+                    inside = !inside;
+            }
+            return inside;
+        }
+
+        // Every circle must lie fully inside the outer ring and must not overlap another
+        // obstacle (new circle or remaining existing inner boundary).
+        private bool ValidateObstacles(List<Wgs84> outer)
+        {
+            for (int i = 0; i < obstacles.Count; i++)
+            {
+                var ob = obstacles[i];
+                foreach (var p in CirclePoints(ob))
+                {
+                    if (!PointInWgsRing(outer, p))
+                    {
+                        lblStatus.Text = gStr.gsObstacleOutside;
+                        return false;
+                    }
+                }
+
+                for (int k = i + 1; k < obstacles.Count; k++)
+                {
+                    if (MetersBetween(ob.Center, obstacles[k].Center)
+                        < ob.RadiusM + obstacles[k].RadiusM)
+                    {
+                        lblStatus.Text = gStr.gsObstacleOutside;
+                        return false;
+                    }
+                }
+
+                foreach (var inner in existingInners)
+                {
+                    bool overlap = PointInLatLngRing(inner.Pts, ob.Center);
+                    if (!overlap)
+                        foreach (var p in inner.Pts)
+                            if (MetersBetween(ob.Center, p) < ob.RadiusM) { overlap = true; break; }
+                    if (overlap)
+                    {
+                        lblStatus.Text = gStr.gsObstacleOutside;
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        // Apply obstacle edits to the field: remove inner boundaries marked for deletion,
+        // append each new circle as an inner boundary (non drive-thru), then rebuild.
+        private bool ApplyObstacleChanges()
+        {
+            if (obstacles.Count == 0 && deletedInnerIdx.Count == 0) return false;
+
+            deletedInnerIdx.Sort();
+            for (int i = deletedInnerIdx.Count - 1; i >= 0; i--)
+            {
+                if (deletedInnerIdx[i] > 0 && deletedInnerIdx[i] < mf.bnd.bndList.Count)
+                    mf.bnd.bndList.RemoveAt(deletedInnerIdx[i]);
+            }
+            deletedInnerIdx.Clear();
+
+            foreach (var ob in obstacles)
+            {
+                var b = new CBoundaryList();
+                foreach (var p in CirclePoints(ob))
+                {
+                    GeoCoord gc = mf.AppModel.LocalPlane.ConvertWgs84ToGeoCoord(new Wgs84(p.Lat, p.Lng));
+                    b.fenceLine.Add(new vec3(gc));
+                }
+                int idx = mf.bnd.bndList.Count; // idx > 0 -> CalculateFenceArea fixes winding
+                b.CalculateFenceArea(idx);
+                b.FixFenceLine(idx);
+                mf.bnd.bndList.Add(b);
+            }
+            obstacles.Clear();
+
+            mf.FileSaveBoundary();
+            mf.bnd.BuildTurnLines();
+            mf.fd.UpdateFieldBoundaryGUIAreas();
+            mf.CalculateMinMax();
+            return true;
         }
 
         // ── Save boundary: always export a temp KML, then apply (new field / replace) ──
         private async void btnSaveBoundary_Click(object sender, EventArgs e)
         {
-            if (madeRing == null || madeRing.Count < 3)
+            bool obstacleChanges = obstacles.Count > 0 || deletedInnerIdx.Count > 0;
+
+            // Obstacles must end up inside whichever outer ring will be in effect.
+            if (obstacles.Count > 0)
+            {
+                List<Wgs84> effOuter = madeRing ?? existingOuterRing;
+                if (effOuter == null)
+                {
+                    lblStatus.Text = gStr.gsObstacleNeedsBoundary;
+                    return;
+                }
+                if (!ValidateObstacles(effOuter)) return;
+            }
+
+            // Obstacle-only save: the outer boundary is untouched, apply directly.
+            if (madeRing == null)
+            {
+                if (!obstacleChanges)
+                {
+                    lblStatus.Text = gStr.gsSelectParcelsFirst;
+                    return;
+                }
+                ApplyObstacleChanges();
+                lblStatus.Text = gStr.gsBoundarySaved;
+                Close();
+                return;
+            }
+
+            if (madeRing.Count < 3)
             {
                 lblStatus.Text = gStr.gsSelectParcelsFirst;
                 return;
@@ -934,6 +1394,7 @@ namespace AgOpenGPS
             if (r == DialogResult.Yes) // replace outer boundary on current field, keep inner holes
             {
                 ReplaceOuterBoundary(madeRing);
+                ApplyObstacleChanges();
                 TryDelete(tempKml);
                 lblStatus.Text = gStr.gsBoundarySaved;
                 Close();
@@ -959,6 +1420,11 @@ namespace AgOpenGPS
 
                 using (var kmlForm = new FormFieldKML(mf))
                     kmlForm.CreateFieldFromKml(tempKml, name);
+
+                // The rebuilt field starts with just the outer boundary; the old inner
+                // boundaries are gone, so only the new obstacle circles get applied.
+                deletedInnerIdx.Clear();
+                ApplyObstacleChanges();
             }
             finally
             {

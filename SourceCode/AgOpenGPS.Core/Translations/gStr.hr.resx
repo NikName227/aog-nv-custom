@@ -1370,6 +1370,39 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsUndo" xml:space="preserve">
     <value>Poništi</value>
   </data>
+  <data name="gsEditBoundary" xml:space="preserve">
+    <value>Uredi granicu</value>
+  </data>
+  <data name="gsAddObstacle" xml:space="preserve">
+    <value>Dodaj prepreku</value>
+  </data>
+  <data name="gsDeleteObstacle" xml:space="preserve">
+    <value>Obriši prepreku</value>
+  </data>
+  <data name="gsObstacleNeedsBoundary" xml:space="preserve">
+    <value>Prvo napravi ili učitaj granicu.</value>
+  </data>
+  <data name="gsObstacleOutside" xml:space="preserve">
+    <value>Prepreka mora biti unutar granice i ne smije se preklapati s drugima.</value>
+  </data>
+  <data name="gsRadius" xml:space="preserve">
+    <value>Radijus</value>
+  </data>
+  <data name="gsAdd" xml:space="preserve">
+    <value>Dodaj</value>
+  </data>
+  <data name="gsMake" xml:space="preserve">
+    <value>Napravi</value>
+  </data>
+  <data name="gsSave" xml:space="preserve">
+    <value>Spremi</value>
+  </data>
+  <data name="gsObstacle" xml:space="preserve">
+    <value>Prepreka</value>
+  </data>
+  <data name="gsBoundaryGroup" xml:space="preserve">
+    <value>Granica</value>
+  </data>
   <data name="gsSmartAB" xml:space="preserve">
     <value>Smart AB</value>
   </data>
@@ -1480,5 +1513,38 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   </data>
   <data name="gsTurnLineHint" xml:space="preserve">
     <value>Linija = dokle kotači smiju ići pri okretu (put dozvoljen)</value>
+  </data>
+  <data name="gsRowByRow" xml:space="preserve">
+    <value>Red po red</value>
+  </data>
+  <data name="gsZonesSkip" xml:space="preserve">
+    <value>Zone (preskok)</value>
+  </data>
+  <data name="gsContour" xml:space="preserve">
+    <value>Kontura</value>
+  </data>
+  <data name="gsGeneratePlan" xml:space="preserve">
+    <value>Generiraj plan</value>
+  </data>
+  <data name="gsFollowPlan" xml:space="preserve">
+    <value>Prati plan</value>
+  </data>
+  <data name="gsZoneWidth" xml:space="preserve">
+    <value>Širina zone</value>
+  </data>
+  <data name="gsPassesPerZone" xml:space="preserve">
+    <value>prohoda po zoni</value>
+  </data>
+  <data name="gsNoPlanHint" xml:space="preserve">
+    <value>Treba granica i aktivna AB linija ili krivulja</value>
+  </data>
+  <data name="gsInsideHeadland" xml:space="preserve">
+    <value>Unutar uvrtina</value>
+  </data>
+  <data name="gsAddPath" xml:space="preserve">
+    <value>Dodaj prolaz</value>
+  </data>
+  <data name="gsDeletePath" xml:space="preserve">
+    <value>Obriši prolaz</value>
   </data>
 </root>
