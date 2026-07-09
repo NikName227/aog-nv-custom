@@ -2080,13 +2080,18 @@ namespace AgOpenGPS
             this.btnSmartAB.UseVisualStyleBackColor = false;
             this.btnSmartAB.Click += new System.EventHandler(this.btnSmartAB_Click);
             //
-            // btnOrchard (Feature 50 — orchard row planner; text button, no image)
+            // btnOrchard (Feature 50 — orchard row planner; icon button, Smart AB style)
             //
             this.btnOrchard.Anchor = System.Windows.Forms.AnchorStyles.None;
-            this.btnOrchard.BackColor = System.Drawing.Color.Honeydew;
+            this.btnOrchard.BackColor = System.Drawing.Color.Transparent;
+            this.btnOrchard.BackgroundImage = global::AgOpenGPS.Properties.Resources.Orchard;
+            this.btnOrchard.BackgroundImageLayout = System.Windows.Forms.ImageLayout.Zoom;
             this.btnOrchard.Enabled = false;
             this.btnOrchard.FlatAppearance.BorderColor = System.Drawing.Color.ForestGreen;
-            this.btnOrchard.FlatAppearance.BorderSize = 2;
+            this.btnOrchard.FlatAppearance.BorderSize = 0;
+            this.btnOrchard.FlatAppearance.CheckedBackColor = System.Drawing.Color.Transparent;
+            this.btnOrchard.FlatAppearance.MouseDownBackColor = System.Drawing.Color.Transparent;
+            this.btnOrchard.FlatAppearance.MouseOverBackColor = System.Drawing.Color.Transparent;
             this.btnOrchard.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnOrchard.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
             this.btnOrchard.ImeMode = System.Windows.Forms.ImeMode.NoControl;
@@ -2094,8 +2099,7 @@ namespace AgOpenGPS
             this.btnOrchard.Name = "btnOrchard";
             this.btnOrchard.Size = new System.Drawing.Size(80, 72);
             this.btnOrchard.TabIndex = 547;
-            this.btnOrchard.Text = "Orchard";
-            this.btnOrchard.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.btnOrchard.TextAlign = System.Drawing.ContentAlignment.TopCenter;
             this.btnOrchard.UseVisualStyleBackColor = false;
             this.btnOrchard.Click += new System.EventHandler(this.btnOrchard_Click);
             //
