@@ -71,6 +71,7 @@ namespace AgOpenGPS
             clipToHeadland = true;
             runEntry = null;
             runDistance = 0;
+            isFlexPause = false;
         }
 
         public void ApplyLoaded(AgOpenGPS.IO.TurnPlanData data)
@@ -192,6 +193,7 @@ namespace AgOpenGPS
                 p.order = ++order;
                 entries.Add(p);
             }
+            isFlexPause = false;
             return true;
         }
 
@@ -351,6 +353,14 @@ namespace AgOpenGPS
         private CPlanEntry runEntry;
         private double runDistance;
 
+        // manual-flex (wedge/triangle field end): automatic turns are paused and the
+        // driver finishes the area by hand; the first not-worked manual pass is drawn
+        // dashed as the resume point - driving onto it re-engages the plan
+        public bool isFlexPause;
+
+        // forward meters on the resume pass before the plan re-engages
+        public const double flexResumeDistance = 5.0;
+
         public bool IsRuntimeOn { get { return isFollowPlan && entries.Count > 0; } }
 
         /// <summary>
@@ -361,6 +371,96 @@ namespace AgOpenGPS
         {
             runEntry = null;
             runDistance = 0;
+        }
+
+        /// <summary>
+        /// First not-worked manual pass (by order) = the resume point of the
+        /// manual-flex pause. Null when there is none.
+        /// </summary>
+        public CPlanEntry FlexResumePass()
+        {
+            CPlanEntry best = null;
+            foreach (var p in entries)
+            {
+                if (!p.IsManual || p.isWorked) continue;
+                if (best == null || p.order < best.order) best = p;
+            }
+            return best;
+        }
+
+        /// <summary>
+        /// Pause the automatic turns (wedge/triangle field end: no reliable place for
+        /// the maneuver) and let the driver finish the area by hand. Only pauses when
+        /// a manual resume pass exists - without one there is nothing to come back to,
+        /// so the caller keeps today's behavior (abort the turn, run out).
+        /// </summary>
+        public bool TryEnterFlexPause()
+        {
+            if (isFlexPause) return true;
+            if (FlexResumePass() == null) return false;
+            isFlexPause = true;
+            runDistance = 0;
+            return true;
+        }
+
+        /// <summary>
+        /// Can a turn from the pass the vehicle is on reach the target pass? At a
+        /// wedge-shaped field end the neighboring pass stops short of the current one,
+        /// so the maneuver has no anchor: the pass end ahead of the vehicle must have
+        /// the target geometry within the lateral offset plus the turn depth. True
+        /// when there is not enough geometry to judge by (keeps stock behavior).
+        /// </summary>
+        public bool IsTargetReachable(int targetIdx, double turnRadius)
+        {
+            CPlanEntry cur = CurrentEntry();
+            if (cur == null) return true;
+
+            string curName = CurrentTrackName();
+            CPlanEntry target = null;
+            foreach (var p in entries)
+            {
+                if (p.offsetIdx == targetIdx && EntryTrackName(p) == curName)
+                { target = p; break; }
+            }
+            if (target == null) return true;
+
+            EnsureGeometry(cur);
+            EnsureGeometry(target);
+            if (cur.segments.Count == 0) return true;
+            if (target.segments.Count == 0) return false;
+
+            // pass end ahead of the vehicle = nearest segment endpoint forward
+            double hx = Math.Sin(mf.fixHeading), hy = Math.Cos(mf.fixHeading);
+            vec3 pivot = mf.pivotAxlePos;
+            vec3 endPt = pivot;
+            double bestT = double.MaxValue;
+            foreach (var seg in cur.segments)
+            {
+                if (seg.Count == 0) continue;
+                for (int e = 0; e < 2; e++)
+                {
+                    vec3 q = e == 0 ? seg[0] : seg[seg.Count - 1];
+                    double t = (q.easting - pivot.easting) * hx
+                             + (q.northing - pivot.northing) * hy;
+                    if (t > 0 && t < bestT) { bestT = t; endPt = q; }
+                }
+            }
+
+            double near = double.MaxValue;
+            foreach (var seg in target.segments)
+            {
+                for (int i = 0; i < seg.Count; i++)
+                {
+                    double de = seg[i].easting - endPt.easting;
+                    double dn = seg[i].northing - endPt.northing;
+                    double d = de * de + dn * dn;
+                    if (d < near) near = d;
+                }
+            }
+
+            double lat = Math.Abs(targetIdx - cur.offsetIdx) * WorkWidth();
+            double depth = 2.0 * turnRadius + WorkWidth();
+            return near <= lat * lat + depth * depth;
         }
 
         /// <summary>
@@ -465,6 +565,16 @@ namespace AgOpenGPS
             if (!IsRuntimeOn) return false;
 
             string cur = CurrentTrackName();
+
+            // manual-flex: guidance leads to the dashed resume pass and nowhere
+            // else - the wedge passes are the driver's business now
+            if (isFlexPause)
+            {
+                CPlanEntry resume = FlexResumePass();
+                if (resume == null || EntryTrackName(resume) != cur) return false;
+                idx = resume.offsetIdx;
+                return true;
+            }
             CPlanEntry best = null;
             foreach (var p in entries)
             {
@@ -531,6 +641,16 @@ namespace AgOpenGPS
 
             if (!mf.isReverse && Math.Abs(lateral) < 0.5 * WorkWidth())
                 runDistance += mf.distanceCurrentStepFix;
+
+            // manual-flex: forward driving on the dashed resume pass re-engages
+            // the plan; with no manual pass left there is nothing to wait for
+            if (isFlexPause)
+            {
+                CPlanEntry resume = FlexResumePass();
+                if (resume == null) isFlexPause = false;
+                else if (now == resume && runDistance > flexResumeDistance)
+                    isFlexPause = false;
+            }
         }
 
         private void EnsureGeometry(CPlanEntry p)
@@ -556,20 +676,22 @@ namespace AgOpenGPS
 
         /// <summary>
         /// Main map: draw only the NEXT pass of the plan (dashed violet) so the
-        /// driver sees where the plan goes after this row. Everything else stays
-        /// in the PATH tab.
+        /// driver sees where the plan goes after this row. During a manual-flex
+        /// pause the resume pass is drawn instead (dashed orange) - it stays put
+        /// until the driver picks it up. Everything else stays in the PATH tab.
         /// </summary>
         public void DrawNextPass()
         {
             if (!IsRuntimeOn || !mf.isJobStarted) return;
 
-            CPlanEntry next = NextEntry();
+            CPlanEntry next = isFlexPause ? FlexResumePass() : NextEntry();
             if (next == null) return;
             EnsureGeometry(next);
             if (next.segments.Count == 0) return;
 
             GL.LineWidth(4);
-            GL.Color4(0.75f, 0.30f, 0.95f, 0.92f);
+            if (isFlexPause) GL.Color4(1.0f, 0.62f, 0.10f, 0.95f);
+            else GL.Color4(0.75f, 0.30f, 0.95f, 0.92f);
             GL.Enable(EnableCap.LineStipple);
             GL.LineStipple(1, 0x07C7);
 

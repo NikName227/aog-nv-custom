@@ -280,7 +280,16 @@ namespace AgOpenGPS
             //turn instead - the vehicle just runs out at the boundary.
             if (mf.plan.IsRuntimeOn)
             {
-                if (mf.plan.TryNextTarget(mf.curve.howManyPathsAway, out int planTargetC))
+                //manual-flex pause: the wedge end is driven by hand - no automatic
+                //turns until the driver picks up the dashed resume pass
+                if (mf.plan.isFlexPause)
+                {
+                    ResetCreatedYouTurn();
+                    return false;
+                }
+
+                if (mf.plan.TryNextTarget(mf.curve.howManyPathsAway, out int planTargetC)
+                    && mf.plan.IsTargetReachable(planTargetC, youTurnRadius))
                 {
                     int delta = planTargetC - mf.curve.howManyPathsAway;
                     isTurnLeft = delta > 0 ? !mf.curve.isHeadingSameWay : mf.curve.isHeadingSameWay;
@@ -288,6 +297,10 @@ namespace AgOpenGPS
                 }
                 else
                 {
+                    //no target left, or the wedge cut the next pass short of a turn
+                    //anchor: hand the area to the driver when a manual resume pass
+                    //exists, otherwise plain abort (vehicle runs out at the boundary)
+                    mf.plan.TryEnterFlexPause();
                     ResetCreatedYouTurn();
                     return false;
                 }
@@ -348,7 +361,16 @@ namespace AgOpenGPS
             //turn instead - the vehicle just runs out at the boundary.
             if (mf.plan.IsRuntimeOn)
             {
-                if (mf.plan.TryNextTarget(mf.ABLine.howManyPathsAway, out int planTargetAB))
+                //manual-flex pause: the wedge end is driven by hand - no automatic
+                //turns until the driver picks up the dashed resume pass
+                if (mf.plan.isFlexPause)
+                {
+                    ResetCreatedYouTurn();
+                    return false;
+                }
+
+                if (mf.plan.TryNextTarget(mf.ABLine.howManyPathsAway, out int planTargetAB)
+                    && mf.plan.IsTargetReachable(planTargetAB, youTurnRadius))
                 {
                     int delta = planTargetAB - mf.ABLine.howManyPathsAway;
                     isTurnLeft = delta > 0 ? !mf.ABLine.isHeadingSameWay : mf.ABLine.isHeadingSameWay;
@@ -356,6 +378,10 @@ namespace AgOpenGPS
                 }
                 else
                 {
+                    //no target left, or the wedge cut the next pass short of a turn
+                    //anchor: hand the area to the driver when a manual resume pass
+                    //exists, otherwise plain abort (vehicle runs out at the boundary)
+                    mf.plan.TryEnterFlexPause();
                     ResetCreatedYouTurn();
                     return false;
                 }

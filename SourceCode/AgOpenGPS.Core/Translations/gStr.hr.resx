@@ -812,6 +812,9 @@
   <data name="gsPasses" xml:space="preserve">
     <value>Prohodi</value>
   </data>
+  <data name="gsManualZone" xml:space="preserve">
+    <value>Ručna zona — vozi crtkani prolaz za nastavak</value>
+  </data>
   <data name="gsPastEndOfCurve" xml:space="preserve">
     <value>Prelaz kraja krive</value>
   </data>

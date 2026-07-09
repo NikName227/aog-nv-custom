@@ -915,6 +915,9 @@ The order you push them will be the order they appear on the menu from bottom up
   <data name="gsPasses" xml:space="preserve">
     <value>Passes</value>
   </data>
+  <data name="gsManualZone" xml:space="preserve">
+    <value>Manual zone - drive the dashed pass to resume</value>
+  </data>
   <data name="gsPastEndOfCurve" xml:space="preserve">
     <value>Past End Of Curve</value>
   </data>

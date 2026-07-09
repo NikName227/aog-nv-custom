@@ -211,7 +211,11 @@ namespace AgOpenGPS
 
                         case 3:
                             //NV follow plan: "pass X/N - zone Z" in the rotating HUD text
-                            if (plan.IsRuntimeOn)
+                            if (plan.IsRuntimeOn && plan.isFlexPause)
+                            {
+                                lblCurrentField.Text = gStr.gsManualZone;
+                            }
+                            else if (plan.IsRuntimeOn)
                             {
                                 CPlanEntry cur = plan.CurrentEntry() ?? plan.NextEntry();
                                 lblCurrentField.Text = cur == null

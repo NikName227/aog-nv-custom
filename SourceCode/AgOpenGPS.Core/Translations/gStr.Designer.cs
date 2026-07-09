@@ -4987,6 +4987,12 @@ namespace AgOpenGPS.Core.Translations {
             }
         }
 
+        public static string gsManualZone {
+            get {
+                return ResourceManager.GetString("gsManualZone", resourceCulture);
+            }
+        }
+
         public static string gsNoPlanHint {
             get {
                 return ResourceManager.GetString("gsNoPlanHint", resourceCulture);
