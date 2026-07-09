@@ -918,6 +918,9 @@ The order you push them will be the order they appear on the menu from bottom up
   <data name="gsManualZone" xml:space="preserve">
     <value>Manual zone - drive the dashed pass to resume</value>
   </data>
+  <data name="gsSelectLineFirst" xml:space="preserve">
+    <value>Select an AB line first</value>
+  </data>
   <data name="gsPastEndOfCurve" xml:space="preserve">
     <value>Past End Of Curve</value>
   </data>

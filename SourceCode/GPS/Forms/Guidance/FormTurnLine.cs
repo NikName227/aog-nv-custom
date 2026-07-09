@@ -854,29 +854,38 @@ namespace AgOpenGPS
             UpdatePlanInfo();
         }
 
-        // all usable guidance lines; select the plan's line, else the active one
+        // all usable guidance lines; nothing preselected on open - the red input
+        // forces an explicit choice so a plan is never generated off whatever line
+        // happened to be active (test f05-3.3r-02)
         private void FillTrackCombo()
         {
             cboTrack.Items.Clear();
-            int select = -1;
             for (int i = 0; i < mf.trk.gArr.Count; i++)
             {
                 var t = mf.trk.gArr[i];
                 if (t.mode != TrackMode.AB && t.curvePts.Count < 2) continue;
-                int at = cboTrack.Items.Add(t.name);
-                if (t.name == mf.plan.trackName) select = at;
-                if (select < 0 && i == mf.trk.idx) select = at;
+                cboTrack.Items.Add(t.name);
             }
-            if (select < 0 && cboTrack.Items.Count > 0) select = 0;
-            if (select >= 0) cboTrack.SelectedIndex = select;
+            cboTrack.SelectedIndex = -1;
+            cboTrack.BackColor = Color.Salmon;
 
             cboTrack.SelectedIndexChanged += (s, e) =>
             {
+                if (cboTrack.SelectedIndex < 0) return;
+                cboTrack.BackColor = SystemColors.Window;
                 mf.plan.trackName = cboTrack.SelectedItem?.ToString() ?? "";
                 DrawPlanOverlay();
                 UpdatePlanInfo();
             };
-            mf.plan.trackName = cboTrack.SelectedItem?.ToString() ?? "";
+        }
+
+        // Generate / Add path only run with an explicitly chosen line
+        private bool RequireTrackChoice()
+        {
+            if (cboTrack.SelectedIndex >= 0) return true;
+            cboTrack.BackColor = Color.Salmon;
+            lblPlanStatus.Text = gStr.gsSelectLineFirst;
+            return false;
         }
 
         private void UpdatePlanInfo()
@@ -899,6 +908,8 @@ namespace AgOpenGPS
 
         private void btnGeneratePlan_Click(object sender, EventArgs e)
         {
+            if (!RequireTrackChoice()) return;
+
             mf.plan.mode = btnMode1.Checked ? CTurnPlan.ModeSequential
                          : btnMode2.Checked ? CTurnPlan.ModeContour
                          : CTurnPlan.ModeZones;
@@ -923,6 +934,8 @@ namespace AgOpenGPS
         // further click adds the next one, following the same offset rules
         private void btnAddPath_Click(object sender, EventArgs e)
         {
+            if (!RequireTrackChoice()) return;
+
             string tName = cboTrack.SelectedItem?.ToString() ?? "";
             if (!mf.plan.AddManualPass(tName, out string error))
             {
@@ -956,8 +969,10 @@ namespace AgOpenGPS
             planOverlay.Routes.Clear();
             planOverlay.Markers.Clear();
 
-            // highlight which AB line the plan is built on (red dashed)
-            if (mf.plan.TryGetActiveLineGeometry(out List<List<vec3>> lineSegs))
+            // highlight which AB line the plan is built on (red dashed) - only
+            // once the user explicitly picked it in the combo
+            if (cboTrack.SelectedIndex >= 0
+                && mf.plan.TryGetActiveLineGeometry(out List<List<vec3>> lineSegs))
             {
                 foreach (var seg in lineSegs)
                 {

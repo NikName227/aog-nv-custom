@@ -815,6 +815,9 @@
   <data name="gsManualZone" xml:space="preserve">
     <value>Ručna zona — vozi crtkani prolaz za nastavak</value>
   </data>
+  <data name="gsSelectLineFirst" xml:space="preserve">
+    <value>Prvo odaberi AB liniju</value>
+  </data>
   <data name="gsPastEndOfCurve" xml:space="preserve">
     <value>Prelaz kraja krive</value>
   </data>

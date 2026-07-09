@@ -4993,6 +4993,12 @@ namespace AgOpenGPS.Core.Translations {
             }
         }
 
+        public static string gsSelectLineFirst {
+            get {
+                return ResourceManager.GetString("gsSelectLineFirst", resourceCulture);
+            }
+        }
+
         public static string gsNoPlanHint {
             get {
                 return ResourceManager.GetString("gsNoPlanHint", resourceCulture);

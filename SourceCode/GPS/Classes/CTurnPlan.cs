@@ -359,7 +359,7 @@ namespace AgOpenGPS
         public bool isFlexPause;
 
         // forward meters on the resume pass before the plan re-engages
-        public const double flexResumeDistance = 5.0;
+        public const double flexResumeDistance = 20.0;
 
         public bool IsRuntimeOn { get { return isFollowPlan && entries.Count > 0; } }
 
@@ -484,15 +484,57 @@ namespace AgOpenGPS
             return true;
         }
 
+        // dashed display lines reach this far past the clipped ends, so the marker
+        // is visible outside the boundary too (test f05-3.3r-03)
+        public const double displayOverhang = 15.0;
+
         /// <summary>
         /// Geometry of the currently selected reference line (offset 0), used to
-        /// highlight which AB line the plan is built on. False = no usable track.
+        /// highlight which AB line the plan is built on. Display only - the outer
+        /// ends run past the boundary so the line reads clearly. False = no usable track.
         /// </summary>
         public bool TryGetActiveLineGeometry(out List<List<vec3>> segs)
         {
             segs = null;
             if (!TryResolveTrack(out CTrk track)) return false;
-            return BuildOffsetGeometry(track, 0.0, false, out segs, out _, out _);
+            if (!BuildOffsetGeometry(track, 0.0, false, out segs, out _, out _)) return false;
+            segs = ExtendForDisplay(segs, displayOverhang);
+            return true;
+        }
+
+        /// <summary>
+        /// Display-only copy of a clipped pass polyline with the two OUTER ends
+        /// extended along their local direction (inner gaps - obstacles - are kept).
+        /// Never mutates the cached segments.
+        /// </summary>
+        public static List<List<vec3>> ExtendForDisplay(List<List<vec3>> segs, double meters)
+        {
+            var outSegs = new List<List<vec3>>(segs.Count);
+            foreach (var s in segs) outSegs.Add(new List<vec3>(s));
+            if (outSegs.Count == 0) return outSegs;
+
+            List<vec3> first = outSegs[0];
+            if (first.Count > 1)
+            {
+                vec3 a = first[0], b = first[1];
+                double dx = a.easting - b.easting, dy = a.northing - b.northing;
+                double len = Math.Sqrt(dx * dx + dy * dy);
+                if (len > 0.01)
+                    first.Insert(0, new vec3(a.easting + dx / len * meters,
+                        a.northing + dy / len * meters, a.heading));
+            }
+
+            List<vec3> last = outSegs[outSegs.Count - 1];
+            if (last.Count > 1)
+            {
+                vec3 a = last[last.Count - 1], b = last[last.Count - 2];
+                double dx = a.easting - b.easting, dy = a.northing - b.northing;
+                double len = Math.Sqrt(dx * dx + dy * dy);
+                if (len > 0.01)
+                    last.Add(new vec3(a.easting + dx / len * meters,
+                        a.northing + dy / len * meters, a.heading));
+            }
+            return outSegs;
         }
 
         private string CurrentTrackName()
@@ -628,6 +670,12 @@ namespace AgOpenGPS
                 {
                     runEntry.isWorked = true;
                     mf.FileSaveTurnPlan();
+
+                    // last manual (closing) pass finished = the job is done:
+                    // switch the auto turn button off (test f05-3.2-08)
+                    if (runEntry.IsManual && FlexResumePass() == null
+                        && mf.yt.isYouTurnBtnOn)
+                        mf.btnAutoYouTurn.PerformClick();
                 }
                 runDistance = 0;
             }
@@ -689,13 +737,16 @@ namespace AgOpenGPS
             EnsureGeometry(next);
             if (next.segments.Count == 0) return;
 
+            // ends run past the boundary so the dashed pass reads clearly
+            List<List<vec3>> drawSegs = ExtendForDisplay(next.segments, displayOverhang);
+
             GL.LineWidth(4);
             if (isFlexPause) GL.Color4(1.0f, 0.62f, 0.10f, 0.95f);
             else GL.Color4(0.75f, 0.30f, 0.95f, 0.92f);
             GL.Enable(EnableCap.LineStipple);
             GL.LineStipple(1, 0x07C7);
 
-            foreach (var seg in next.segments)
+            foreach (var seg in drawSegs)
             {
                 GL.Begin(PrimitiveType.LineStrip);
                 for (int i = 0; i < seg.Count; i++)

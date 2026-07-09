@@ -243,6 +243,31 @@ namespace AgOpenGPS
                 //new direction so reset where to put turn diagnostic
                 yt.ResetCreatedYouTurn();
 
+                //NV follow plan: engaging auto turn switches guidance to the track
+                //the plan was built on, so the turns target the plan's passes and
+                //not whatever line happened to be active (test f05-3.2-01)
+                if (plan.IsRuntimeOn && !string.IsNullOrEmpty(plan.trackName)
+                    && (trk.idx < 0 || trk.gArr[trk.idx].name != plan.trackName))
+                {
+                    for (int i = 0; i < trk.gArr.Count; i++)
+                    {
+                        if (trk.gArr[i].name != plan.trackName) continue;
+
+                        if (isBtnAutoSteerOn)
+                        {
+                            btnAutoSteer.PerformClick();
+                            TimedMessageBox(2000, gStr.gsGuidanceStopped, "Track Changed");
+                        }
+                        trk.idx = i;
+                        ABLine.isABValid = false;
+                        curve.isCurveValid = false;
+                        guideLineCounter = 20;
+                        lblGuidanceLine.Visible = true;
+                        lblGuidanceLine.Text = trk.gArr[i].name;
+                        break;
+                    }
+                }
+
                 if (trk.idx == -1) return;
 
                 yt.isYouTurnBtnOn = true;
