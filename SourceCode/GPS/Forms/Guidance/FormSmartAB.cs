@@ -652,32 +652,32 @@ namespace AgOpenGPS
             oglSelf.Invalidate();
         }
 
-        // Load cadastral parcels from the local cache (Parcels.txt, written by Map App). This
-        // window never goes to the internet: if there is no cache, show a message. Shown
-        // whenever a cache exists (independent of the Map App ON/OFF setting).
+        // Cadastral parcels come from the shared tile cache (memory/disk; the
+        // background coverage pass fills missing tiles from the WFS). No blocking.
         private void EnsureParcelsLoaded()
         {
             if (mf.parcels.Segments != null && mf.parcels.Segments.Length >= 2) return; // already have them
 
-            string path = ParcelCachePath();
-            if (path != null && System.IO.File.Exists(path))
+            var cached = CParcelCache.Snapshot();
+            if (cached.Count > 0)
             {
-                var cached = CadastralWfsClient.LoadParcels(path, out string err);
-                if (err == null && cached != null && cached.Count > 0)
-                {
-                    ApplyParcels(cached, null);
-                    return;
-                }
+                ApplyParcels(cached, null);
+                return;
             }
-            lblActiveOp.Text = gStr.gsNoParcelCache;
-        }
 
-        // Full path of the per-field parcel cache file (or null if no field).
-        private string ParcelCachePath()
-        {
-            var dir = mf?.AppCore?.ActiveField?.FieldDirectory;
-            if (dir == null) return null;
-            return System.IO.Path.Combine(dir.FullName, "Parcels.txt");
+            //nothing loaded yet: start the background fill and show what arrives
+            lblActiveOp.Text = gStr.gsNoParcelCache;
+            CParcelCache.EnsureCoverage(
+                mf.AppModel.CurrentLatLon.Latitude, mf.AppModel.CurrentLatLon.Longitude,
+                Properties.Settings.Default.setMap_parcelWfsUrl, false, () =>
+                {
+                    if (!IsHandleCreated) return;
+                    BeginInvoke((System.Windows.Forms.MethodInvoker)(() =>
+                    {
+                        var now = CParcelCache.Snapshot();
+                        if (now.Count > 0) ApplyParcels(now, null);
+                    }));
+                });
         }
 
         private void ApplyParcels(System.Collections.Generic.List<CadastralParcel> parcels, string err)

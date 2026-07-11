@@ -24,6 +24,19 @@ namespace AgOpenGPS
 
         /// <summary>Selection state (toggled by clicking on the map).</summary>
         public bool Selected;
+
+        /// <summary>Cadastral feature id (from the WFS) — dedups parcels that appear
+        /// in more than one cache tile. "" when the WFS gave none.</summary>
+        public string Id = "";
+
+        /// <summary>Id, falling back to the first outline point for old data without one.</summary>
+        public string DedupKey()
+        {
+            if (Id.Length > 0) return Id;
+            if (Outer.Count == 0) return "";
+            return Outer[0].Lat.ToString("F6", CultureInfo.InvariantCulture) + ","
+                 + Outer[0].Lng.ToString("F6", CultureInfo.InvariantCulture) + "," + Outer.Count;
+        }
     }
 
     /// <summary>
@@ -67,17 +80,23 @@ namespace AgOpenGPS
         public static List<CadastralParcel> GetParcels(
             string wfsUrl, double minLat, double minLon, double maxLat, double maxLon, out string error)
         {
+            var (e1, n1) = To3765.MathTransform.Transform(minLon, minLat);
+            var (e2, n2) = To3765.MathTransform.Transform(maxLon, maxLat);
+            return GetParcelsBbox3765(wfsUrl,
+                Math.Min(e1, e2), Math.Min(n1, n2), Math.Max(e1, e2), Math.Max(n1, n2), out error);
+        }
+
+        /// <summary>Fetch parcels intersecting an EPSG:3765 bbox (the parcel-cache tiles
+        /// live in this grid). Blocking — call off the UI thread.</summary>
+        public static List<CadastralParcel> GetParcelsBbox3765(
+            string wfsUrl, double minE, double minN, double maxE, double maxN, out string error)
+        {
             error = null;
             var parcels = new List<CadastralParcel>();
             if (string.IsNullOrWhiteSpace(wfsUrl)) wfsUrl = WfsUrl;
             wfsUrl = wfsUrl.Trim().TrimEnd('?', '&');
             try
             {
-                var (e1, n1) = To3765.MathTransform.Transform(minLon, minLat);
-                var (e2, n2) = To3765.MathTransform.Transform(maxLon, maxLat);
-                double minE = Math.Min(e1, e2), maxE = Math.Max(e1, e2);
-                double minN = Math.Min(n1, n2), maxN = Math.Max(n1, n2);
-
                 string url = wfsUrl +
                     "?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAMES=CP:CadastralParcel" +
                     "&SRSNAME=EPSG:3765&OUTPUTFORMAT=application/json&COUNT=800&BBOX=" +
@@ -92,7 +111,7 @@ namespace AgOpenGPS
 
                 var fc = new GeoJsonReader().Read<FeatureCollection>(json);
                 foreach (var feat in fc)
-                    AddPolygons(feat.Geometry, parcels);
+                    AddPolygons(feat.Geometry, parcels, FeatureId(feat));
             }
             catch (Exception ex)
             {
@@ -101,29 +120,52 @@ namespace AgOpenGPS
             return parcels;
         }
 
-        private static void AddPolygons(Geometry geom, List<CadastralParcel> parcels)
+        // cadastral id of a WFS feature (for tile dedup); "" when absent
+        private static string FeatureId(IFeature feat)
+        {
+            var at = feat?.Attributes;
+            if (at == null) return "";
+            foreach (string key in new[] { "inspireId", "INSPIREID", "id", "ID", "label", "LABEL", "gml_id" })
+            {
+                if (at.Exists(key))
+                {
+                    object v = at[key];
+                    if (v != null) return v.ToString();
+                }
+            }
+            return "";
+        }
+
+        private static void AddPolygons(Geometry geom, List<CadastralParcel> parcels, string id)
         {
             if (geom is Polygon poly)
             {
-                parcels.Add(ToParcel(poly));
+                parcels.Add(ToParcel(poly, id));
             }
             else if (geom is MultiPolygon mp)
             {
                 for (int i = 0; i < mp.NumGeometries; i++)
-                    parcels.Add(ToParcel((Polygon)mp.GetGeometryN(i)));
+                    parcels.Add(ToParcel((Polygon)mp.GetGeometryN(i),
+                        id.Length > 0 ? id + "#" + i : ""));
             }
         }
 
-        private static CadastralParcel ToParcel(Polygon poly)
+        private static CadastralParcel ToParcel(Polygon poly, string id)
         {
             // poly is in EPSG:3765 (GeoJSON SRSNAME=EPSG:3765) — keep it for hit-test/union.
-            var p = new CadastralParcel { Geom3765 = poly };
+            var p = new CadastralParcel { Geom3765 = poly, Id = id };
             foreach (var c in poly.ExteriorRing.Coordinates)
             {
                 var (lon, lat) = ToWgs84.MathTransform.Transform(c.X, c.Y);
                 p.Outer.Add(new PointLatLng(lat, lon));
             }
             return p;
+        }
+
+        /// <summary>WGS84 → EPSG:3765 (the parcel-cache tile grid lives in 3765 meters).</summary>
+        public static (double easting, double northing) ToEN3765(double lat, double lon)
+        {
+            return To3765.MathTransform.Transform(lon, lat);
         }
 
         /// <summary>True if a WGS84 point falls inside the parcel (tested in EPSG:3765).</summary>
@@ -243,6 +285,91 @@ namespace AgOpenGPS
         }
 
         private static string F(double v) => v.ToString("F2", CultureInfo.InvariantCulture);
+
+        // ── Shared parcel-cache tile files (field test 2026-07-10) ──────────
+        // One file per 1x1 km EPSG:3765 tile in the shared ParcelCache folder;
+        // same line format as Parcels.txt plus a parcel-id line for dedup at
+        // tile borders. See CParcelCache for the tiling/threading logic.
+
+        /// <summary>Write one cache tile (parcel id + WGS84 outer ring each).</summary>
+        public static bool SaveTile(string filePath, IEnumerable<CadastralParcel> parcels, out string error)
+        {
+            error = null;
+            try
+            {
+                var list = new List<CadastralParcel>();
+                foreach (var p in parcels)
+                    if (p != null && p.Outer.Count >= 3) list.Add(p);
+
+                using (var sw = new System.IO.StreamWriter(filePath, false))
+                {
+                    sw.WriteLine("$ParcelTile");
+                    sw.WriteLine(list.Count.ToString(CultureInfo.InvariantCulture));
+                    foreach (var p in list)
+                    {
+                        sw.WriteLine(p.Id);
+                        sw.WriteLine(p.Outer.Count.ToString(CultureInfo.InvariantCulture));
+                        foreach (var pt in p.Outer)
+                            sw.WriteLine(pt.Lat.ToString("F8", CultureInfo.InvariantCulture) + "," +
+                                         pt.Lng.ToString("F8", CultureInfo.InvariantCulture));
+                    }
+                }
+                return true;
+            }
+            catch (Exception ex) { error = ex.Message; return false; }
+        }
+
+        /// <summary>Read one cache tile; rebuilds outlines + EPSG:3765 geometry. Null on error.</summary>
+        public static List<CadastralParcel> LoadTile(string filePath, out string error)
+        {
+            error = null;
+            var parcels = new List<CadastralParcel>();
+            try
+            {
+                using (var sr = new System.IO.StreamReader(filePath))
+                {
+                    sr.ReadLine(); // header $ParcelTile
+                    int count = int.Parse(sr.ReadLine(), CultureInfo.InvariantCulture);
+                    for (int k = 0; k < count; k++)
+                    {
+                        var p = new CadastralParcel { Id = sr.ReadLine() ?? "" };
+                        int n = int.Parse(sr.ReadLine(), CultureInfo.InvariantCulture);
+                        var cs = new List<Coordinate>(n + 1);
+                        for (int i = 0; i < n; i++)
+                        {
+                            var parts = sr.ReadLine().Split(',');
+                            double lat = double.Parse(parts[0], CultureInfo.InvariantCulture);
+                            double lon = double.Parse(parts[1], CultureInfo.InvariantCulture);
+                            p.Outer.Add(new PointLatLng(lat, lon));
+                            var (e, nn) = To3765.MathTransform.Transform(lon, lat);
+                            cs.Add(new Coordinate(e, nn));
+                        }
+                        RebuildGeom(p, cs);
+                        parcels.Add(p);
+                    }
+                }
+                return parcels;
+            }
+            catch (Exception ex) { error = ex.Message; return null; }
+        }
+
+        // rebuild the EPSG:3765 polygon of a parcel read back from disk
+        private static void RebuildGeom(CadastralParcel p, List<Coordinate> cs)
+        {
+            if (cs.Count < 3) return;
+            cs.Add(new Coordinate(cs[0].X, cs[0].Y)); // close ring
+            try
+            {
+                var poly = GeomFactory.CreatePolygon(cs.ToArray());
+                if (!poly.IsValid)
+                {
+                    Geometry g = poly.Buffer(0);
+                    if (g is Polygon pg && !pg.IsEmpty) poly = pg;
+                }
+                p.Geom3765 = poly;
+            }
+            catch { }
+        }
 
         // ── Per-field parcel cache (WGS84 outlines) ─────────────────────────
         // Parcels are saved next to the field so turning them ON later loads from
