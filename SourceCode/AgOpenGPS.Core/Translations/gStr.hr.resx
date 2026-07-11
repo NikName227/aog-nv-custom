@@ -815,6 +815,12 @@
   <data name="gsManualZone" xml:space="preserve">
     <value>Ručna zona — vozi crtkani prolaz za nastavak</value>
   </data>
+  <data name="gsDriveForward" xml:space="preserve">
+    <value>VOZI NAPRIJED</value>
+  </data>
+  <data name="gsDriveReverse" xml:space="preserve">
+    <value>VOZI UNATRAG</value>
+  </data>
   <data name="gsSelectLineFirst" xml:space="preserve">
     <value>Prvo odaberi AB liniju</value>
   </data>
