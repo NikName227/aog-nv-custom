@@ -1857,6 +1857,14 @@ namespace AgOpenGPS
         public List<vec3> kPart2List = new List<vec3>();
         public int kTurnStage = 0;
         private bool kRevReached = false;   // reverse leg has reached the stop point
+
+        // field fixes 2026-07-10:
+        // forward meters held after the reverse leg - a power-shuttle reverser can
+        // flip direction without the speed ever dropping under the stop threshold
+        private double kFwdHeldDist;
+        // which side of the new row's line part 2 starts on (0 = not sampled yet);
+        // the front axle crossing that line ends the turn
+        private int kPart2EntrySide;
         public int ytRedIndex = -1;     // ytList index from which points draw red
         public int part2RedIndex = -1;  // red index inside the pending part 2
 
@@ -2002,6 +2010,8 @@ namespace AgOpenGPS
 
             kPart2List.Clear();
             kTurnStage = 0;
+            kFwdHeldDist = 0;
+            kPart2EntrySide = 0;
             part2RedIndex = -1;
             if (p2 != null && p2.Count > 3)
             {
@@ -3171,6 +3181,8 @@ namespace AgOpenGPS
             kPart2List?.Clear();
             kTurnStage = 0;
             kRevReached = false;
+            kFwdHeldDist = 0;
+            kPart2EntrySide = 0;
             ytRedIndex = -1;
             part2RedIndex = -1;
             turnLineSwapPending = false;
@@ -3286,6 +3298,20 @@ namespace AgOpenGPS
         public int onA;
         private int maxProgressIndexReached = 0;
 
+        /// <summary>
+        /// Field fix 2c (2026-07-10): which way the driver should drive during the
+        /// split K maneuver. 1 = forward, -1 = reverse, 0 = no instruction (not a
+        /// running K turn). Drawn big on the HUD with a beep on every change.
+        /// </summary>
+        public int GuidedDriveDir()
+        {
+            if (!isYouTurnTriggered || !mf.tnl.IsFeatureOn || activeTurnStyle != 1) return 0;
+            if (kTurnStage == 1)
+                return (ytList.Count > 3 && A >= ytList.Count - 3) ? -1 : 1;
+            if (kTurnStage == 2) return kRevReached ? 1 : -1;
+            return 1;
+        }
+
         //determine distance from youTurn guidance line
         public bool DistanceFromYouTurnLine()
         {
@@ -3365,11 +3391,23 @@ namespace AgOpenGPS
                         if (!kRevReached && kPart2List.Count > 3 && glm.Distance(kPiv, kPart2List[0]) < 2.0)
                             kRevReached = true;
 
+                        //field fix 2a (2026-07-10): a power-shuttle reverser flips
+                        //reverse->forward without the speed dropping under the stop
+                        //threshold - forward motion held over 0.3 m counts as the
+                        //direction change too, not just a full stop
+                        if (kRevReached && !mf.isReverse)
+                            kFwdHeldDist += Math.Abs(mf.distanceCurrentStepFix);
+                        else
+                            kFwdHeldDist = 0;
+
                         //the reverse guide line stays active while still reversing;
-                        //part 2 (new-row entry) activates only once the vehicle STOPS
-                        if (kRevReached && Math.Abs(mf.avgSpeed) < 0.3)
+                        //part 2 (new-row entry) activates on a stop OR a held
+                        //direction change (reverser)
+                        if (kRevReached && (Math.Abs(mf.avgSpeed) < 0.3 || kFwdHeldDist > 0.3))
                         {
                             kRevReached = false;
+                            kFwdHeldDist = 0;
+                            kPart2EntrySide = 0;
                             ytList.Clear();
                             ytList.AddRange(kPart2List);
                             kPart2List.Clear();
@@ -3382,6 +3420,31 @@ namespace AgOpenGPS
                     }
                 }
                 bool kSplitHold = mf.tnl.IsFeatureOn && (kTurnStage == 1 || kTurnStage == 2);
+
+                //field fix 2b (2026-07-10): part 2 used to complete only when the
+                //follower reached the very end of the turn path - well past where the
+                //driver expects. The final segment of part 2 lies ON the new row's
+                //line, so end the turn the moment the FRONT axle reaches that line
+                //(sign flip of its lateral offset) and hand the merge to guidance.
+                if (mf.tnl.IsFeatureOn && kTurnStage == 3 && ptCount > 1)
+                {
+                    vec3 rowPt = ytList[ptCount - 1];
+                    double rx = Math.Sin(rowPt.heading), ry = Math.Cos(rowPt.heading);
+                    double side = (mf.steerAxlePos.easting - rowPt.easting) * ry
+                                - (mf.steerAxlePos.northing - rowPt.northing) * rx;
+
+                    if (kPart2EntrySide == 0)
+                    {
+                        //sample the approach side once clearly off the line; starting
+                        //on the line keeps the stock end-of-path completion instead
+                        if (Math.Abs(side) > 0.2) kPart2EntrySide = side > 0 ? 1 : -1;
+                    }
+                    else if (Math.Abs(side) < 0.05 || (side > 0 ? 1 : -1) != kPart2EntrySide)
+                    {
+                        CompleteYouTurn();
+                        return false;
+                    }
+                }
 
                 if (mf.isStanleyUsed)
                 {

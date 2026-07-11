@@ -4993,6 +4993,18 @@ namespace AgOpenGPS.Core.Translations {
             }
         }
 
+        public static string gsDriveForward {
+            get {
+                return ResourceManager.GetString("gsDriveForward", resourceCulture);
+            }
+        }
+
+        public static string gsDriveReverse {
+            get {
+                return ResourceManager.GetString("gsDriveReverse", resourceCulture);
+            }
+        }
+
         public static string gsSelectLineFirst {
             get {
                 return ResourceManager.GetString("gsSelectLineFirst", resourceCulture);

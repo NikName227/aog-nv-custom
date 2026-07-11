@@ -3,6 +3,7 @@ using AgOpenGPS;
 using AgOpenGPS.Core.Drawing;
 using AgOpenGPS.Core.DrawLib;
 using AgOpenGPS.Core.Models;
+using AgOpenGPS.Core.Translations;
 using AgOpenGPS.Properties;
 using OpenTK;
 using OpenTK.Graphics.OpenGL;
@@ -1876,7 +1877,25 @@ namespace AgOpenGPS
                 }
                 if (state.Length > 0) font.DrawText(-40 + two3, 155, state, 1.1);
             }
+
+            //field fix 2c (2026-07-10): big drive-direction instruction above the
+            //maneuver display (split K: forward -> reverse -> forward) + a soft
+            //beep whenever the instruction changes so eyes can stay off the screen
+            int driveDir = yt.GuidedDriveDir();
+            if (driveDir != 0)
+            {
+                if (driveDir > 0) GL.Color3(0.25f, 0.97f, 0.3f);
+                else GL.Color3(0.97f, 0.55f, 0.15f);
+                font.DrawText(-40 + two3, 85,
+                    driveDir > 0 ? gStr.gsDriveForward : gStr.gsDriveReverse, 1.2);
+            }
+            if (driveDir != 0 && driveDir != lastGuidedDriveDir && sounds.isTurnSoundOn)
+                (driveDir > 0 ? sounds.sndAutoSteerOn : sounds.sndAutoSteerOff).Play();
+            lastGuidedDriveDir = driveDir;
         }
+
+        //last drive-direction instruction shown (for the change beep)
+        private int lastGuidedDriveDir;
 
         private void DrawSteerCircle()
         {
