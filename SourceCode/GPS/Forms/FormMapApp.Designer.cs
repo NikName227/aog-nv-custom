@@ -113,6 +113,7 @@ namespace AgOpenGPS
             this.lblUrl.Size = new System.Drawing.Size(82, 18);
             this.lblUrl.TabIndex = 2;
             this.lblUrl.Text = "WMS URL:";
+            this.lblUrl.Visible = false;
             //
             // tboxWmsUrl
             //
@@ -121,6 +122,7 @@ namespace AgOpenGPS
             this.tboxWmsUrl.Name = "tboxWmsUrl";
             this.tboxWmsUrl.Size = new System.Drawing.Size(604, 26);
             this.tboxWmsUrl.TabIndex = 3;
+            this.tboxWmsUrl.Visible = false;
             this.tboxWmsUrl.Leave += new System.EventHandler(this.tboxWmsUrl_Leave);
             //
             // chkParcels
@@ -131,7 +133,7 @@ namespace AgOpenGPS
             this.chkParcels.FlatAppearance.CheckedBackColor = System.Drawing.Color.MediumAquamarine;
             this.chkParcels.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.chkParcels.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Bold);
-            this.chkParcels.Location = new System.Drawing.Point(16, 174);
+            this.chkParcels.Location = new System.Drawing.Point(16, 144);
             this.chkParcels.Name = "chkParcels";
             this.chkParcels.Size = new System.Drawing.Size(130, 36);
             this.chkParcels.TabIndex = 6;
@@ -143,7 +145,7 @@ namespace AgOpenGPS
             // btnParcelRefresh
             //
             this.btnParcelRefresh.Font = new System.Drawing.Font("Tahoma", 14F, System.Drawing.FontStyle.Bold);
-            this.btnParcelRefresh.Location = new System.Drawing.Point(150, 174);
+            this.btnParcelRefresh.Location = new System.Drawing.Point(150, 144);
             this.btnParcelRefresh.Name = "btnParcelRefresh";
             this.btnParcelRefresh.Size = new System.Drawing.Size(40, 36);
             this.btnParcelRefresh.TabIndex = 7;
@@ -160,6 +162,7 @@ namespace AgOpenGPS
             this.lblParcelUrl.Size = new System.Drawing.Size(112, 18);
             this.lblParcelUrl.TabIndex = 8;
             this.lblParcelUrl.Text = "Parcel WFS URL:";
+            this.lblParcelUrl.Visible = false;
             //
             // tboxParcelUrl
             //
@@ -168,6 +171,7 @@ namespace AgOpenGPS
             this.tboxParcelUrl.Name = "tboxParcelUrl";
             this.tboxParcelUrl.Size = new System.Drawing.Size(390, 26);
             this.tboxParcelUrl.TabIndex = 9;
+            this.tboxParcelUrl.Visible = false;
             this.tboxParcelUrl.Leave += new System.EventHandler(this.tboxParcelUrl_Leave);
             //
             // gMapControl
@@ -178,7 +182,7 @@ namespace AgOpenGPS
             this.gMapControl.Bearing = 0F;
             this.gMapControl.CanDragMap = true;
             this.gMapControl.GrayScaleMode = false;
-            this.gMapControl.Location = new System.Drawing.Point(16, 218);
+            this.gMapControl.Location = new System.Drawing.Point(16, 176);
             this.gMapControl.MarkersEnabled = true;
             this.gMapControl.MaxZoom = 20;
             this.gMapControl.MinZoom = 2;
@@ -188,7 +192,7 @@ namespace AgOpenGPS
             this.gMapControl.PolygonsEnabled = true;
             this.gMapControl.RoutesEnabled = true;
             this.gMapControl.ShowTileGridLines = false;
-            this.gMapControl.Size = new System.Drawing.Size(692, 356);
+            this.gMapControl.Size = new System.Drawing.Size(692, 398);
             this.gMapControl.TabIndex = 4;
             this.gMapControl.Zoom = 0D;
             //
@@ -250,7 +254,7 @@ namespace AgOpenGPS
             this.btnZoomIn.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.btnZoomIn.BackColor = System.Drawing.Color.White;
             this.btnZoomIn.Font = new System.Drawing.Font("Tahoma", 20F, System.Drawing.FontStyle.Bold);
-            this.btnZoomIn.Location = new System.Drawing.Point(644, 228);
+            this.btnZoomIn.Location = new System.Drawing.Point(644, 186);
             this.btnZoomIn.Name = "btnZoomIn";
             this.btnZoomIn.Size = new System.Drawing.Size(58, 58);
             this.btnZoomIn.TabIndex = 12;
@@ -263,7 +267,7 @@ namespace AgOpenGPS
             this.btnZoomOut.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.btnZoomOut.BackColor = System.Drawing.Color.White;
             this.btnZoomOut.Font = new System.Drawing.Font("Tahoma", 20F, System.Drawing.FontStyle.Bold);
-            this.btnZoomOut.Location = new System.Drawing.Point(644, 292);
+            this.btnZoomOut.Location = new System.Drawing.Point(644, 250);
             this.btnZoomOut.Name = "btnZoomOut";
             this.btnZoomOut.Size = new System.Drawing.Size(58, 58);
             this.btnZoomOut.TabIndex = 13;
