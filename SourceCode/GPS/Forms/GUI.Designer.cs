@@ -142,7 +142,8 @@ namespace AgOpenGPS
                 //NV parcel shared cache: keep the 1 km of tiles around the vehicle
                 //loaded (disk/WFS, background) and refresh the crisp main-map
                 //segments whenever the cache grew - nothing here blocks the UI
-                if (isJobStarted && Settings.Default.setMap_showParcelsOnMain)
+                if (isJobStarted && Settings.Default.setMap_showParcelsOnMain
+                    && CFeatureLock.IsOn(CFeatureLock.FeatureGeoportal))
                 {
                     CParcelCache.EnsureCoverage(
                         AppModel.CurrentLatLon.Latitude, AppModel.CurrentLatLon.Longitude,
