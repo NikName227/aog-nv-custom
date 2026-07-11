@@ -339,6 +339,24 @@ namespace AgOpenGPS
             turnLinesToolStripMenuItem.Visible = false;
 #endif
 
+            //NV F06 feature lock: optional features stay hidden unless the
+            //encrypted per-install config unlocks them (basic vs advanced user)
+            CFeatureLock.Load();
+            mapAppToolStripMenu.Visible = CFeatureLock.IsOn(CFeatureLock.FeatureGeoportal);
+            btnOrchard.Visible = CFeatureLock.IsOn(CFeatureLock.FeatureOrchard);
+            if (!CFeatureLock.IsOn(CFeatureLock.FeatureTurnApp))
+                turnLinesToolStripMenuItem.Visible = false;
+
+            //author-issued endpoints win over stored settings (updatable by
+            //sending the user a new config when DGU changes the URLs)
+            if (CFeatureLock.IsOn(CFeatureLock.FeatureGeoportal))
+            {
+                string wms = CFeatureLock.Endpoint("wmsOrtho");
+                if (wms.Length > 0) Properties.Settings.Default.setMap_customWmsUrl = wms;
+                string wfs = CFeatureLock.Endpoint("wfsParcels");
+                if (wfs.Length > 0) Properties.Settings.Default.setMap_parcelWfsUrl = wfs;
+            }
+
             InitializeLanguages();
 
             AppCore = new ApplicationCore(

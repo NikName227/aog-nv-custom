@@ -44,6 +44,9 @@ namespace AgOpenGPS
         {
             this.Size = new Size(600, 300);
 
+            //NV F06 feature lock: Geoportal boundary source is an unlockable feature
+            btnGeoportal.Visible = CFeatureLock.IsOn(CFeatureLock.FeatureGeoportal);
+
             //update the list view with real data
             UpdateChart();
 
