@@ -139,6 +139,22 @@ namespace AgOpenGPS
                 //reset the counter
                 fourSecondCounter = 0;
 
+                //NV parcel shared cache: keep the 1 km of tiles around the vehicle
+                //loaded (disk/WFS, background) and refresh the crisp main-map
+                //segments whenever the cache grew - nothing here blocks the UI
+                if (isJobStarted && Settings.Default.setMap_showParcelsOnMain)
+                {
+                    CParcelCache.EnsureCoverage(
+                        AppModel.CurrentLatLon.Latitude, AppModel.CurrentLatLon.Longitude,
+                        Settings.Default.setMap_parcelWfsUrl);
+
+                    if (CParcelCache.Version != parcelCacheDrawnVersion)
+                    {
+                        parcelCacheDrawnVersion = CParcelCache.Version;
+                        RebuildParcelSegments();
+                    }
+                }
+
                 if (isJobStarted)
                 {
                     switch (currentFieldTextCounter)

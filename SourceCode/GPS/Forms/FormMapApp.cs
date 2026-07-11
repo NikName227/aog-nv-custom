@@ -37,7 +37,6 @@ namespace AgOpenGPS
         // the captured background on Apply (so they appear on the main map).
         private readonly GMapOverlay parcelOverlay = new GMapOverlay("parcels");
         private readonly Timer parcelTimer = new Timer();
-        private bool fetchingParcels;
         private List<CadastralParcel> lastParcels = new List<CadastralParcel>();
 
         // Borderless-window drag (same idea as the main window).
@@ -57,8 +56,8 @@ namespace AgOpenGPS
             vehicleTimer.Interval = 600; // update vehicle marker position
             vehicleTimer.Tick += vehicleTimer_Tick;
 
-            parcelTimer.Interval = 700; // debounce parcel re-fetch on pan/zoom
-            parcelTimer.Tick += (s, e) => { parcelTimer.Stop(); RefreshParcels(false); };
+            parcelTimer.Interval = 700; // debounce parcel coverage on pan/zoom
+            parcelTimer.Tick += (s, e) => { parcelTimer.Stop(); KickCoverage(false); };
 
             this.KeyPreview = true;
             this.KeyDown += (s, e) => { if (e.KeyCode == Keys.Escape) Close(); };
@@ -437,37 +436,34 @@ namespace AgOpenGPS
             }
         }
 
-        // Cache-first enable: load parcels from the field's cache file (instant, no
-        // internet); if there is none, fetch from the WFS and save the cache.
+        // Shared-cache enable: show whatever tiles are already loaded (instant) and
+        // let the background coverage pass fill the rest from disk/WFS.
         private void EnableParcels()
         {
-            if (fetchingParcels || mf == null || !mf.isJobStarted) return;
-
-            string path = ParcelCachePath();
-            if (path != null && System.IO.File.Exists(path))
-            {
-                var cached = CadastralWfsClient.LoadParcels(path, out string err);
-                if (err == null && cached != null && cached.Count > 0)
-                {
-                    DrawParcels(cached, null, false);
-                    return;
-                }
-            }
-            RefreshParcels(true); // no cache -> internet, then save
+            if (mf == null || !mf.isJobStarted) return;
+            lblStatus.Text = gStr.gsLoadingParcels;
+            DrawFromCache();
+            KickCoverage(false);
         }
 
-        // Full path of the per-field parcel cache file (or null if no field).
-        private string ParcelCachePath()
+        // Ask the shared tile cache to cover ~1 km around the current MAP CENTER
+        // (panning grows the cache), then redraw when the pass ends. All background.
+        private void KickCoverage(bool force)
         {
-            var dir = mf?.AppCore?.ActiveField?.FieldDirectory;
-            if (dir == null) return null;
-            return System.IO.Path.Combine(dir.FullName, "Parcels.txt");
+            if (mf == null || !mf.isJobStarted || !chkParcels.Checked) return;
+
+            var c = gMapControl.Position;
+            CParcelCache.EnsureCoverage(c.Lat, c.Lng,
+                Properties.Settings.Default.setMap_parcelWfsUrl, force, () =>
+                {
+                    if (IsHandleCreated) BeginInvoke((MethodInvoker)(() => DrawFromCache()));
+                });
         }
 
         private void btnParcelRefresh_Click(object sender, EventArgs e)
         {
-            // Refresh always goes to the internet and overwrites the cache (use when the
-            // cadastre changed). Turn parcels on without triggering the cache-first load.
+            // Refresh re-downloads the tiles around the view and overwrites their
+            // files (use when the cadastre changed).
             if (!chkParcels.Checked)
             {
                 isLoading = true;
@@ -475,14 +471,15 @@ namespace AgOpenGPS
                 isLoading = false;
                 Properties.Settings.Default.setMap_showParcelsOnMain = true;
             }
-            RefreshParcels(true);
+            lblStatus.Text = gStr.gsLoadingParcels;
+            KickCoverage(true);
         }
 
         private void tboxParcelUrl_Leave(object sender, EventArgs e)
         {
             if (isLoading) return;
             Properties.Settings.Default.setMap_parcelWfsUrl = tboxParcelUrl.Text.Trim();
-            if (chkParcels.Checked) RefreshParcels(true); // new URL -> fetch and refresh cache
+            if (chkParcels.Checked) KickCoverage(true); // new URL -> re-fetch tiles
         }
 
         private void DebounceParcels()
@@ -492,45 +489,15 @@ namespace AgOpenGPS
             parcelTimer.Start();
         }
 
-        // saveAfter: write the fetched parcels to the field cache (on explicit enable/refresh,
-        // not on pan/zoom re-fetch so the cache keeps the field area).
-        private void RefreshParcels(bool saveAfter)
+        // Redraw the overlay from the shared tile cache (memory only - instant).
+        private void DrawFromCache()
         {
-            if (fetchingParcels || !chkParcels.Checked || mf == null || !mf.isJobStarted) return;
+            if (!chkParcels.Checked) return;
 
-            var area = gMapControl.ViewArea;
-            double minLat = area.LocationRightBottom.Lat;
-            double maxLat = area.LocationTopLeft.Lat;
-            double minLon = area.LocationTopLeft.Lng;
-            double maxLon = area.LocationRightBottom.Lng;
-            string wfsUrl = Properties.Settings.Default.setMap_parcelWfsUrl;
-
-            fetchingParcels = true;
-            lblStatus.Text = gStr.gsLoadingParcels;
-
-            Task.Run(() =>
-            {
-                var parcels = CadastralWfsClient.GetParcels(wfsUrl, minLat, minLon, maxLat, maxLon, out string err);
-                if (!IsHandleCreated) return;
-                BeginInvoke((MethodInvoker)(() => DrawParcels(parcels, err, saveAfter)));
-            });
-        }
-
-        private void DrawParcels(List<CadastralParcel> parcels, string err, bool saveAfter)
-        {
-            fetchingParcels = false;
+            lastParcels = CParcelCache.Snapshot();
             parcelOverlay.Polygons.Clear();
 
-            if (err != null)
-            {
-                lblStatus.Text = gStr.gsParcelsError + ": " + err;
-                Log.EventWriter("Parcel WFS error " + err);
-                return;
-            }
-
-            lastParcels = parcels;
-
-            foreach (var p in parcels)
+            foreach (var p in lastParcels)
             {
                 if (p.Outer.Count < 3) continue;
                 var poly = new GMapPolygon(p.Outer, "parcel")
@@ -541,15 +508,8 @@ namespace AgOpenGPS
                 parcelOverlay.Polygons.Add(poly);
             }
 
-            lblStatus.Text = parcels.Count + " " + gStr.gsParcels + ".";
+            lblStatus.Text = lastParcels.Count + " " + gStr.gsParcels + ".";
             gMapControl.Invalidate();
-
-            // Cache the fetched parcels next to the field for instant load next time.
-            if (saveAfter && parcels.Count > 0)
-            {
-                string path = ParcelCachePath();
-                if (path != null) CadastralWfsClient.SaveParcels(path, parcels, out _);
-            }
         }
 
         // Convert the captured parcels to local line segments for the crisp main-map vector draw.
@@ -563,24 +523,8 @@ namespace AgOpenGPS
                 return;
             }
 
-            var segs = new List<GeoCoord>();
-            foreach (var p in lastParcels)
-            {
-                int n = p.Outer.Count;
-                if (n < 3) continue;
-
-                var ring = new GeoCoord[n];
-                for (int i = 0; i < n; i++)
-                    ring[i] = mf.AppModel.LocalPlane.ConvertWgs84ToGeoCoord(
-                        new Wgs84(p.Outer[i].Lat, p.Outer[i].Lng));
-
-                for (int i = 0; i < n; i++)
-                {
-                    segs.Add(ring[i]);
-                    segs.Add(ring[(i + 1) % n]);
-                }
-            }
-            mf.parcels.Segments = segs.ToArray();
+            //segments come from the shared tile cache, built off the UI thread
+            mf.RebuildParcelSegments();
         }
 
         private void FormMapApp_FormClosing(object sender, FormClosingEventArgs e)

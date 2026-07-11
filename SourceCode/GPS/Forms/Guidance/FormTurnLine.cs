@@ -689,7 +689,7 @@ namespace AgOpenGPS
             Close();
         }
 
-        // ── parcels from the per-field cache (display only) ───────────────
+        // ── parcels from the shared tile cache (display only) ─────────────
         private void LoadParcelsFromCache()
         {
             parcelOverlay.Polygons.Clear();
@@ -699,13 +699,7 @@ namespace AgOpenGPS
                 return;
             }
 
-            var dir = mf?.AppCore?.ActiveField?.FieldDirectory;
-            if (dir == null) return;
-            string path = Path.Combine(dir.FullName, "Parcels.txt");
-            if (!File.Exists(path)) return;
-
-            var cached = CadastralWfsClient.LoadParcels(path, out string err);
-            if (err != null || cached == null) return;
+            var cached = CParcelCache.Snapshot();
 
             foreach (var p in cached)
             {

@@ -258,22 +258,19 @@ namespace AgOpenGPS
             refreshTimer.Start();
         }
 
-        // ── Parcels: local cache (default) ────────────────────────────────
-        // Only Map App pulls parcels from the URL and writes the cache. Here we read the
-        // saved Parcels.txt; if there is none we show a message (manual polygon still works).
+        // ── Parcels: shared tile cache (default) ──────────────────────────
+        // Parcels come from the shared ParcelCache tiles (memory/disk); if nothing
+        // is loaded yet we show a message (manual polygon still works) and the
+        // background coverage pass fills the view.
         private void LoadParcelsFromCache()
         {
-            string path = ParcelCachePath();
-            if (path != null && File.Exists(path))
+            var cached = CParcelCache.Snapshot();
+            if (cached.Count > 0)
             {
-                var cached = CadastralWfsClient.LoadParcels(path, out string err);
-                if (err == null && cached != null && cached.Count > 0)
-                {
-                    parcels = cached;
-                    RenderParcels();
-                    lblStatus.Text = parcels.Count + " " + gStr.gsParcels + ".";
-                    return;
-                }
+                parcels = cached;
+                RenderParcels();
+                lblStatus.Text = parcels.Count + " " + gStr.gsParcels + ".";
+                return;
             }
             parcels = new List<CadastralParcel>();
             parcelOverlay.Polygons.Clear();
@@ -281,35 +278,21 @@ namespace AgOpenGPS
             lblStatus.Text = gStr.gsNoParcelCache;
         }
 
-        // Full path of the per-field parcel cache file (or null if no field).
-        private string ParcelCachePath()
-        {
-            var dir = mf?.AppCore?.ActiveField?.FieldDirectory;
-            if (dir == null) return null;
-            return Path.Combine(dir.FullName, "Parcels.txt");
-        }
-
-        // ── Parcels (WFS vector) — internet, only on explicit Refresh ─────
+        // ── Parcels — Refresh: re-download the tiles around the view ──────
         private void RefreshParcels()
         {
             if (fetching || !chkParcels.Checked) return;
 
-            var area = gMapControl.ViewArea;
-            double minLat = area.LocationRightBottom.Lat;
-            double maxLat = area.LocationTopLeft.Lat;
-            double minLon = area.LocationTopLeft.Lng;
-            double maxLon = area.LocationRightBottom.Lng;
-
             fetching = true;
             lblStatus.Text = gStr.gsLoadingParcels;
 
-            string wfsUrl = Properties.Settings.Default.setMap_parcelWfsUrl;
-            Task.Run(() =>
-            {
-                var fetched = CadastralWfsClient.GetParcels(wfsUrl, minLat, minLon, maxLat, maxLon, out string err);
-                if (IsHandleCreated)
-                    BeginInvoke((MethodInvoker)(() => OnParcelsFetched(fetched, err)));
-            });
+            var c = gMapControl.Position;
+            CParcelCache.EnsureCoverage(c.Lat, c.Lng,
+                Properties.Settings.Default.setMap_parcelWfsUrl, true, () =>
+                {
+                    if (IsHandleCreated)
+                        BeginInvoke((MethodInvoker)(() => OnParcelsFetched(CParcelCache.Snapshot(), null)));
+                });
         }
 
         private void OnParcelsFetched(List<CadastralParcel> fetched, string err)

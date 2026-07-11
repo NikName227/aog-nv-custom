@@ -160,6 +160,41 @@ namespace AgOpenGPS
         // Cadastral parcel outlines (crisp vector lines on the main map)
         public CParcels parcels = new CParcels();
 
+        // last CParcelCache.Version the main-map segments were built from
+        private int parcelCacheDrawnVersion;
+
+        /// <summary>
+        /// Rebuild the main-map parcel segments from the shared tile cache, off the
+        /// UI thread (outline reprojection is the part that used to stutter the UI).
+        /// The finished array is swapped in with one reference write.
+        /// </summary>
+        public void RebuildParcelSegments()
+        {
+            var plane = AppModel.LocalPlane;
+            Task.Run(() =>
+            {
+                var list = CParcelCache.Snapshot();
+                var segs = new List<GeoCoord>();
+                foreach (var p in list)
+                {
+                    int n = p.Outer.Count;
+                    if (n < 3) continue;
+
+                    var ring = new GeoCoord[n];
+                    for (int i = 0; i < n; i++)
+                        ring[i] = plane.ConvertWgs84ToGeoCoord(
+                            new Wgs84(p.Outer[i].Lat, p.Outer[i].Lng));
+
+                    for (int i = 0; i < n; i++)
+                    {
+                        segs.Add(ring[i]);
+                        segs.Add(ring[(i + 1) % n]);
+                    }
+                }
+                parcels.Segments = segs.ToArray();
+            });
+        }
+
         /// <summary>
         /// The NMEA class that decodes it
         /// </summary>

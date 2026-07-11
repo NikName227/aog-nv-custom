@@ -583,17 +583,23 @@ namespace AgOpenGPS
         private void EnsureParcelsLoaded()
         {
             if (mf.parcels.Segments != null && mf.parcels.Segments.Length >= 2) return;
-            string dir = FieldDir();
-            if (dir != null)
-            {
-                string path = System.IO.Path.Combine(dir, "Parcels.txt");
-                if (System.IO.File.Exists(path))
-                {
-                    var cached = CadastralWfsClient.LoadParcels(path, out string err);
-                    if (err == null && cached != null && cached.Count > 0) { ApplyParcels(cached); return; }
-                }
-            }
+
+            //shared tile cache (memory/disk; background pass fills from the WFS)
+            var cached = CParcelCache.Snapshot();
+            if (cached.Count > 0) { ApplyParcels(cached); return; }
+
             lblActiveOp.Text = gStr.gsNoParcelCache;
+            CParcelCache.EnsureCoverage(
+                mf.AppModel.CurrentLatLon.Latitude, mf.AppModel.CurrentLatLon.Longitude,
+                Properties.Settings.Default.setMap_parcelWfsUrl, false, () =>
+                {
+                    if (!IsHandleCreated) return;
+                    BeginInvoke((System.Windows.Forms.MethodInvoker)(() =>
+                    {
+                        var now = CParcelCache.Snapshot();
+                        if (now.Count > 0) ApplyParcels(now);
+                    }));
+                });
         }
 
         private void ApplyParcels(List<CadastralParcel> parcels)
