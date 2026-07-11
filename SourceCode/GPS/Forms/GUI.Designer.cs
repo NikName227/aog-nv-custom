@@ -1253,6 +1253,18 @@ namespace AgOpenGPS
                 {
                     if (isBtnAutoSteerOn || yt.isYouTurnBtnOn)
                     {
+                        //NV HUD skip button (below the turn icon, same x column)
+                        if (point.Y > 184 && point.Y < 224
+                            && (plan.HasSkipTarget() || plan.UndoSkipSecondsLeft() > 0))
+                        {
+                            int skipMid = oglMain.Width / 2 + oglMain.Width / 5 + 8;
+                            if (point.X > skipMid - 58 && point.X < skipMid + 58)
+                            {
+                                HudSkipTapped();
+                                return;
+                            }
+                        }
+
                         //uturn and swap uturn direction
                         if (point.Y < 150 && point.Y > 90 && (trk.idx > -1))
                         {
@@ -1493,7 +1505,38 @@ namespace AgOpenGPS
                 yt.ResetCreatedYouTurn();
             }
             else if (yt.isYouTurnBtnOn)
+            {
+                //NV HUD skip: with a plan running the stock "X" action (cancel that
+                //also kills the whole auto-turn button) is retired - cancel is
+                //autosteer off, write-off is the SKIP button
+                if (plan.IsRuntimeOn) return;
                 btnAutoYouTurn.PerformClick();
+            }
+        }
+
+        /// <summary>
+        /// HUD SKIP/UNDO tap (2026-07-11). Within the undo window the tap takes the
+        /// last skip back; otherwise it writes off the pass the plan targets. A
+        /// maneuver already running toward it is cancelled and re-targeted - the
+        /// auto-turn button STAYS on.
+        /// </summary>
+        public void HudSkipTapped()
+        {
+            if (plan.UndoSkipSecondsLeft() > 0)
+            {
+                plan.UndoSkip();
+                yt.ResetCreatedYouTurn();
+                return;
+            }
+
+            if (plan.SkipCurrentTarget() == null) return;
+
+            if (yt.isYouTurnTriggered)
+            {
+                yt.RestorePreTriggerState();
+                yt.ResetYouTurn();
+            }
+            yt.ResetCreatedYouTurn();
         }
 
         //Function to delete flag

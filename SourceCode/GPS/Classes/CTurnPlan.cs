@@ -15,6 +15,7 @@ namespace AgOpenGPS
         public int zone;                 // 1-based zone number
         public bool isSameWay;           // drive along ref heading (visual, alternates)
         public bool isWorked;
+        public bool isSkipped;           // written off by the driver (HUD skip - obstacle)
         public bool crossesObstacle;     // split by an inner boundary (obstacle)
 
         // manually added closing pass: the track it hangs on ("" = the plan track).
@@ -187,13 +188,16 @@ namespace AgOpenGPS
                 }
             }
 
-            // manual closing passes come after the generated plan
+            // manual closing passes come after the generated plan; a new plan is a
+            // new job, so their skip write-offs are forgiven along with worked flags
             foreach (var p in manual)
             {
                 p.order = ++order;
+                p.isSkipped = false;
                 entries.Add(p);
             }
             isFlexPause = false;
+            lastSkipped = null;
             return true;
         }
 
@@ -382,10 +386,63 @@ namespace AgOpenGPS
             CPlanEntry best = null;
             foreach (var p in entries)
             {
-                if (!p.IsManual || p.isWorked) continue;
+                if (!p.IsManual || p.isWorked || p.isSkipped) continue;
                 if (best == null || p.order < best.order) best = p;
             }
             return best;
+        }
+
+        // ── HUD skip (2026-07-11): write off the targeted pass ────────────────
+
+        // window in which the last skip can be taken back (slow processes in the
+        // field; the first seconds go on "what just happened" - user decision)
+        public const double undoSkipSeconds = 10.0;
+
+        private CPlanEntry lastSkipped;
+        private DateTime lastSkipAt;
+
+        /// <summary>
+        /// Write off the pass the plan currently targets (the dashed one): it is
+        /// never targeted again (obstacle etc.). Saved immediately. Returns the
+        /// skipped entry, null when there was nothing to skip.
+        /// </summary>
+        public CPlanEntry SkipCurrentTarget()
+        {
+            CPlanEntry t = isFlexPause ? FlexResumePass() : NextEntry();
+            if (t == null) return null;
+
+            t.isSkipped = true;
+            lastSkipped = t;
+            lastSkipAt = DateTime.UtcNow;
+            InvalidateRun();
+            mf.FileSaveTurnPlan();
+            return t;
+        }
+
+        /// <summary>True when the HUD skip button has something to write off.</summary>
+        public bool HasSkipTarget()
+        {
+            return IsRuntimeOn && (isFlexPause ? FlexResumePass() : NextEntry()) != null;
+        }
+
+        /// <summary>Seconds left in which the last skip can be undone (0 = none).</summary>
+        public double UndoSkipSecondsLeft()
+        {
+            if (lastSkipped == null) return 0;
+            double left = undoSkipSeconds - (DateTime.UtcNow - lastSkipAt).TotalSeconds;
+            if (left <= 0) { lastSkipped = null; return 0; }
+            return left;
+        }
+
+        /// <summary>Take back the last skip (within the undo window).</summary>
+        public bool UndoSkip()
+        {
+            if (UndoSkipSecondsLeft() <= 0) return false;
+            lastSkipped.isSkipped = false;
+            lastSkipped = null;
+            InvalidateRun();
+            mf.FileSaveTurnPlan();
+            return true;
         }
 
         /// <summary>
@@ -584,7 +641,7 @@ namespace AgOpenGPS
             CPlanEntry best = null;
             foreach (var p in entries)
             {
-                if (p.isWorked) continue;
+                if (p.isWorked || p.isSkipped) continue;
                 if (p.offsetIdx == currentIdx) continue;
                 if (EntryTrackName(p) != cur) continue;
                 if (best == null || p.order < best.order) best = p;
@@ -620,7 +677,7 @@ namespace AgOpenGPS
             CPlanEntry best = null;
             foreach (var p in entries)
             {
-                if (p.isWorked) continue;
+                if (p.isWorked || p.isSkipped) continue;
                 if (EntryTrackName(p) != cur) continue;
                 if (best == null || p.order < best.order) best = p;
             }
@@ -637,7 +694,7 @@ namespace AgOpenGPS
             CPlanEntry best = null;
             foreach (var p in entries)
             {
-                if (p.isWorked) continue;
+                if (p.isWorked || p.isSkipped) continue;
                 if (best == null || p.order < best.order) best = p;
             }
             return best;

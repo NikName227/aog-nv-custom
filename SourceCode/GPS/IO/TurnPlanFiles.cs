@@ -75,7 +75,8 @@ namespace AgOpenGPS.IO
                         }
                     }
 
-                    // pass entry: offsetIdx,order,zone,sameWay,worked[,trackName]
+                    // pass entry: offsetIdx,order,zone,sameWay,worked[,skipped][,trackName]
+                    // (skipped added 2026-07-11; old files without it still load)
                     if (kv.Length >= 5 &&
                         int.TryParse(kv[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int idx) &&
                         int.TryParse(kv[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int order) &&
@@ -83,9 +84,17 @@ namespace AgOpenGPS.IO
                         bool.TryParse(kv[3], out bool sameWay) &&
                         bool.TryParse(kv[4], out bool worked))
                     {
+                        bool skipped = false;
+                        int trackFrom = 5;
+                        if (kv.Length > 5 && bool.TryParse(kv[5], out bool sk))
+                        {
+                            skipped = sk;
+                            trackFrom = 6;
+                        }
+
                         // rejoin any remaining fields: the manual-pass track name
-                        string track = kv.Length > 5
-                            ? string.Join(",", kv, 5, kv.Length - 5).Trim()
+                        string track = kv.Length > trackFrom
+                            ? string.Join(",", kv, trackFrom, kv.Length - trackFrom).Trim()
                             : "";
 
                         data.entries.Add(new CPlanEntry
@@ -95,6 +104,7 @@ namespace AgOpenGPS.IO
                             zone = zone,
                             isSameWay = sameWay,
                             isWorked = worked,
+                            isSkipped = skipped,
                             trackName = track
                         });
                     }
@@ -132,7 +142,8 @@ namespace AgOpenGPS.IO
                         p.order.ToString(CultureInfo.InvariantCulture) + "," +
                         p.zone.ToString(CultureInfo.InvariantCulture) + "," +
                         p.isSameWay + "," +
-                        p.isWorked +
+                        p.isWorked + "," +
+                        p.isSkipped +
                         (p.IsManual ? "," + p.trackName : ""));
                 }
             }

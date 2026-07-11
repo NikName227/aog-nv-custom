@@ -983,7 +983,9 @@ namespace AgOpenGPS
             foreach (var p in mf.plan.entries)
             {
                 if (p.segments.Count == 0) continue;
-                Color c = p.isWorked
+                //skipped = written off by the driver (HUD skip) - gray like worked,
+                //but the number bubble gets a red X so it reads as "skipped", not "done"
+                Color c = p.isWorked || p.isSkipped
                     ? Color.DarkGray
                     : zoneColors[(p.zone - 1) % zoneColors.Length];
 
@@ -1021,7 +1023,7 @@ namespace AgOpenGPS
 
                 planOverlay.Markers.Add(new PlanNumMarker(
                     LocalToLatLng(main[mid].easting, main[mid].northing),
-                    p.order.ToString(), c));
+                    p.order.ToString(), c, p.isSkipped));
 
                 // arrow: shaft + head, a few meters past the number bubble
                 double ax = main[mid].easting + dx * 7.0, ay = main[mid].northing + dy * 7.0;
@@ -1043,16 +1045,18 @@ namespace AgOpenGPS
             gMapControl.Invalidate();
         }
 
-        // order-number bubble drawn over the pass
+        // order-number bubble drawn over the pass (red X across it = skipped)
         private class PlanNumMarker : GMapMarker
         {
             private readonly string text;
             private readonly Color color;
+            private readonly bool skipped;
 
-            public PlanNumMarker(PointLatLng pos, string t, Color c) : base(pos)
+            public PlanNumMarker(PointLatLng pos, string t, Color c, bool skip = false) : base(pos)
             {
                 text = t;
                 color = c;
+                skipped = skip;
             }
 
             public override void OnRender(Graphics g)
@@ -1067,6 +1071,17 @@ namespace AgOpenGPS
                         g.DrawEllipse(pen, LocalPosition.X - r, LocalPosition.Y - r, 2f * r, 2f * r);
                     g.DrawString(text, f, Brushes.Black,
                         LocalPosition.X - sz.Width / 2f, LocalPosition.Y - sz.Height / 2f);
+
+                    if (skipped)
+                    {
+                        using (var pen = new Pen(Color.Red, 2.5f))
+                        {
+                            g.DrawLine(pen, LocalPosition.X - r, LocalPosition.Y - r,
+                                LocalPosition.X + r, LocalPosition.Y + r);
+                            g.DrawLine(pen, LocalPosition.X - r, LocalPosition.Y + r,
+                                LocalPosition.X + r, LocalPosition.Y - r);
+                        }
+                    }
                 }
             }
         }

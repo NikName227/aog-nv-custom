@@ -1804,7 +1804,11 @@ namespace AgOpenGPS
                 p_239.pgn[p_239.uturn] = 1;
             }
 
-            Texture2D turnTexture = !yt.isYouTurnTriggered ? ScreenTextures.Turn : ScreenTextures.TurnCancel;
+            //NV HUD skip (2026-07-11): with a plan running the stock "X" (cancel that
+            //also kills the auto-turn button) is retired - cancel = autosteer off,
+            //write-off = the SKIP button below. Stock (plan OFF) keeps the X.
+            Texture2D turnTexture = (!yt.isYouTurnTriggered || plan.IsRuntimeOn)
+                ? ScreenTextures.Turn : ScreenTextures.TurnCancel;
             //int bottom = 90;
             int two3 = oglMain.Width / 5;
             XyCoord turnTextureCenter = new XyCoord(two3, 120);
@@ -1822,27 +1826,19 @@ namespace AgOpenGPS
             two3 -= 140;
             GL.Color3(0.927f, 0.9635f, 0.74f);
 
+            //during the maneuver: meters left along the turn path (the stock display
+            //leaked the raw path-point index here - meaningless to the driver)
             if (isMetric)
             {
-                if (!yt.isYouTurnTriggered)
-                {
-                    font.DrawText(-40 + two3, 120, DistPivotM);
-                }
-                else
-                {
-                    font.DrawText(-40 + two3, 120, yt.onA.ToString());
-                }
+                font.DrawText(-40 + two3, 120, !yt.isYouTurnTriggered
+                    ? DistPivotM
+                    : yt.RemainingTurnDistance().ToString("N0") + " m");
             }
             else
             {
-                if (!yt.isYouTurnTriggered)
-                {
-                    font.DrawText(-40 + two3, 120, DistPivotFt);
-                }
-                else
-                {
-                    font.DrawText(-40 + two3, 120, yt.onA.ToString());
-                }
+                font.DrawText(-40 + two3, 120, !yt.isYouTurnTriggered
+                    ? DistPivotFt
+                    : (yt.RemainingTurnDistance() * glm.m2ft).ToString("N0") + " ft");
             }
 
             //turn limit lines: unmistakable maneuver state for the driver
@@ -1892,10 +1888,53 @@ namespace AgOpenGPS
             if (driveDir != 0 && driveDir != lastGuidedDriveDir && sounds.isTurnSoundOn)
                 (driveDir > 0 ? sounds.sndAutoSteerOn : sounds.sndAutoSteerOff).Play();
             lastGuidedDriveDir = driveDir;
+
+            //NV HUD skip (2026-07-11): small transparent button - thin rounded
+            //outline + text. SKIP writes off the targeted pass; for 10 s after a
+            //skip the same button shows UNDO with a countdown. Only with a plan.
+            double undoLeft = plan.UndoSkipSecondsLeft();
+            if (plan.HasSkipTarget() || undoLeft > 0)
+            {
+                GL.Disable(EnableCap.Texture2D);
+                string skipText;
+                if (undoLeft > 0)
+                {
+                    GL.Color4(0.98f, 0.80f, 0.25f, 0.95f);
+                    skipText = "UNDO " + Math.Ceiling(undoLeft).ToString("N0");
+                }
+                else
+                {
+                    GL.Color4(0.92f, 0.92f, 0.92f, 0.85f);
+                    skipText = "SKIP";
+                }
+                DrawRoundedRectOutline(two3 - 48, 186, two3 + 64, 222, 8);
+                GL.Enable(EnableCap.Texture2D);
+                font.DrawText(-38 + two3, 192, skipText, 1.0);
+            }
         }
 
         //last drive-direction instruction shown (for the change beep)
         private int lastGuidedDriveDir;
+
+        //thin rounded-rectangle outline in HUD coordinates (x relative to center)
+        private static void DrawRoundedRectOutline(double l, double t, double r, double b, double rad)
+        {
+            GL.LineWidth(1.5f);
+            GL.Begin(PrimitiveType.LineLoop);
+            for (int c = 0; c < 4; c++)
+            {
+                // corner centers, arcs swept clockwise starting top-left
+                double cx = c == 0 || c == 3 ? l + rad : r - rad;
+                double cy = c < 2 ? t + rad : b - rad;
+                double start = (c + 2) * glm.PIBy2;   // 180°,270°,0°,90°
+                for (int i = 0; i <= 4; i++)
+                {
+                    double a = start + i * (glm.PIBy2 / 4.0);
+                    GL.Vertex2(cx + Math.Cos(a) * rad, cy + Math.Sin(a) * rad);
+                }
+            }
+            GL.End();
+        }
 
         private void DrawSteerCircle()
         {

@@ -3299,6 +3299,19 @@ namespace AgOpenGPS
         private int maxProgressIndexReached = 0;
 
         /// <summary>
+        /// Meters left along the turn path from the point the vehicle is at - shown
+        /// on the HUD during the maneuver instead of the raw path-point index (onA)
+        /// the stock display leaked (HUD cleanup 2026-07-11).
+        /// </summary>
+        public double RemainingTurnDistance()
+        {
+            double d = 0;
+            for (int i = Math.Max(0, onA); i < ytList.Count - 1; i++)
+                d += glm.Distance(ytList[i], ytList[i + 1]);
+            return d;
+        }
+
+        /// <summary>
         /// Field fix 2c (2026-07-10): which way the driver should drive during the
         /// split K maneuver. 1 = forward, -1 = reverse, 0 = no instruction (not a
         /// running K turn). Drawn big on the HUD with a beep on every change.
