@@ -13,7 +13,7 @@ namespace AgOpenGPS
     // output as ordinary AOG Curve tracks so the existing guidance + K-turn drives them.
     // Multi-pass / safe-space / tree-marking are later phases.
 
-    public enum RowSource { Manual = 0, KmlLine = 1, KmlPoints = 2, Lidar = 3 }
+    public enum RowSource { Manual = 0, KmlLine = 1, KmlPoints = 2, Lidar = 3, Recorded = 4 }
 
     /// <summary>One orchard row: its control points, the derived dense curve, and (optional) trees.</summary>
     public class OrchRow

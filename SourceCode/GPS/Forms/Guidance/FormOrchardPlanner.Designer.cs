@@ -413,6 +413,39 @@ namespace AgOpenGPS
             this.lblWarn.Size = new System.Drawing.Size(300, 40);
             this.lblWarn.TabIndex = 20;
             //
+            // btnRecordRow (F50 phase 2: record a row by DRIVING it, boundary-recorder
+            // style - the point lands offset from the pivot so the tractor can keep a
+            // safe distance from the tree line / slope)
+            //
+            this.btnRecordRow = new System.Windows.Forms.Button();
+            this.nudRecOffset = new System.Windows.Forms.NumericUpDown();
+            this.btnRecSide = new System.Windows.Forms.Button();
+            this.btnRecordRow.BackColor = System.Drawing.Color.MistyRose;
+            this.btnRecordRow.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnRecordRow.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.btnRecordRow.Location = new System.Drawing.Point(684, 482);
+            this.btnRecordRow.Name = "btnRecordRow";
+            this.btnRecordRow.Size = new System.Drawing.Size(145, 56);
+            this.btnRecordRow.Text = "Record row";
+            this.btnRecordRow.UseVisualStyleBackColor = false;
+            this.btnRecordRow.Click += new System.EventHandler(this.btnRecordRow_Click);
+            this.nudRecOffset.DecimalPlaces = 1;
+            this.nudRecOffset.Font = new System.Drawing.Font("Tahoma", 12F);
+            this.nudRecOffset.Increment = new decimal(new int[] { 5, 0, 0, 65536 });
+            this.nudRecOffset.Location = new System.Drawing.Point(835, 482);
+            this.nudRecOffset.Maximum = new decimal(new int[] { 10, 0, 0, 0 });
+            this.nudRecOffset.Name = "nudRecOffset";
+            this.nudRecOffset.Size = new System.Drawing.Size(70, 32);
+            this.nudRecOffset.Value = new decimal(new int[] { 2, 0, 0, 0 });
+            this.btnRecSide.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnRecSide.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.btnRecSide.Location = new System.Drawing.Point(908, 482);
+            this.btnRecSide.Name = "btnRecSide";
+            this.btnRecSide.Size = new System.Drawing.Size(72, 32);
+            this.btnRecSide.Text = "R →";
+            this.btnRecSide.UseVisualStyleBackColor = true;
+            this.btnRecSide.Click += new System.EventHandler(this.btnRecSide_Click);
+            //
             // btnNewRow
             //
             this.btnNewRow.BackColor = System.Drawing.Color.Honeydew;
@@ -505,6 +538,9 @@ namespace AgOpenGPS
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.Color.WhiteSmoke;
             this.ClientSize = new System.Drawing.Size(1000, 760);
+            this.Controls.Add(this.btnRecordRow);
+            this.Controls.Add(this.nudRecOffset);
+            this.Controls.Add(this.btnRecSide);
             this.Controls.Add(this.btnZoomIn);
             this.Controls.Add(this.btnZoomOut);
             this.Controls.Add(this.btnZoomRestore);
@@ -583,6 +619,9 @@ namespace AgOpenGPS
         private System.Windows.Forms.CheckBox btnDeletePoint;
         private System.Windows.Forms.Button btnImportKml;
         private System.Windows.Forms.Button btnMakePath;
+        private System.Windows.Forms.Button btnRecordRow;
+        private System.Windows.Forms.NumericUpDown nudRecOffset;
+        private System.Windows.Forms.Button btnRecSide;
         private System.Windows.Forms.Label lblWarn;
         private System.Windows.Forms.Button btnNewRow;
         private System.Windows.Forms.Button btnEdit;

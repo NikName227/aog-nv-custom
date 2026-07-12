@@ -87,7 +87,7 @@ namespace AgOpenGPS
             foreach (var r in loaded) rows.Add(r);
 
             redraw.Interval = 250;
-            redraw.Tick += (s, e) => oglSelf.Invalidate();
+            redraw.Tick += (s, e) => { RecordSample(); oglSelf.Invalidate(); };
 
             this.KeyPreview = true;
             this.KeyDown += (s, e) => { if (e.KeyCode == Keys.Escape) Close(); };
@@ -422,6 +422,75 @@ namespace AgOpenGPS
             dragIndex = -1; panning = false; moved = false;
             if (wasPointDrag) BuildActiveRow();
             oglSelf.Invalidate();
+        }
+
+        // ── Record row by driving (phase 2) ───────────────────────────────
+        // Boundary-recorder style: every >=1 m of travel drops a point laterally
+        // OFFSET from the pivot (nudRecOffset m, btnRecSide side), so the tractor
+        // drives a safe line while the recorded row lands on the tree line.
+        private bool recOn;
+        private bool recSideRight = true;
+        private double recLastE = double.MaxValue, recLastN;
+
+        private void btnRecSide_Click(object sender, EventArgs e)
+        {
+            recSideRight = !recSideRight;
+            btnRecSide.Text = recSideRight ? "R →" : "← L";
+        }
+
+        private void btnRecordRow_Click(object sender, EventArgs e)
+        {
+            if (!recOn)
+            {
+                if (mf == null || !mf.isJobStarted) { lblActiveOp.Text = "Open a field first"; return; }
+                // fresh row buffer, then sampling fills it live
+                pts.Clear(); workIdx = -1; selIndex = -1;
+                tboxName.Text = "";
+                SetMode(ViewMode.Build);
+                recLastE = double.MaxValue;
+                recOn = true;
+                btnRecordRow.Text = "STOP rec";
+                btnRecordRow.BackColor = System.Drawing.Color.LightGreen;
+                lblActiveOp.Text = "Recording row - drive along it";
+            }
+            else
+            {
+                recOn = false;
+                btnRecordRow.Text = "Record row";
+                btnRecordRow.BackColor = System.Drawing.Color.MistyRose;
+                if (pts.Count >= 2)
+                {
+                    EnsureWorkRow();
+                    rows[workIdx].source = RowSource.Recorded;
+                    BuildActiveRow();
+                    activeIdx = workIdx;
+                    SetMode(ViewMode.Browse);
+                    RefreshActiveName();
+                    lblActiveOp.Text = "Row recorded (" + pts.Count + " pts)";
+                }
+                else lblActiveOp.Text = "Recording too short - discarded";
+            }
+        }
+
+        private void RecordSample()
+        {
+            if (!recOn || mf == null || !mf.isJobStarted) return;
+
+            // point = pivot shifted laterally by the offset (R = right of heading)
+            double off = (double)nudRecOffset.Value * (recSideRight ? 1.0 : -1.0);
+            vec3 piv = mf.pivotAxlePos;
+            double e = piv.easting + Math.Sin(piv.heading + glm.PIBy2) * off;
+            double n = piv.northing + Math.Cos(piv.heading + glm.PIBy2) * off;
+
+            if (recLastE != double.MaxValue)
+            {
+                double de = e - recLastE, dn = n - recLastN;
+                if (de * de + dn * dn < 1.0) return;   // need >= 1 m of travel
+            }
+            recLastE = e; recLastN = n;
+
+            pts.Add(new vec2(e, n));
+            if (pts.Count >= 2) { EnsureWorkRow(); BuildActiveRow(); }
         }
 
         // ── Row build ─────────────────────────────────────────────────────
