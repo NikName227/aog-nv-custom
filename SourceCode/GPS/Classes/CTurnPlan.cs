@@ -392,6 +392,85 @@ namespace AgOpenGPS
             return best;
         }
 
+        // ── Orchard (F50 phase 3): the SAME plan runtime, fed by orchard passes ──
+        // Every orchard pass is its own curve track; a plan entry hangs on it by
+        // name (like a manual closing pass, offsetIdx 0 = the driven strip). All
+        // of Follow plan - HUD, dashed next pass, skip/undo, worked >50 % + exit,
+        // flex pause, resume - then works unchanged. One brain for both modes.
+
+        /// <summary>Rebuild the plan as the ordered orchard pass sequence.</summary>
+        public void GenerateOrchard(List<CTrk> passes, List<int> zones)
+        {
+            entries.Clear();
+            runEntry = null;
+            runDistance = 0;
+            isFlexPause = false;
+            lastSkipped = null;
+            trackName = "";
+
+            for (int i = 0; i < passes.Count; i++)
+            {
+                entries.Add(new CPlanEntry
+                {
+                    offsetIdx = 0,
+                    order = i + 1,
+                    zone = zones != null && i < zones.Count ? zones[i] : 1,
+                    isSameWay = (i % 2) == 0,
+                    trackName = passes[i].name
+                });
+            }
+        }
+
+        /// <summary>
+        /// Cross-track target (orchard): the first not-worked entry that lives on a
+        /// DIFFERENT track than the vehicle. Returns that track plus where its driven
+        /// strip lies relative to the vehicle (+ = right of the heading, meters) so
+        /// the turn builder can aim the maneuver at it.
+        /// </summary>
+        public bool TryNextTargetCross(out CTrk track, out double distRightOfVehicle)
+        {
+            track = null;
+            distRightOfVehicle = 0;
+            if (!IsRuntimeOn) return false;
+
+            CPlanEntry cur = CurrentEntry();
+            string curName = CurrentTrackName();
+
+            CPlanEntry best = null;
+            foreach (var p in entries)
+            {
+                if (p.isWorked || p.isSkipped || p == cur) continue;
+                if (EntryTrackName(p) == curName) continue;   // same track = stock path
+                if (best == null || p.order < best.order) best = p;
+            }
+            if (best == null) return false;
+
+            string tName = EntryTrackName(best);
+            foreach (var t in mf.trk.gArr)
+            {
+                if (t.name == tName) { track = t; break; }
+            }
+            if (track == null || track.curvePts.Count < 2) return false;
+
+            // driven strip of that pass = +0.5 working width right of its reference
+            vec3 piv = mf.pivotAxlePos;
+            int bi = 0; double bd = double.MaxValue;
+            var pts = track.curvePts;
+            for (int i = 0; i < pts.Count; i++)
+            {
+                double de = pts[i].easting - piv.easting, dn = pts[i].northing - piv.northing;
+                double d = de * de + dn * dn;
+                if (d < bd) { bd = d; bi = i; }
+            }
+            double w = WorkWidth();
+            double le = pts[bi].easting + Math.Sin(pts[bi].heading + glm.PIBy2) * 0.5 * w;
+            double ln = pts[bi].northing + Math.Cos(pts[bi].heading + glm.PIBy2) * 0.5 * w;
+
+            double vx = Math.Sin(mf.fixHeading + glm.PIBy2), vy = Math.Cos(mf.fixHeading + glm.PIBy2);
+            distRightOfVehicle = (le - piv.easting) * vx + (ln - piv.northing) * vy;
+            return true;
+        }
+
         // ── HUD skip (2026-07-11): write off the targeted pass ────────────────
 
         // window in which the last skip can be taken back (slow processes in the
@@ -929,7 +1008,11 @@ namespace AgOpenGPS
             if (w < 0.1) return false;
             if (track == null) return false;
             if (track.mode != TrackMode.AB && track.curvePts.Count < 2) return false;
-            if (mf.bnd.bndList.Count == 0 || mf.bnd.bndList[0].fenceLine.Count < 3) return false;
+
+            // orchard fields may have no boundary at all - the pass polyline is
+            // then used unclipped (curve tracks only; an AB line would be endless)
+            bool noBoundary = mf.bnd.bndList.Count == 0 || mf.bnd.bndList[0].fenceLine.Count < 3;
+            if (noBoundary && track.mode == TrackMode.AB) return false;
 
             // sample the offset pass as a dense polyline
             var pass = new List<vec3>();
@@ -955,6 +1038,16 @@ namespace AgOpenGPS
                         pts[i].northing + Math.Cos(pts[i].heading + glm.PIBy2) * distAway,
                         pts[i].heading));
                 }
+            }
+
+            // no boundary (orchard): the whole polyline is one segment, unclipped
+            if (noBoundary)
+            {
+                if (pass.Count < 2) return false;
+                segments.Add(pass);
+                for (int i = 1; i < pass.Count; i++)
+                    length += glm.Distance(pass[i - 1], pass[i]);
+                return length > 0.1;
             }
 
             // clip: keep runs of points inside the field and outside the obstacles.

@@ -379,7 +379,9 @@ namespace AgOpenGPS
             CFeatureLock.Load();
             mapAppToolStripMenu.Visible = CFeatureLock.IsOn(CFeatureLock.FeatureGeoportal);
             btnOrchard.Visible = CFeatureLock.IsOn(CFeatureLock.FeatureOrchard);
-            if (!CFeatureLock.IsOn(CFeatureLock.FeatureTurnApp))
+            //the orchard unlock needs the Turn window too (orchard plan = PATH tab)
+            if (!CFeatureLock.IsOn(CFeatureLock.FeatureTurnApp)
+                && !CFeatureLock.IsOn(CFeatureLock.FeatureOrchard))
                 turnLinesToolStripMenuItem.Visible = false;
 
             //author-issued endpoints win over stored settings (updatable by

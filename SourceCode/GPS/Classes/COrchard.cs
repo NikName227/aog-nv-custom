@@ -144,8 +144,13 @@ namespace AgOpenGPS
 
                 for (int k = 0; k < offs.Count; k++)
                 {
+                    // AOG guidance always drives strip 0 at +0.5*width RIGHT of the
+                    // track reference - shift the reference half a width LEFT so the
+                    // driven strip lands exactly on the planned pass line
                     var pass = OffsetCurve(mid, offs[k] * bSign);
                     if (pass.Count < 2) continue;
+                    CABCurve.CalculateHeadings(ref pass);
+                    pass = OffsetCurve(pass, -0.5 * toolWidth);
 
                     double head = pass[pass.Count / 2].heading;
                     if (head < 0) head += glm.twoPI;

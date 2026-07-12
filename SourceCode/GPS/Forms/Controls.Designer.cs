@@ -566,7 +566,9 @@ namespace AgOpenGPS
         {
             headlandToolStripMenuItem.Enabled = (bnd.bndList.Count > 0);
             headlandBuildToolStripMenuItem.Enabled = (bnd.bndList.Count > 0);
-            turnLinesToolStripMenuItem.Enabled = (bnd.bndList.Count > 0);
+            //F50: orchard fields often have no boundary - the Turn window is still
+            //needed there (orchard plan lives in its PATH tab)
+            turnLinesToolStripMenuItem.Enabled = (bnd.bndList.Count > 0 || tool.isToolOrchard);
 
             tramLinesMenuField.Enabled = tramsMultiMenuField.Enabled = (trk.gArr.Count > 0 && trk.idx > -1);
         }
@@ -994,7 +996,9 @@ namespace AgOpenGPS
         {
             if (!isJobStarted) return;
 
-            if (bnd.bndList.Count == 0 || bnd.bndList[0].fenceLine.Count < 3)
+            //F50: orchard mode works without a boundary (plan comes from the rows)
+            if (!tool.isToolOrchard
+                && (bnd.bndList.Count == 0 || bnd.bndList[0].fenceLine.Count < 3))
             {
                 TimedMessageBox(2000, gStr.gsNoBoundary, gStr.gsCreateABoundaryFirst);
                 return;

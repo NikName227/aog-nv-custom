@@ -294,6 +294,18 @@ namespace AgOpenGPS
                     int delta = planTargetC - mf.curve.howManyPathsAway;
                     isTurnLeft = delta > 0 ? !mf.curve.isHeadingSameWay : mf.curve.isHeadingSameWay;
                     rowSkipsWidth = Math.Abs(delta);
+                    crossSwitchTrack = null;
+                    crossTurnOffset = 0;
+                }
+                //F50 orchard: the next pass lives on ANOTHER track - aim the same
+                //U/K maneuver at its strip and switch tracks when the turn completes
+                else if (mf.plan.TryNextTargetCross(out CTrk crossTrk, out double dRight)
+                    && Math.Abs(dRight) > 1.0 && Math.Abs(dRight) < 40.0)
+                {
+                    isTurnLeft = dRight < 0;
+                    crossTurnOffset = Math.Abs(dRight);
+                    crossSwitchTrack = crossTrk;
+                    rowSkipsWidth = 1;
                 }
                 else
                 {
@@ -309,6 +321,10 @@ namespace AgOpenGPS
             //TODO: is calculated many taimes after the priveous turn is complete
             //grab the vehicle widths and offsets
             double turnOffset = (mf.tool.width - mf.tool.overlap) * rowSkipsWidth + (isTurnLeft ? -mf.tool.offset * 2.0 : mf.tool.offset * 2.0);
+
+            //orchard cross-track target: the real lateral distance to the next pass
+            if (crossSwitchTrack != null && crossTurnOffset > 0.1) turnOffset = crossTurnOffset;
+
             pointSpacing = youTurnRadius * 0.1;
 
             //turn limit lines: per-field maneuver override (K primary / combined)
@@ -3136,11 +3152,33 @@ namespace AgOpenGPS
         }
 
         //Normal copmpletion of youturn
+        //F50 orchard: a turn built toward a pass on ANOTHER track - the maneuver uses
+        //this lateral distance instead of rowSkips*width, and guidance switches to
+        //the target track the moment the turn completes
+        private double crossTurnOffset;
+        private CTrk crossSwitchTrack;
+
         public void CompleteYouTurn()
         {
             //safety: a completed turn must always end up on the new line
             if (turnLineSwapPending) { turnLineSwapPending = false; ApplyTriggerLineSwap(); }
             isYouTurnTriggered = false;
+
+            //orchard: land on the next pass's track
+            if (crossSwitchTrack != null)
+            {
+                for (int i = 0; i < mf.trk.gArr.Count; i++)
+                {
+                    if (mf.trk.gArr[i] != crossSwitchTrack) continue;
+                    mf.trk.idx = i;
+                    mf.ABLine.isABValid = false;
+                    mf.curve.isCurveValid = false;
+                    break;
+                }
+                crossSwitchTrack = null;
+                crossTurnOffset = 0;
+            }
+
             ResetCreatedYouTurn();
             mf.sounds.isBoundAlarming = false;
         }
@@ -3159,6 +3197,8 @@ namespace AgOpenGPS
             isYouTurnTriggered = false;
             mf.makeUTurnCounter = 0;
             ytList?.Clear();
+            crossSwitchTrack = null;
+            crossTurnOffset = 0;
             ResetCreatedYouTurn();
             mf.sounds.isBoundAlarming = false;
             isTurnCreationTooClose = false;

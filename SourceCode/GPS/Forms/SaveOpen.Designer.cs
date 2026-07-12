@@ -150,7 +150,9 @@ namespace AgOpenGPS
             // --- Turn limit lines + pass plan (NV custom, needs boundaries loaded
             // first). F06 feature lock: without the turnapp unlock the files are
             // left untouched on disk and the feature stays fully off (stock youturn).
-            if (CFeatureLock.IsOn(CFeatureLock.FeatureTurnApp))
+            // F50: the orchard unlock also carries the plan runtime
+            if (CFeatureLock.IsOn(CFeatureLock.FeatureTurnApp)
+                || (tool.isToolOrchard && CFeatureLock.IsOn(CFeatureLock.FeatureOrchard)))
             {
                 tnl.ApplyLoaded(TurnLinesFiles.Load(dir));
                 plan.ApplyLoaded(TurnPlanFiles.Load(dir, tool.width - tool.overlap));
@@ -325,14 +327,16 @@ namespace AgOpenGPS
         // locked - the in-memory state is empty and would clobber a real file.
         public void FileSaveTurnLines()
         {
-            if (!CFeatureLock.IsOn(CFeatureLock.FeatureTurnApp)) return;
+            if (!CFeatureLock.IsOn(CFeatureLock.FeatureTurnApp)
+                && !(tool.isToolOrchard && CFeatureLock.IsOn(CFeatureLock.FeatureOrchard))) return;
             TurnLinesFiles.Save(GetFieldDir(true), tnl);
         }
 
         // Save the pass plan (NV custom, one file per implement working width).
         public void FileSaveTurnPlan()
         {
-            if (!CFeatureLock.IsOn(CFeatureLock.FeatureTurnApp)) return;
+            if (!CFeatureLock.IsOn(CFeatureLock.FeatureTurnApp)
+                && !(tool.isToolOrchard && CFeatureLock.IsOn(CFeatureLock.FeatureOrchard))) return;
             TurnPlanFiles.Save(GetFieldDir(true), plan, tool.width - tool.overlap);
         }
 

@@ -177,6 +177,7 @@ namespace AgOpenGPS
 
             // PATH tab: current per-field plan state
             FillTrackCombo();
+            if (mf.tool.isToolOrchard) SetupOrchardPathTab();
             btnMode1.Checked = mf.plan.mode == CTurnPlan.ModeSequential;
             btnMode2.Checked = mf.plan.mode == CTurnPlan.ModeContour;
             btnMode3.Checked = mf.plan.mode == CTurnPlan.ModeZones;
@@ -575,6 +576,9 @@ namespace AgOpenGPS
             previewOverlay.Routes.Clear();
             previewOverlay.Polygons.Clear();
 
+            //orchard fields may have no boundary - no preview then
+            if (mf.bnd.bndList.Count == 0 || mf.bnd.bndList[0].fenceLine.Count < 3) return;
+
             if (editLines.Count == 0)
             {
                 lblStatus.Text = gStr.gsTurnLineHint;
@@ -900,8 +904,73 @@ namespace AgOpenGPS
                 : "";
         }
 
+        // ── Orchard mode (F50 phase 3): the PATH tab plans from rows + tool ──
+        // Field controls (mode/zones/line/headland/manual passes) make no sense in
+        // an orchard - the plan is the ordered pass sequence from the implement
+        // settings; Follow plan / HUD / skip stay the same single brain.
+        private void SetupOrchardPathTab()
+        {
+            btnMode1.Visible = btnMode2.Visible = btnMode3.Visible = false;
+            lblZones.Visible = nudZones.Visible = false;
+            chkHeadlandClip.Visible = false;
+            lblTrack.Visible = cboTrack.Visible = false;
+            btnAddPath.Visible = btnDeletePath.Visible = false;
+            btnGeneratePlan.Text = "Orchard plan";
+            lblPlanInfo.Text = "Orchard mode: plan = rows + tool settings";
+        }
+
+        private void GenerateOrchardPlan()
+        {
+            string fieldDir = mf?.AppCore?.ActiveField?.FieldDirectory?.FullName;
+            var rows = COrchard.LoadRows(fieldDir);
+            if (rows.Count < 2)
+            {
+                lblPlanStatus.Text = "No orchard rows - draw them in the Orchard window";
+                return;
+            }
+
+            double toolW = mf.tool.width > 0.1 ? mf.tool.width : 3.0;
+            var ts = Properties.ToolSettings.Default;
+            var passes = COrchard.BuildPasses(rows, toolW,
+                ts.setTool_orchardWorkMode, ts.setTool_orchardSafeSpace,
+                ts.setTool_orchardTreeSpace, ts.setTool_orchardRowOffset,
+                ts.setTool_orchardOnePass, ts.setTool_orchardCenterFirst,
+                out List<string> warns);
+            if (passes.Count == 0)
+            {
+                lblPlanStatus.Text = warns.Count > 0 ? warns[0] : "No passes";
+                return;
+            }
+
+            // regenerate = replace the previous orchard pass tracks ("Row ..." = fixed)
+            mf.trk.gArr.RemoveAll(t => t.name.StartsWith("Row ", StringComparison.Ordinal));
+            foreach (var t in passes) mf.trk.gArr.Add(t);
+            mf.trk.idx = mf.trk.gArr.Count - passes.Count;   // first pass
+            mf.FileSaveTracks();
+            mf.curve.isCurveValid = false;
+            mf.ABLine.isABValid = false;
+
+            // zone (color) = inter-row number from the pass name "Row Mid N [pM]"
+            var zones = new List<int>();
+            foreach (var t in passes)
+            {
+                string[] parts = t.name.Split(' ');
+                zones.Add(parts.Length > 2 && int.TryParse(parts[2], out int z) ? z : 1);
+            }
+
+            mf.plan.GenerateOrchard(passes, zones);
+            mf.FileSaveTurnPlan();
+
+            DrawPlanOverlay();
+            UpdatePlanInfo();
+            lblPlanStatus.Text = passes.Count + " orchard passes"
+                + (warns.Count > 0 ? "  ·  " + warns.Count + " warning(s): " + warns[0] : "");
+        }
+
         private void btnGeneratePlan_Click(object sender, EventArgs e)
         {
+            if (mf.tool.isToolOrchard) { GenerateOrchardPlan(); return; }
+
             if (!RequireTrackChoice()) return;
 
             mf.plan.mode = btnMode1.Checked ? CTurnPlan.ModeSequential
