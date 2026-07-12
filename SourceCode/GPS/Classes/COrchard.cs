@@ -72,65 +72,156 @@ namespace AgOpenGPS
     {
         public const double ExtendMeters = 150.0; // guidance tail length each end (matches Smart AB)
 
-        // ── Planner: "sredina" mode ───────────────────────────────────────
-        // N rows sorted across the field → N-1 mid-inter-row curves (one pass per inter-row).
-        // Returns the midline tracks; sets warnCount = # of inter-rows narrower than toolWidth.
-        public static List<CTrk> BuildMidlines(List<OrchRow> rows, double toolWidth, out int warnCount)
+        // ── Planner (phase 2): passes per inter-row from the implement settings ──
+        // Working mode: 0 = center (symmetric belt coverage), 1 = left, 2 = right
+        // (passes start at that side's row). The working belt of an inter-row =
+        // rowGap - 2×rowOffset (setting 6); pass count = ceil(belt / toolWidth),
+        // onePass forces a single center pass (spraying). Hard limits: the tool edge
+        // keeps treeSpace from either row line; in L/R mode the pass line keeps
+        // safeSpace from the OPPOSITE row. Violations drop the pass + a warning.
+        public static List<CTrk> BuildPasses(List<OrchRow> rows, double toolWidth,
+            int workMode, double safeSpace, double treeSpace, double rowOffset,
+            bool onePass, bool centerFirst, out List<string> warnings)
         {
-            warnCount = 0;
+            warnings = new List<string>();
             var result = new List<CTrk>();
             if (rows == null || rows.Count < 2) return result;
+            if (toolWidth < 0.1) { warnings.Add("No tool width"); return result; }
 
             var sorted = SortRowsTransverse(rows);
 
-            int midNo = 0;
             for (int i = 0; i < sorted.Count - 1; i++)
             {
                 var a = sorted[i];
                 var b = sorted[i + 1];
                 if (a.curve.Count < 2 || b.curve.Count < 2) continue;
 
-                var mid = new List<vec3>();
-                double minGap = double.MaxValue;
+                List<vec3> mid = BuildMidline(a, b, out double gap);
+                if (mid == null) continue;
 
-                // one midpoint per point of row A, projected to the nearest point of row B
-                foreach (vec3 pa in a.curve)
+                string interName = "Mid " + (i + 1);
+
+                // usable half-width: the tool edge must not reach into the tree line
+                double halfLimit = gap * 0.5 - treeSpace - toolWidth * 0.5;
+                if (halfLimit < 0)
                 {
-                    vec2 nb = NearestOnCurve(b.curve, pa.easting, pa.northing, out double gap);
-                    if (gap < minGap) minGap = gap;
-                    double me = (pa.easting + nb.easting) * 0.5;
-                    double mn = (pa.northing + nb.northing) * 0.5;
-                    // dedupe: skip points within 0.5 m of the previous
-                    if (mid.Count > 0)
-                    {
-                        double de = me - mid[mid.Count - 1].easting;
-                        double dn = mn - mid[mid.Count - 1].northing;
-                        if (de * de + dn * dn < 0.25) continue;
-                    }
-                    mid.Add(new vec3(me, mn, 0));
+                    warnings.Add(interName + ": inter-row too narrow for the tool (gap "
+                        + gap.ToString("N1") + " m)");
+                    continue;
                 }
-                if (mid.Count < 2) continue;
 
-                CABCurve.CalculateHeadings(ref mid);
+                // pass center offsets across the working belt (0 = midline)
+                double belt = Math.Max(0.1, gap - 2.0 * rowOffset);
+                int n = onePass ? 1 : Math.Max(1, (int)Math.Ceiling(belt / toolWidth - 0.001));
+                double spacing = belt / n;
 
-                double head = mid.Count > 1 ? mid[mid.Count / 2].heading : 0;
-                if (head < 0) head += glm.twoPI;
+                var offs = new List<double>();
+                for (int k = 0; k < n; k++)
+                {
+                    double off = -belt * 0.5 + spacing * (k + 0.5);
+                    if (Math.Abs(off) > halfLimit + 0.001)
+                    {
+                        warnings.Add(interName + " pass " + (k + 1) + ": dropped (tree space)");
+                        continue;
+                    }
+                    // L/R: the pass line itself keeps safeSpace from the OPPOSITE row
+                    if (workMode == 1 && gap * 0.5 - off < safeSpace)
+                    { warnings.Add(interName + " pass " + (k + 1) + ": dropped (safe space)"); continue; }
+                    if (workMode == 2 && gap * 0.5 + off < safeSpace)
+                    { warnings.Add(interName + " pass " + (k + 1) + ": dropped (safe space)"); continue; }
+                    offs.Add(off);
+                }
+                if (offs.Count == 0) continue;
 
-                ExtendEnds(mid, ExtendMeters);
-                CABCurve.CalculateHeadings(ref mid);
+                // processing order within the inter-row
+                if (workMode == 1) offs.Sort();                       // from row A outward
+                else if (workMode == 2) { offs.Sort(); offs.Reverse(); } // from row B outward
+                else if (centerFirst) offs.Sort((u, v) => Math.Abs(u).CompareTo(Math.Abs(v)));
+                else offs.Sort((u, v) => Math.Abs(v).CompareTo(Math.Abs(u)));
 
-                var t = new CTrk { mode = TrackMode.Curve, heading = head, isVisible = true };
-                t.ptA = new vec2(mid[0].easting, mid[0].northing);
-                t.ptB = new vec2(mid[mid.Count - 1].easting, mid[mid.Count - 1].northing);
-                t.name = "Row mid " + (++midNo);
-                foreach (vec3 p in mid) t.curvePts.Add(p);
+                // offset sign: does +offset move the line toward row B?
+                double bSign = OffsetSignTowardB(mid, b);
 
-                // inter-row narrower than the machine → still make the line, but flag it
-                if (minGap < toolWidth) warnCount++;
+                for (int k = 0; k < offs.Count; k++)
+                {
+                    var pass = OffsetCurve(mid, offs[k] * bSign);
+                    if (pass.Count < 2) continue;
 
-                result.Add(t);
+                    double head = pass[pass.Count / 2].heading;
+                    if (head < 0) head += glm.twoPI;
+
+                    ExtendEnds(pass, ExtendMeters);
+                    CABCurve.CalculateHeadings(ref pass);
+
+                    var t = new CTrk { mode = TrackMode.Curve, heading = head, isVisible = true };
+                    t.ptA = new vec2(pass[0].easting, pass[0].northing);
+                    t.ptB = new vec2(pass[pass.Count - 1].easting, pass[pass.Count - 1].northing);
+                    t.name = "Row " + interName + (offs.Count > 1 ? " p" + (k + 1) : "");
+                    foreach (vec3 p in pass) t.curvePts.Add(p);
+                    result.Add(t);
+                }
             }
             return result;
+        }
+
+        // midline between two neighbouring rows + their minimal gap; null when degenerate
+        private static List<vec3> BuildMidline(OrchRow a, OrchRow b, out double minGap)
+        {
+            minGap = double.MaxValue;
+            var mid = new List<vec3>();
+
+            // one midpoint per point of row A, projected to the nearest point of row B
+            foreach (vec3 pa in a.curve)
+            {
+                vec2 nb = NearestOnCurve(b.curve, pa.easting, pa.northing, out double gap);
+                if (gap < minGap) minGap = gap;
+                double me = (pa.easting + nb.easting) * 0.5;
+                double mn = (pa.northing + nb.northing) * 0.5;
+                // dedupe: skip points within 0.5 m of the previous
+                if (mid.Count > 0)
+                {
+                    double de = me - mid[mid.Count - 1].easting;
+                    double dn = mn - mid[mid.Count - 1].northing;
+                    if (de * de + dn * dn < 0.25) continue;
+                }
+                mid.Add(new vec3(me, mn, 0));
+            }
+            if (mid.Count < 2) return null;
+
+            CABCurve.CalculateHeadings(ref mid);
+            return mid;
+        }
+
+        // laterally offset a headed polyline (positive = right of the heading)
+        private static List<vec3> OffsetCurve(List<vec3> mid, double off)
+        {
+            var outPts = new List<vec3>(mid.Count);
+            foreach (vec3 p in mid)
+            {
+                outPts.Add(new vec3(
+                    p.easting + Math.Sin(p.heading + glm.PIBy2) * off,
+                    p.northing + Math.Cos(p.heading + glm.PIBy2) * off,
+                    p.heading));
+            }
+            return outPts;
+        }
+
+        // +1 when a positive (right-of-heading) offset moves the midline toward row b, else -1
+        private static double OffsetSignTowardB(List<vec3> mid, OrchRow b)
+        {
+            vec3 m = mid[mid.Count / 2];
+            vec2 bc = b.Centroid();
+            double rx = Math.Sin(m.heading + glm.PIBy2), ry = Math.Cos(m.heading + glm.PIBy2);
+            return ((bc.easting - m.easting) * rx + (bc.northing - m.northing) * ry) >= 0 ? 1 : -1;
+        }
+
+        // ── Planner: "sredina" MVP (kept for reference; BuildPasses supersedes it) ──
+        // One center pass per inter-row = BuildPasses with onePass = true.
+        public static List<CTrk> BuildMidlines(List<OrchRow> rows, double toolWidth, out int warnCount)
+        {
+            var tracks = BuildPasses(rows, toolWidth, 0, 0, 0, 0, true, true, out List<string> warns);
+            warnCount = warns.Count;
+            return tracks;
         }
 
         // Sort rows across the field: project each row centroid onto the axis perpendicular to the
@@ -341,7 +432,7 @@ namespace AgOpenGPS
 
         // ── Per-field persistence (rows saved "under field", fixed) ───────
         // Simple text format: one row block per row, control points only (curve is derived on load).
-        public static void SaveRows(string fieldDir, List<OrchRow> rows)
+        public static void SaveRows(string fieldDir, List<OrchRow> rows, List<vec2> looseTrees = null)
         {
             if (string.IsNullOrEmpty(fieldDir)) return;
             string path = Path.Combine(fieldDir, "Orchard.txt");
@@ -359,10 +450,25 @@ namespace AgOpenGPS
                     foreach (var p in r.trees)
                         w.WriteLine(p.easting.ToString(CultureInfo.InvariantCulture) + "," + p.northing.ToString(CultureInfo.InvariantCulture));
                 }
+
+                // trees not assigned to any row (KML points) - optional tail section,
+                // old files without it still load
+                if (looseTrees != null && looseTrees.Count > 0)
+                {
+                    w.WriteLine("$LooseTrees");
+                    w.WriteLine(looseTrees.Count.ToString(CultureInfo.InvariantCulture));
+                    foreach (var p in looseTrees)
+                        w.WriteLine(p.easting.ToString(CultureInfo.InvariantCulture) + "," + p.northing.ToString(CultureInfo.InvariantCulture));
+                }
             }
         }
 
         public static List<OrchRow> LoadRows(string fieldDir)
+        {
+            return LoadRows(fieldDir, null);
+        }
+
+        public static List<OrchRow> LoadRows(string fieldDir, List<vec2> looseTreesOut)
         {
             var rows = new List<OrchRow>();
             if (string.IsNullOrEmpty(fieldDir)) return rows;
@@ -405,6 +511,23 @@ namespace AgOpenGPS
                     }
                     row.BuildCurve();
                     rows.Add(row);
+                }
+
+                // optional tail: trees not assigned to any row
+                if (looseTreesOut != null)
+                {
+                    while (i < L.Length && !L[i].StartsWith("$LooseTrees")) i++;
+                    if (i < L.Length && ++i < L.Length && int.TryParse(L[i++], out int nLoose))
+                    {
+                        for (int k = 0; k < nLoose && i < L.Length; k++, i++)
+                        {
+                            string[] c = L[i].Split(',');
+                            if (c.Length >= 2 &&
+                                double.TryParse(c[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double e) &&
+                                double.TryParse(c[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double n))
+                                looseTreesOut.Add(new vec2(e, n));
+                        }
+                    }
                 }
             }
             catch (Exception ex)

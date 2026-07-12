@@ -30,6 +30,10 @@ namespace AgOpenGPS
         public bool isToolTrailing, isToolTBT;
         public bool isToolRearFixed, isToolFrontFixed;
 
+        //F50 orchard tool type: the implement carries the processing settings
+        //(pass pattern) - the orchard rows themselves live with the field
+        public bool isToolOrchard;
+
         public bool isMultiColoredSections, isSectionOffWhenOut;
 
         public double hitchLength;
@@ -77,6 +81,7 @@ namespace AgOpenGPS
             isToolTrailing = Properties.ToolSettings.Default.setTool_isToolTrailing;
             isToolTBT = Properties.ToolSettings.Default.setTool_isToolTBT;
             isToolFrontFixed = Properties.ToolSettings.Default.setTool_isToolFront;
+            isToolOrchard = Properties.ToolSettings.Default.setTool_isToolOrchard;
 
             lookAheadOnSetting = Properties.ToolSettings.Default.setVehicle_toolLookAheadOn;
             lookAheadOffSetting = Properties.ToolSettings.Default.setVehicle_toolLookAheadOff;

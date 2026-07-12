@@ -126,10 +126,23 @@ namespace AgOpenGPS
             return trak;
         }
 
+        //F50: orchard passes are FIXED reference lines (trees do not move) - the
+        //"Row ..." name marks them so no track-file format change is needed
+        public bool IsFixedTrack(int i)
+        {
+            return i > -1 && i < gArr.Count
+                && gArr[i].name.StartsWith("Row ", System.StringComparison.Ordinal);
+        }
+
         public void NudgeTrack(double dist)
         {
             if (idx > -1)
             {
+                if (IsFixedTrack(idx))
+                {
+                    mf.TimedMessageBox(1500, "Orchard", "Fixed orchard row - no nudge");
+                    return;
+                }
                 if (gArr[idx].mode == TrackMode.AB)
                 {
                     mf.ABLine.isABValid = false;
@@ -182,6 +195,11 @@ namespace AgOpenGPS
         {
             if (idx > -1)
             {
+                if (IsFixedTrack(idx))
+                {
+                    mf.TimedMessageBox(1500, "Orchard", "Fixed orchard row - no nudge");
+                    return;
+                }
                 if (gArr[idx].mode == TrackMode.AB)
                 {
                     mf.ABLine.isABValid = false;

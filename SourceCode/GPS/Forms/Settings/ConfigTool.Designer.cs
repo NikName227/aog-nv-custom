@@ -38,8 +38,26 @@ namespace AgOpenGPS
                 rbtnTrailing.Visible = true;
                 rbtnFixedRear.Visible = true;
                 rbtnFront.Visible = true;
+                rbtnOrchard.Visible = true;
 
-                if (Properties.ToolSettings.Default.setTool_isToolFront)
+                //F50: orchard settings ride on the implement profile
+                cboOrchardMode.SelectedIndex = Math.Max(0, Math.Min(2,
+                    Properties.ToolSettings.Default.setTool_orchardWorkMode));
+                nudOrchardRowOffset.Value = (decimal)Properties.ToolSettings.Default.setTool_orchardRowOffset;
+                nudOrchardTree.Value = (decimal)Properties.ToolSettings.Default.setTool_orchardTreeSpace;
+                nudOrchardSafe.Value = (decimal)Properties.ToolSettings.Default.setTool_orchardSafeSpace;
+                chkOrchardOnePass.Checked = Properties.ToolSettings.Default.setTool_orchardOnePass;
+                chkOrchardCenterFirst.Checked = Properties.ToolSettings.Default.setTool_orchardCenterFirst;
+
+                if (Properties.ToolSettings.Default.setTool_isToolOrchard)
+                {
+                    rbtnOrchard.Checked = true;
+                    rbtnTBT.Checked = false;
+                    rbtnTrailing.Checked = false;
+                    rbtnFixedRear.Checked = false;
+                    rbtnFront.Checked = false;
+                }
+                else if (Properties.ToolSettings.Default.setTool_isToolFront)
                 {
                     rbtnTBT.Checked = false;
                     rbtnTrailing.Checked = false;
@@ -76,14 +94,40 @@ namespace AgOpenGPS
                 rbtnTrailing.Visible = false;
                 rbtnFixedRear.Visible = false;
                 rbtnFront.Visible = false;
-
+                rbtnOrchard.Visible = false;
+                pnlOrchardSet.Visible = false;
             }
         }
+
+        //F50: the settings panel covers the hitch-type pictures while Orchard is chosen
+        private void rbtnOrchard_CheckedChanged(object sender, EventArgs e)
+        {
+            pnlOrchardSet.Visible = rbtnOrchard.Checked;
+            if (rbtnOrchard.Checked) pnlOrchardSet.BringToFront();
+        }
+
         private void tabTConfig_Leave(object sender, EventArgs e)
         {
             if (mf.vehicle.VehicleConfig.Type != VehicleType.Harvester)
             {
-                if (rbtnFront.Checked)
+                //F50: orchard settings are saved regardless of the chosen type
+                Properties.ToolSettings.Default.setTool_isToolOrchard = rbtnOrchard.Checked;
+                Properties.ToolSettings.Default.setTool_orchardWorkMode = cboOrchardMode.SelectedIndex;
+                Properties.ToolSettings.Default.setTool_orchardRowOffset = (double)nudOrchardRowOffset.Value;
+                Properties.ToolSettings.Default.setTool_orchardTreeSpace = (double)nudOrchardTree.Value;
+                Properties.ToolSettings.Default.setTool_orchardSafeSpace = (double)nudOrchardSafe.Value;
+                Properties.ToolSettings.Default.setTool_orchardOnePass = chkOrchardOnePass.Checked;
+                Properties.ToolSettings.Default.setTool_orchardCenterFirst = chkOrchardCenterFirst.Checked;
+
+                if (rbtnOrchard.Checked)
+                {
+                    //orchard rides on a rear-fixed geometry for guidance purposes
+                    Properties.ToolSettings.Default.setTool_isToolFront = false;
+                    Properties.ToolSettings.Default.setTool_isToolTBT = false;
+                    Properties.ToolSettings.Default.setTool_isToolTrailing = false;
+                    Properties.ToolSettings.Default.setTool_isToolRearFixed = true;
+                }
+                else if (rbtnFront.Checked)
                 {
                     Properties.ToolSettings.Default.setTool_isToolFront = true;
                     Properties.ToolSettings.Default.setTool_isToolTBT = false;
@@ -118,12 +162,14 @@ namespace AgOpenGPS
                 Properties.ToolSettings.Default.setTool_isToolTBT = false;
                 Properties.ToolSettings.Default.setTool_isToolTrailing = false;
                 Properties.ToolSettings.Default.setTool_isToolRearFixed = false;
+                Properties.ToolSettings.Default.setTool_isToolOrchard = false;
             }
 
             mf.tool.isToolRearFixed = Properties.ToolSettings.Default.setTool_isToolRearFixed;
             mf.tool.isToolTrailing = Properties.ToolSettings.Default.setTool_isToolTrailing;
             mf.tool.isToolTBT = Properties.ToolSettings.Default.setTool_isToolTBT;
             mf.tool.isToolFrontFixed = Properties.ToolSettings.Default.setTool_isToolFront;
+            mf.tool.isToolOrchard = Properties.ToolSettings.Default.setTool_isToolOrchard;
 
             //mf.tool.hitchLength = (double)nudDrawbarLength.Value * mf.inchOrCm2m;
             if (Properties.ToolSettings.Default.setTool_isToolFront && mf.tool.hitchLength < 0)

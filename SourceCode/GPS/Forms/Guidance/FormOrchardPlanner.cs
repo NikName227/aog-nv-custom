@@ -82,8 +82,8 @@ namespace AgOpenGPS
 
             mf.CalculateMinMax();
 
-            // load rows saved under this field
-            var loaded = COrchard.LoadRows(FieldDir());
+            // load rows + loose trees saved under this field
+            var loaded = COrchard.LoadRows(FieldDir(), trees);
             foreach (var r in loaded) rows.Add(r);
 
             redraw.Interval = 250;
@@ -810,16 +810,30 @@ namespace AgOpenGPS
             }
         }
 
-        // ── Make path (planner "sredina") ─────────────────────────────────
+        // ── Make path (phase 2: passes from the IMPLEMENT settings) ───────
+        // Tool type Orchard supplies working mode / spaces / offsets; any other
+        // tool type falls back to the MVP single center pass per inter-row.
         private void btnMakePath_Click(object sender, EventArgs e)
         {
             if (rows.Count < 2) { lblActiveOp.Text = "Need at least 2 rows"; return; }
             midlines.Clear();
             double toolW = mf.tool.width > 0.1 ? mf.tool.width : 3.0;
-            var mids = COrchard.BuildMidlines(rows, toolW, out int warn);
-            foreach (var t in mids) midlines.Add(t);
-            lblWarn.Text = warn > 0 ? warn + " inter-row(s) narrower than tool" : "";
-            lblActiveOp.Text = midlines.Count + " mid-lines built";
+
+            var ts = Properties.ToolSettings.Default;
+            List<CTrk> passes = mf.tool.isToolOrchard
+                ? COrchard.BuildPasses(rows, toolW,
+                    ts.setTool_orchardWorkMode, ts.setTool_orchardSafeSpace,
+                    ts.setTool_orchardTreeSpace, ts.setTool_orchardRowOffset,
+                    ts.setTool_orchardOnePass, ts.setTool_orchardCenterFirst,
+                    out List<string> warns)
+                : COrchard.BuildPasses(rows, toolW, 0, 0, 0, 0, true, true, out warns);
+
+            foreach (var t in passes) midlines.Add(t);
+            lblWarn.Text = warns.Count > 0
+                ? warns.Count + " warning(s): " + warns[0]
+                : "";
+            lblActiveOp.Text = midlines.Count + " passes built"
+                + (mf.tool.isToolOrchard ? "" : " (basic - set tool type Orchard for multi-pass)");
             oglSelf.Invalidate();
         }
 
@@ -837,8 +851,8 @@ namespace AgOpenGPS
             string nm = tboxName.Text.Trim();
             if (nm.Length > 0 && target >= 0 && target < rows.Count) rows[target].name = nm;
 
-            // persist rows under the field (fixed reference lines)
-            try { COrchard.SaveRows(FieldDir(), rows); }
+            // persist rows + loose trees under the field (fixed reference lines)
+            try { COrchard.SaveRows(FieldDir(), rows, trees); }
             catch (Exception ex) { Log.EventWriter("Orchard SaveRows: " + ex); }
 
             // commit the generated mid-lines as ordinary Curve tracks (driven by AOG guidance + K-turn)

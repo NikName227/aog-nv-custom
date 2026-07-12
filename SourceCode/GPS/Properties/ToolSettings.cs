@@ -27,6 +27,16 @@ namespace AgOpenGPS.Properties
         public bool setTool_isToolRearFixed = false;
         public bool setTool_isToolTBT = false;
         public bool setTool_isToolFront = false;
+
+        // Orchard tool type (F50): the processing settings belong to the IMPLEMENT -
+        // changing the machine changes the pass pattern, the orchard rows stay put
+        public bool setTool_isToolOrchard = false;
+        public int setTool_orchardWorkMode = 0;        // 0 = center, 1 = left, 2 = right
+        public double setTool_orchardSafeSpace = 1.0;  // m clearance to the OPPOSITE row (from pass line)
+        public double setTool_orchardTreeSpace = 0.5;  // m the tool edge keeps from the tree-line center
+        public double setTool_orchardRowOffset = 0.5;  // m tool offset from the row -> working belt width
+        public bool setTool_orchardOnePass = false;    // force 1 center pass per inter-row (spraying)
+        public bool setTool_orchardCenterFirst = true; // odd passes: center first, then outward
         public bool setTool_isSectionsNotZones = true;
         public bool setTool_isSectionOffWhenOut = true;
         public bool setTool_isDisplayTramControl = true;
