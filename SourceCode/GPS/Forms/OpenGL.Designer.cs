@@ -1826,20 +1826,11 @@ namespace AgOpenGPS
             two3 -= 140;
             GL.Color3(0.927f, 0.9635f, 0.74f);
 
-            //during the maneuver: meters left along the turn path (the stock display
-            //leaked the raw path-point index here - meaningless to the driver)
-            if (isMetric)
-            {
-                font.DrawText(-40 + two3, 120, !yt.isYouTurnTriggered
-                    ? DistPivotM
-                    : yt.RemainingTurnDistance().ToString("N0") + " m");
-            }
-            else
-            {
-                font.DrawText(-40 + two3, 120, !yt.isYouTurnTriggered
-                    ? DistPivotFt
-                    : (yt.RemainingTurnDistance() * glm.m2ft).ToString("N0") + " ft");
-            }
+            //field test 2026-07-15: the mid-maneuver meters read wrong on the split K
+            //(path swaps reset the measure) - hidden until a correct one exists; the
+            //drive-direction cue and the state text carry the maneuver
+            if (!yt.isYouTurnTriggered)
+                font.DrawText(-40 + two3, 120, isMetric ? DistPivotM : DistPivotFt);
 
             //turn limit lines: unmistakable maneuver state for the driver
             if (tnl.IsFeatureOn || yt.isYouTurnTriggered)
