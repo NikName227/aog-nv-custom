@@ -182,7 +182,7 @@ namespace AgOpenGPS
             this.gMapControl.Bearing = 0F;
             this.gMapControl.CanDragMap = true;
             this.gMapControl.GrayScaleMode = false;
-            this.gMapControl.Location = new System.Drawing.Point(16, 176);
+            this.gMapControl.Location = new System.Drawing.Point(16, 186);
             this.gMapControl.MarkersEnabled = true;
             this.gMapControl.MaxZoom = 20;
             this.gMapControl.MinZoom = 2;
@@ -192,7 +192,7 @@ namespace AgOpenGPS
             this.gMapControl.PolygonsEnabled = true;
             this.gMapControl.RoutesEnabled = true;
             this.gMapControl.ShowTileGridLines = false;
-            this.gMapControl.Size = new System.Drawing.Size(692, 398);
+            this.gMapControl.Size = new System.Drawing.Size(692, 388);
             this.gMapControl.TabIndex = 4;
             this.gMapControl.Zoom = 0D;
             //
@@ -254,7 +254,7 @@ namespace AgOpenGPS
             this.btnZoomIn.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.btnZoomIn.BackColor = System.Drawing.Color.White;
             this.btnZoomIn.Font = new System.Drawing.Font("Tahoma", 20F, System.Drawing.FontStyle.Bold);
-            this.btnZoomIn.Location = new System.Drawing.Point(644, 186);
+            this.btnZoomIn.Location = new System.Drawing.Point(644, 196);
             this.btnZoomIn.Name = "btnZoomIn";
             this.btnZoomIn.Size = new System.Drawing.Size(58, 58);
             this.btnZoomIn.TabIndex = 12;
@@ -267,7 +267,7 @@ namespace AgOpenGPS
             this.btnZoomOut.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.btnZoomOut.BackColor = System.Drawing.Color.White;
             this.btnZoomOut.Font = new System.Drawing.Font("Tahoma", 20F, System.Drawing.FontStyle.Bold);
-            this.btnZoomOut.Location = new System.Drawing.Point(644, 250);
+            this.btnZoomOut.Location = new System.Drawing.Point(644, 260);
             this.btnZoomOut.Name = "btnZoomOut";
             this.btnZoomOut.Size = new System.Drawing.Size(58, 58);
             this.btnZoomOut.TabIndex = 13;
