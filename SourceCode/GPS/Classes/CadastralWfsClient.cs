@@ -120,20 +120,42 @@ namespace AgOpenGPS
             return parcels;
         }
 
-        // cadastral id of a WFS feature (for tile dedup); "" when absent
+        // cadastral id of a WFS feature (for tile dedup); "" when absent.
+        // Field bug 2026-07-15: the DGU "inspireId" property is a NESTED object
+        // ({ localId, namespace }), so ToString() gave the same type name for
+        // EVERY parcel and the snapshot dedup collapsed all of them into one.
+        // Only plain scalar values are accepted as ids now.
         private static string FeatureId(IFeature feat)
         {
             var at = feat?.Attributes;
             if (at == null) return "";
-            foreach (string key in new[] { "inspireId", "INSPIREID", "id", "ID", "label", "LABEL", "gml_id" })
+
+            foreach (string key in new[] { "nationalCadastralReference", "id", "ID", "label", "LABEL", "gml_id" })
             {
-                if (at.Exists(key))
-                {
-                    object v = at[key];
-                    if (v != null) return v.ToString();
-                }
+                if (!at.Exists(key)) continue;
+                string s = CleanId(at[key]?.ToString());
+                if (s.Length > 0) return s;
             }
+
+            //INSPIRE id object - take its localId (e.g. "CP.23720183")
+            if (at.Exists("inspireId") && at["inspireId"] is IAttributesTable nested
+                && nested.Exists("localId"))
+                return CleanId(nested["localId"]?.ToString());
+
             return "";
+        }
+
+        /// <summary>"" unless the value is a usable scalar id - a stringified nested
+        /// object (a .NET type name) is identical for every parcel and would collapse
+        /// the dedup; such ids in old cache tiles are dropped on load too (the
+        /// geometry fallback in DedupKey keeps them unique).</summary>
+        public static string CleanId(string s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return "";
+            s = s.Trim();
+            if (s.Contains("{") || s.Contains("AttributesTable") || s.Contains("JObject")
+                || s.Contains("System.") || s.Contains("Newtonsoft.")) return "";
+            return s;
         }
 
         private static void AddPolygons(Geometry geom, List<CadastralParcel> parcels, string id)
@@ -332,7 +354,8 @@ namespace AgOpenGPS
                     int count = int.Parse(sr.ReadLine(), CultureInfo.InvariantCulture);
                     for (int k = 0; k < count; k++)
                     {
-                        var p = new CadastralParcel { Id = sr.ReadLine() ?? "" };
+                        //CleanId drops the poisoned type-name ids older builds wrote
+                        var p = new CadastralParcel { Id = CleanId(sr.ReadLine()) };
                         int n = int.Parse(sr.ReadLine(), CultureInfo.InvariantCulture);
                         var cs = new List<Coordinate>(n + 1);
                         for (int i = 0; i < n; i++)
