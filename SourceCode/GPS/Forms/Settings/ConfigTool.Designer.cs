@@ -38,7 +38,8 @@ namespace AgOpenGPS
                 rbtnTrailing.Visible = true;
                 rbtnFixedRear.Visible = true;
                 rbtnFront.Visible = true;
-                rbtnOrchard.Visible = true;
+                //NV F06: Orchard tool type only for unlocked installs
+                rbtnOrchard.Visible = CFeatureLock.IsOn(CFeatureLock.FeatureOrchard);
 
                 //F50: orchard settings ride on the implement profile
                 cboOrchardMode.SelectedIndex = Math.Max(0, Math.Min(2,
@@ -49,7 +50,8 @@ namespace AgOpenGPS
                 chkOrchardOnePass.Checked = Properties.ToolSettings.Default.setTool_orchardOnePass;
                 chkOrchardCenterFirst.Checked = Properties.ToolSettings.Default.setTool_orchardCenterFirst;
 
-                if (Properties.ToolSettings.Default.setTool_isToolOrchard)
+                if (Properties.ToolSettings.Default.setTool_isToolOrchard
+                    && CFeatureLock.IsOn(CFeatureLock.FeatureOrchard))
                 {
                     rbtnOrchard.Checked = true;
                     rbtnTBT.Checked = false;

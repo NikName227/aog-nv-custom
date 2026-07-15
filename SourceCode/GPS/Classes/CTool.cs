@@ -81,7 +81,9 @@ namespace AgOpenGPS
             isToolTrailing = Properties.ToolSettings.Default.setTool_isToolTrailing;
             isToolTBT = Properties.ToolSettings.Default.setTool_isToolTBT;
             isToolFrontFixed = Properties.ToolSettings.Default.setTool_isToolFront;
-            isToolOrchard = Properties.ToolSettings.Default.setTool_isToolOrchard;
+            //NV F06: a locked install ignores a stale Orchard tool selection
+            isToolOrchard = Properties.ToolSettings.Default.setTool_isToolOrchard
+                && CFeatureLock.IsOn(CFeatureLock.FeatureOrchard);
 
             lookAheadOnSetting = Properties.ToolSettings.Default.setVehicle_toolLookAheadOn;
             lookAheadOffSetting = Properties.ToolSettings.Default.setVehicle_toolLookAheadOff;
