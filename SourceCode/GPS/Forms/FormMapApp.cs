@@ -447,7 +447,9 @@ namespace AgOpenGPS
         }
 
         // Ask the shared tile cache to cover ~1 km around the current MAP CENTER
-        // (panning grows the cache), then redraw when the pass ends. All background.
+        // (panning grows the cache). Parcels are drawn after EVERY landed tile with
+        // a tile counter in the status - a WFS tile takes ~15 s, so the driver sees
+        // it working instead of minutes of blank map (field test 2026-07-15).
         private void KickCoverage(bool force)
         {
             if (mf == null || !mf.isJobStarted || !chkParcels.Checked) return;
@@ -457,6 +459,16 @@ namespace AgOpenGPS
                 Properties.Settings.Default.setMap_parcelWfsUrl, force, () =>
                 {
                     if (IsHandleCreated) BeginInvoke((MethodInvoker)(() => DrawFromCache()));
+                },
+                (done, total) =>
+                {
+                    if (!IsHandleCreated) return;
+                    BeginInvoke((MethodInvoker)(() =>
+                    {
+                        DrawFromCache();
+                        if (done < total)
+                            lblStatus.Text = gStr.gsLoadingParcels + " " + done + "/" + total;
+                    }));
                 });
         }
 

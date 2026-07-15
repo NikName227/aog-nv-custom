@@ -1647,8 +1647,11 @@ namespace AgOpenGPS
         {
             get
             {
+                //field test 2026-07-15: under 10 m the driver times the trigger - 1 decimal
                 if (distancePivotToTurnLine > 0)
-                    return ((int)(distancePivotToTurnLine)) + " m";
+                    return distancePivotToTurnLine < 10
+                        ? (distancePivotToTurnLine).ToString("N1") + " m"
+                        : ((int)(distancePivotToTurnLine)) + " m";
                 else return "--";
             }
         }
@@ -1656,7 +1659,13 @@ namespace AgOpenGPS
         {
             get
             {
-                if (distancePivotToTurnLine > 0) return (((int)(glm.m2ft * (distancePivotToTurnLine))) + " ft");
+                if (distancePivotToTurnLine > 0)
+                {
+                    double ft = glm.m2ft * distancePivotToTurnLine;
+                    return distancePivotToTurnLine < 10
+                        ? ft.ToString("N1") + " ft"
+                        : ((int)ft) + " ft";
+                }
                 else return "--";
             }
         }

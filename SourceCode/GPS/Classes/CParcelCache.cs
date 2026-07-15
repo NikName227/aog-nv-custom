@@ -48,20 +48,32 @@ namespace AgOpenGPS
                         + tn.ToString(CultureInfo.InvariantCulture) + ".txt");
         }
 
+        // a request that arrived while a pass was running - served right after it
+        private static (double lat, double lon, string url, bool force,
+            Action onPass, Action<int, int> onTile)? queued;
+
         /// <summary>
         /// Make sure every tile within CoverRadius of the WGS84 position is loaded:
         /// from disk when the file exists, else fetched from the WFS and saved.
-        /// Runs in the background; a pass already underway is not doubled. force
-        /// re-downloads the tiles around the position and overwrites their files
-        /// (the Refresh button - for when the cadastre changed).
+        /// Runs in the background; a request during a running pass is queued and
+        /// served right after it (field test 2026-07-15: a silent no-op read as
+        /// "not working"). force re-downloads the tiles around the position and
+        /// overwrites their files (the Refresh button - for when the cadastre changed).
         /// onPass (optional) runs on the worker when the pass ends, changed or not.
+        /// onTile (optional) runs after EVERY stored tile with (done, total) - the
+        /// DGU WFS takes ~15 s per tile, so consumers show progress and draw
+        /// parcels as they land instead of sitting minutes on a blank map.
         /// </summary>
         public static void EnsureCoverage(double lat, double lon, string wfsUrl,
-            bool force = false, Action onPass = null)
+            bool force = false, Action onPass = null, Action<int, int> onTile = null)
         {
             lock (gate)
             {
-                if (busy) return;
+                if (busy)
+                {
+                    queued = (lat, lon, wfsUrl, force, onPass, onTile);
+                    return;
+                }
                 busy = true;
             }
 
@@ -72,39 +84,57 @@ namespace AgOpenGPS
                     Directory.CreateDirectory(CacheDir);
                     var (e, n) = CadastralWfsClient.ToEN3765(lat, lon);
 
+                    var work = new List<(int e, int n)>();
                     foreach (var key in TilesAround(e, n))
                     {
                         bool have;
                         lock (gate) have = tiles.ContainsKey(key);
-                        if (have && !force) continue;
+                        if (!have || force) work.Add(key);
+                    }
 
-                        string file = TilePath(key.e, key.n);
+                    int total = work.Count, done = 0;
+                    var fetch = new List<(int e, int n)>();
+
+                    // disk tiles first - fast, those parcels show up right away
+                    foreach (var key in work)
+                    {
                         List<CadastralParcel> list = null;
-
+                        string file = TilePath(key.e, key.n);
                         if (!force && File.Exists(file))
                             list = CadastralWfsClient.LoadTile(file, out _);
+                        if (list == null) { fetch.Add(key); continue; }
 
-                        if (list == null)
-                        {
-                            list = CadastralWfsClient.GetParcelsBbox3765(wfsUrl,
-                                key.e * TileSize, key.n * TileSize,
-                                (key.e + 1) * TileSize, (key.n + 1) * TileSize, out string err);
-                            if (err != null) continue;   // offline etc. - next pass retries
-                            CadastralWfsClient.SaveTile(file, list, out _);
-                        }
-
-                        lock (gate)
-                        {
-                            tiles[key] = list;
-                            Version++;
-                        }
+                        lock (gate) { tiles[key] = list; Version++; }
+                        onTile?.Invoke(System.Threading.Interlocked.Increment(ref done), total);
                     }
+
+                    // a few WFS downloads in parallel (measured ~16-18 s each,
+                    // sequential full coverage took minutes)
+                    Parallel.ForEach(fetch,
+                        new ParallelOptions { MaxDegreeOfParallelism = 3 }, key =>
+                    {
+                        var list = CadastralWfsClient.GetParcelsBbox3765(wfsUrl,
+                            key.e * TileSize, key.n * TileSize,
+                            (key.e + 1) * TileSize, (key.n + 1) * TileSize, out string err);
+                        if (err == null)
+                        {
+                            CadastralWfsClient.SaveTile(TilePath(key.e, key.n), list, out _);
+                            lock (gate) { tiles[key] = list; Version++; }
+                        }
+                        // a failed tile still counts so X/Y completes; the next pass retries it
+                        onTile?.Invoke(System.Threading.Interlocked.Increment(ref done), total);
+                    });
                 }
                 catch { }
                 finally
                 {
-                    lock (gate) busy = false;
+                    (double lat, double lon, string url, bool force,
+                        Action onPass, Action<int, int> onTile)? next;
+                    lock (gate) { busy = false; next = queued; queued = null; }
                     onPass?.Invoke();
+                    if (next.HasValue)
+                        EnsureCoverage(next.Value.lat, next.Value.lon, next.Value.url,
+                            next.Value.force, next.Value.onPass, next.Value.onTile);
                 }
             });
         }

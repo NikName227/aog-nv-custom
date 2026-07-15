@@ -1878,9 +1878,6 @@ namespace AgOpenGPS
         // forward meters held after the reverse leg - a power-shuttle reverser can
         // flip direction without the speed ever dropping under the stop threshold
         private double kFwdHeldDist;
-        // which side of the new row's line part 2 starts on (0 = not sampled yet);
-        // the front axle crossing that line ends the turn
-        private int kPart2EntrySide;
         public int ytRedIndex = -1;     // ytList index from which points draw red
         public int part2RedIndex = -1;  // red index inside the pending part 2
 
@@ -2027,7 +2024,6 @@ namespace AgOpenGPS
             kPart2List.Clear();
             kTurnStage = 0;
             kFwdHeldDist = 0;
-            kPart2EntrySide = 0;
             part2RedIndex = -1;
             if (p2 != null && p2.Count > 3)
             {
@@ -3222,7 +3218,6 @@ namespace AgOpenGPS
             kTurnStage = 0;
             kRevReached = false;
             kFwdHeldDist = 0;
-            kPart2EntrySide = 0;
             ytRedIndex = -1;
             part2RedIndex = -1;
             turnLineSwapPending = false;
@@ -3360,7 +3355,15 @@ namespace AgOpenGPS
         {
             if (!isYouTurnTriggered || !mf.tnl.IsFeatureOn || activeTurnStyle != 1) return 0;
             if (kTurnStage == 1)
-                return (ytList.Count > 3 && A >= ytList.Count - 3) ? -1 : 1;
+            {
+                //field test 2026-07-15: the cue (and its beep) flips to REVERSE as
+                //soon as the tractor is within the switch tolerance of the part 1
+                //end - 2 m, the same tolerance that arms part 2 on the way back
+                double rem = 0;
+                for (int i = Math.Max(0, A); i < ytList.Count - 1 && rem < 2.0; i++)
+                    rem += glm.Distance(ytList[i], ytList[i + 1]);
+                return rem < 2.0 ? -1 : 1;
+            }
             if (kTurnStage == 2) return kRevReached ? 1 : -1;
             return 1;
         }
@@ -3460,7 +3463,6 @@ namespace AgOpenGPS
                         {
                             kRevReached = false;
                             kFwdHeldDist = 0;
-                            kPart2EntrySide = 0;
                             ytList.Clear();
                             ytList.AddRange(kPart2List);
                             kPart2List.Clear();
@@ -3474,30 +3476,13 @@ namespace AgOpenGPS
                 }
                 bool kSplitHold = mf.tnl.IsFeatureOn && (kTurnStage == 1 || kTurnStage == 2);
 
-                //field fix 2b (2026-07-10): part 2 used to complete only when the
-                //follower reached the very end of the turn path - well past where the
-                //driver expects. The final segment of part 2 lies ON the new row's
-                //line, so end the turn the moment the FRONT axle reaches that line
-                //(sign flip of its lateral offset) and hand the merge to guidance.
-                if (mf.tnl.IsFeatureOn && kTurnStage == 3 && ptCount > 1)
-                {
-                    vec3 rowPt = ytList[ptCount - 1];
-                    double rx = Math.Sin(rowPt.heading), ry = Math.Cos(rowPt.heading);
-                    double side = (mf.steerAxlePos.easting - rowPt.easting) * ry
-                                - (mf.steerAxlePos.northing - rowPt.northing) * rx;
-
-                    if (kPart2EntrySide == 0)
-                    {
-                        //sample the approach side once clearly off the line; starting
-                        //on the line keeps the stock end-of-path completion instead
-                        if (Math.Abs(side) > 0.2) kPart2EntrySide = side > 0 ? 1 : -1;
-                    }
-                    else if (Math.Abs(side) < 0.05 || (side > 0 ? 1 : -1) != kPart2EntrySide)
-                    {
-                        CompleteYouTurn();
-                        return false;
-                    }
-                }
+                //field fix 2b v2 (2026-07-15): v1 measured the front axle against the
+                //heading of the path's LAST segment - that is the diagonal entry leg,
+                //not the row line, so the side never flipped and the turn still ran to
+                //the end of the path. The red index is where the entry leg CROSSES the
+                //new row's line, so the turn now ends when the follower reaches it
+                //(pure pursuit: the lookahead point, stanley: the front axle) - see
+                //the checks in the two follower branches below.
 
                 if (mf.isStanleyUsed)
                 {
@@ -3562,6 +3547,15 @@ namespace AgOpenGPS
                     // Only complete if we've progressed through at least 50% of the path
                     // This prevents premature completion when start and end positions are the same
                     bool hasProgressedEnough = maxProgressIndexReached > (ptCount / 2);
+
+                    //field fix 2b v2: stanley steers the FRONT axle - it crossing the
+                    //new row's line (the red index) ends the K turn, the line takes over
+                    if (mf.tnl.IsFeatureOn && kTurnStage == 3 && !mf.isReverse
+                        && ytRedIndex > 0 && B >= ytRedIndex)
+                    {
+                        CompleteYouTurn();
+                        return false;
+                    }
 
                     //return and reset if too far away or end of the line
                     //(K split holds at the end of part 1 - the reverse leg follows)
@@ -3742,6 +3736,7 @@ namespace AgOpenGPS
                     int count = ReverseHeading ? 1 : -1;
                     vec3 start = new vec3(rEastYT, rNorthYT, 0);
                     double distSoFar = 0;
+                    int goalIdx = ReverseHeading ? B : A;   //path index the goal point lands on
 
                     for (int i = ReverseHeading ? B : A; i < ptCount && i >= 0; i += count)
                     {
@@ -3755,6 +3750,7 @@ namespace AgOpenGPS
 
                             goalPointYT.easting = (((1 - j) * start.easting) + (j * ytList[i].easting));
                             goalPointYT.northing = (((1 - j) * start.northing) + (j * ytList[i].northing));
+                            goalIdx = i;
                             break;
                         }
                         else distSoFar += tempDist;
@@ -3780,6 +3776,16 @@ namespace AgOpenGPS
                             CompleteYouTurn();
                             return true;
                         }
+                    }
+
+                    //field fix 2b v2 (2026-07-15): the K turn ends the moment the
+                    //LOOKAHEAD point passes the new row's line (the red index is where
+                    //the entry leg crosses it) - the AB line takes over for the merge
+                    if (mf.tnl.IsFeatureOn && kTurnStage == 3 && !mf.isReverse
+                        && ytRedIndex > 0 && goalIdx >= ytRedIndex)
+                    {
+                        CompleteYouTurn();
+                        return false;
                     }
 
                     //calc "D" the distance from pivot axle to lookahead point
