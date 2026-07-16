@@ -1106,11 +1106,16 @@ namespace AgOpenGPS
                                 //armed = pivot inside the window: turn is the next action (even stopped) -> orange
                                 yt.turnArmed = fwd >= -triggerTol && fwd <= triggerTol && !yt.isYouTurnTriggered;
 
-                                //turn-after-stop: arm on a real stop near the turn, fire on forward
+                                //turn-after-stop: the STOP itself must happen inside the same
+                                //± trigger-tolerance window (field 2026-07-16: was "anywhere
+                                //within 5 m before" - one-sided); outside the window nothing
+                                //arms, the turn waits for a stop IN the zone, then fires on
+                                //forward. Option off = turn fires immediately as before.
                                 bool afterStopGate = true;
                                 if (tnl.isAfterStop)
                                 {
-                                    if (distancePivotToTurnLine < 5.0 && avgSpeed < 0.3) yt.afterStopStopped = true;
+                                    if (fwd >= -triggerTol && fwd <= triggerTol && avgSpeed < 0.3)
+                                        yt.afterStopStopped = true;
                                     afterStopGate = yt.afterStopStopped && avgSpeed > 0.6 && !isReverse;
                                 }
 

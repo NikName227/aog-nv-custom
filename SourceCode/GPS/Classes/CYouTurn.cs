@@ -1,4 +1,5 @@
-﻿using OpenTK.Graphics.OpenGL;
+﻿using AgLibrary.Logging;
+using OpenTK.Graphics.OpenGL;
 using System;
 using System.Collections.Generic;
 
@@ -397,6 +398,16 @@ namespace AgOpenGPS
                     //no target left, or the wedge cut the next pass short of a turn
                     //anchor: hand the area to the driver when a manual resume pass
                     //exists, otherwise plain abort (vehicle runs out at the boundary)
+                    //field 2026-07-16 diag: this abort loop is the suspect for "the
+                    //first pass never counts down" - record which gate refused
+                    if ((DateTime.UtcNow - lastPlanDiagLog).TotalSeconds > 15)
+                    {
+                        lastPlanDiagLog = DateTime.UtcNow;
+                        bool hasT = mf.plan.TryNextTarget(mf.ABLine.howManyPathsAway, out int t);
+                        Log.EventWriter("TurnPlan diag: AB turn abort at offset "
+                            + mf.ABLine.howManyPathsAway
+                            + (hasT ? ", target " + t + " NOT reachable" : ", NO target"));
+                    }
                     mf.plan.TryEnterFlexPause();
                     ResetCreatedYouTurn();
                     return false;
@@ -1878,6 +1889,11 @@ namespace AgOpenGPS
         // forward meters held after the reverse leg - a power-shuttle reverser can
         // flip direction without the speed ever dropping under the stop threshold
         private double kFwdHeldDist;
+        // reverse distance driven past the stop point (field 2026-07-16: part 2 and
+        // the FORWARD cue wait for a full vehicle length of it)
+        private double kRevExtraDist;
+        //field 2026-07-16 diag: throttle for the plan-abort log
+        private DateTime lastPlanDiagLog = DateTime.MinValue;
         public int ytRedIndex = -1;     // ytList index from which points draw red
         public int part2RedIndex = -1;  // red index inside the pending part 2
 
@@ -2024,6 +2040,7 @@ namespace AgOpenGPS
             kPart2List.Clear();
             kTurnStage = 0;
             kFwdHeldDist = 0;
+            kRevExtraDist = 0;
             part2RedIndex = -1;
             if (p2 != null && p2.Count > 3)
             {
@@ -2210,7 +2227,9 @@ namespace AgOpenGPS
                     pl.Add(new vec2(px, py));
                 }
                 redStart = pl.Count;                 // crossing past the line draws red
-                int nCross = (int)Math.Round(2.0 / ps);
+                //field 2026-07-16: tail past the line cut 2.0 -> 0.5 m so even the
+                //end-of-path fallback completes right at the row and AB takes over
+                int nCross = (int)Math.Round(0.5 / ps);
                 for (int i = 0; i < nCross; i++)
                 {
                     px += ps * Math.Sin(hEnt); py += ps * Math.Cos(hEnt);
@@ -2234,7 +2253,8 @@ namespace AgOpenGPS
                     p2.Add(new vec2(px, py));
                 }
                 p2Red = p2.Count;
-                int nCross = (int)Math.Round(2.0 / ps);
+                //field 2026-07-16: same 0.5 m tail on the split part 2 (see above)
+                int nCross = (int)Math.Round(0.5 / ps);
                 for (int i = 0; i < nCross; i++)
                 {
                     px += ps * Math.Sin(hEnt); py += ps * Math.Cos(hEnt);
@@ -3218,6 +3238,7 @@ namespace AgOpenGPS
             kTurnStage = 0;
             kRevReached = false;
             kFwdHeldDist = 0;
+            kRevExtraDist = 0;
             ytRedIndex = -1;
             part2RedIndex = -1;
             turnLineSwapPending = false;
@@ -3356,15 +3377,18 @@ namespace AgOpenGPS
             if (!isYouTurnTriggered || !mf.tnl.IsFeatureOn || activeTurnStyle != 1) return 0;
             if (kTurnStage == 1)
             {
-                //field test 2026-07-15: the cue (and its beep) flips to REVERSE as
-                //soon as the tractor is within the switch tolerance of the part 1
-                //end - 2 m, the same tolerance that arms part 2 on the way back
-                double rem = 0;
-                for (int i = Math.Max(0, A); i < ytList.Count - 1 && rem < 2.0; i++)
-                    rem += glm.Distance(ytList[i], ytList[i + 1]);
-                return rem < 2.0 ? -1 : 1;
+                //field 2026-07-16: REVERSE is allowed from the moment the pivot
+                //leaves the exit radius onto the straight tangent - the vehicle
+                //heading matching the tangent (path end) heading marks that spot
+                //(during the lead-in and the arc the headings differ)
+                if (ytList.Count > 1 && Math.Abs(AngleDiff(mf.fixHeading,
+                        ytList[ytList.Count - 1].heading)) < 0.14) return -1;
+                return 1;
             }
-            if (kTurnStage == 2) return kRevReached ? 1 : -1;
+            //field 2026-07-16: FORWARD only after a full vehicle length of reverse
+            //past the stop point - flipping right at it proved too early on the field
+            if (kTurnStage == 2)
+                return (kRevReached && kRevExtraDist > mf.vehicle.VehicleConfig.Wheelbase) ? 1 : -1;
             return 1;
         }
 
@@ -3445,13 +3469,24 @@ namespace AgOpenGPS
                         maxProgressIndexReached = 0;
 
                         if (!kRevReached && kPart2List.Count > 3 && glm.Distance(kPiv, kPart2List[0]) < 2.0)
+                        {
                             kRevReached = true;
+                            kRevExtraDist = 0;
+                        }
+
+                        //field 2026-07-16: the stop point alone proved too shallow -
+                        //keep reversing a full vehicle length PAST it before part 2
+                        //(and the FORWARD cue) are allowed
+                        if (kRevReached && mf.isReverse)
+                            kRevExtraDist += Math.Abs(mf.distanceCurrentStepFix);
+                        bool kRevFar = kRevReached
+                            && kRevExtraDist > mf.vehicle.VehicleConfig.Wheelbase;
 
                         //field fix 2a (2026-07-10): a power-shuttle reverser flips
                         //reverse->forward without the speed dropping under the stop
                         //threshold - forward motion held over 0.3 m counts as the
                         //direction change too, not just a full stop
-                        if (kRevReached && !mf.isReverse)
+                        if (kRevFar && !mf.isReverse)
                             kFwdHeldDist += Math.Abs(mf.distanceCurrentStepFix);
                         else
                             kFwdHeldDist = 0;
@@ -3459,7 +3494,7 @@ namespace AgOpenGPS
                         //the reverse guide line stays active while still reversing;
                         //part 2 (new-row entry) activates on a stop OR a held
                         //direction change (reverser)
-                        if (kRevReached && (Math.Abs(mf.avgSpeed) < 0.3 || kFwdHeldDist > 0.3))
+                        if (kRevFar && (Math.Abs(mf.avgSpeed) < 0.3 || kFwdHeldDist > 0.3))
                         {
                             kRevReached = false;
                             kFwdHeldDist = 0;

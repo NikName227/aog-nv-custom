@@ -1,3 +1,4 @@
+using AgLibrary.Logging;
 using OpenTK.Graphics.OpenGL;
 using System;
 using System.Collections.Generic;
@@ -791,11 +792,28 @@ namespace AgOpenGPS
         /// (laterally within half a width of its line); leaving the pass with more
         /// than 50 % of its length covered marks it worked and saves the plan.
         /// </summary>
+        //field 2026-07-16 diag: throttle for the no-matching-entry log below
+        private DateTime lastNoEntryLog = DateTime.MinValue;
+
         public void UpdateProgress()
         {
             if (!IsRuntimeOn || !mf.isJobStarted) return;
 
             CPlanEntry now = CurrentEntry();
+
+            //field 2026-07-16 diag: the FIRST pass sometimes never counts down nor
+            //marks worked - log when the active line matches NO plan entry so the
+            //next field test says exactly what mismatched (offset vs track name)
+            if (now == null && (DateTime.UtcNow - lastNoEntryLog).TotalSeconds > 15)
+            {
+                lastNoEntryLog = DateTime.UtcNow;
+                int idx = mf.trk.idx >= 0 && mf.trk.idx < mf.trk.gArr.Count
+                    ? (mf.trk.gArr[mf.trk.idx].mode == TrackMode.AB
+                        ? mf.ABLine.howManyPathsAway : mf.curve.howManyPathsAway)
+                    : -999;
+                Log.EventWriter("TurnPlan diag: no entry matches track '"
+                    + CurrentTrackName() + "' offset " + idx);
+            }
 
             // left the previous pass?
             if (runEntry != null && now != runEntry)
