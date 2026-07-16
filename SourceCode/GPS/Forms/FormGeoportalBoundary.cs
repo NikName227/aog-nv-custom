@@ -7,6 +7,7 @@ using NetTopologySuite.Geometries;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
@@ -1049,11 +1050,153 @@ namespace AgOpenGPS
         }
 
         // Load the field's outer boundary into madeRing: all Phase-4 editing (handles,
+        // ── Source ring (field 2026-07-16) ─────────────────────────────────
+        // Boundary.txt is densified to 1-3 m spacing by FixFenceLine (the stock
+        // coverage/fence/turn code needs dense points), so editing the saved
+        // boundary showed 100+ handles instead of the 8-10 the user placed.
+        // The ORIGINAL points are kept in BoundarySource.txt next to the field;
+        // edit mode loads those, with a corner-recovery (RDP) fallback for
+        // fields saved before this file existed.
+
+        private string SourceRingPath()
+        {
+            if (string.IsNullOrEmpty(mf.currentFieldDirectory)) return null;
+            return Path.Combine(RegistrySettings.fieldsDirectory,
+                mf.currentFieldDirectory, "BoundarySource.txt");
+        }
+
+        private void SaveSourceRing(List<Wgs84> ring)
+        {
+            string path = SourceRingPath();
+            if (path == null || ring == null || ring.Count < 3) return;
+            try
+            {
+                using (var sw = new StreamWriter(path, false))
+                {
+                    sw.WriteLine("$BoundarySource");
+                    sw.WriteLine(ring.Count.ToString(CultureInfo.InvariantCulture));
+                    foreach (var w in ring)
+                        sw.WriteLine(w.Latitude.ToString("F8", CultureInfo.InvariantCulture) + ","
+                                   + w.Longitude.ToString("F8", CultureInfo.InvariantCulture));
+                }
+            }
+            catch (Exception ex) { Log.EventWriter("Geoportal: save source ring failed " + ex.Message); }
+        }
+
+        private List<Wgs84> LoadSourceRing()
+        {
+            string path = SourceRingPath();
+            try
+            {
+                if (path == null || !File.Exists(path)) return null;
+                var ring = new List<Wgs84>();
+                using (var sr = new StreamReader(path))
+                {
+                    sr.ReadLine(); // $BoundarySource
+                    int n = int.Parse(sr.ReadLine(), CultureInfo.InvariantCulture);
+                    for (int i = 0; i < n; i++)
+                    {
+                        var parts = sr.ReadLine().Split(',');
+                        ring.Add(new Wgs84(
+                            double.Parse(parts[0], CultureInfo.InvariantCulture),
+                            double.Parse(parts[1], CultureInfo.InvariantCulture)));
+                    }
+                }
+                return ring.Count >= 3 ? ring : null;
+            }
+            catch { return null; }
+        }
+
+        // The file can be stale (boundary replaced by KML import or driving after
+        // the geoportal save) - accept it only when every source point lies within
+        // 5 m of the current dense outline.
+        private bool SourceMatchesExisting(List<Wgs84> src)
+        {
+            if (existingOuterRing == null || existingOuterRing.Count < 3) return false;
+
+            var dense = new List<GeoCoord>(existingOuterRing.Count);
+            foreach (var w in existingOuterRing)
+                dense.Add(mf.AppModel.LocalPlane.ConvertWgs84ToGeoCoord(w));
+
+            foreach (var s in src)
+            {
+                GeoCoord a = mf.AppModel.LocalPlane.ConvertWgs84ToGeoCoord(s);
+                double best = double.MaxValue;
+                foreach (var b in dense)
+                {
+                    double d = a.DistanceSquared(b);
+                    if (d < best) best = d;
+                }
+                if (best > 25.0) return false;
+            }
+            return true;
+        }
+
+        // Corner recovery for old fields: Douglas-Peucker over the closed ring in
+        // local meters - densified midpoints on straight runs collapse, corners stay.
+        private List<Wgs84> SimplifyRing(List<Wgs84> ring, double tolMeters)
+        {
+            int n = ring.Count;
+            if (n < 5) return new List<Wgs84>(ring);
+
+            var p = new List<GeoCoord>(n);
+            foreach (var w in ring) p.Add(mf.AppModel.LocalPlane.ConvertWgs84ToGeoCoord(w));
+
+            //closed ring: anchor at point 0 and the point farthest from it
+            int far = 1; double maxD = -1;
+            for (int i = 1; i < n; i++)
+            {
+                double d = p[0].DistanceSquared(p[i]);
+                if (d > maxD) { maxD = d; far = i; }
+            }
+
+            bool[] keep = new bool[n + 1];
+            keep[0] = keep[far] = true;
+            var pc = new List<GeoCoord>(p) { p[0] };   //wrap for the second half
+            RdpKeep(pc, 0, far, tolMeters, keep);
+            RdpKeep(pc, far, n, tolMeters, keep);
+
+            var outRing = new List<Wgs84>();
+            for (int i = 0; i < n; i++) if (keep[i]) outRing.Add(ring[i]);
+            return outRing.Count >= 3 ? outRing : new List<Wgs84>(ring);
+        }
+
+        private static void RdpKeep(List<GeoCoord> p, int i0, int i1, double tol, bool[] keep)
+        {
+            if (i1 - i0 < 2) return;
+            double ax = p[i0].Easting, ay = p[i0].Northing;
+            double bx = p[i1].Easting, by = p[i1].Northing;
+            double dx = bx - ax, dy = by - ay;
+            double len2 = dx * dx + dy * dy;
+
+            double maxD = -1; int idx = -1;
+            for (int i = i0 + 1; i < i1; i++)
+            {
+                double t = len2 < 1e-9 ? 0
+                    : Math.Max(0, Math.Min(1, ((p[i].Easting - ax) * dx + (p[i].Northing - ay) * dy) / len2));
+                double ex = ax + t * dx - p[i].Easting, ey = ay + t * dy - p[i].Northing;
+                double d = ex * ex + ey * ey;
+                if (d > maxD) { maxD = d; idx = i; }
+            }
+            if (idx > 0 && maxD > tol * tol)
+            {
+                keep[idx] = true;
+                RdpKeep(p, i0, idx, tol, keep);
+                RdpKeep(p, idx, i1, tol, keep);
+            }
+        }
+
         // move/add/delete/undo) now works on it. Clicking again reverts to the original.
         private void btnEditBoundary_Click(object sender, EventArgs e)
         {
             if (existingOuterRing == null) return;
-            madeRing = new List<Wgs84>(existingOuterRing);
+
+            //field 2026-07-16: edit the points the user actually placed, not the
+            //densified fence - source file first, corner recovery as the fallback
+            List<Wgs84> src = LoadSourceRing();
+            madeRing = (src != null && SourceMatchesExisting(src))
+                ? src
+                : SimplifyRing(existingOuterRing, 0.25);
             ShowExistingOuter(false);
             DrawMadeBoundary();
             BuildMadeHandles();
@@ -1378,6 +1521,7 @@ namespace AgOpenGPS
             {
                 ReplaceOuterBoundary(madeRing);
                 ApplyObstacleChanges();
+                SaveSourceRing(madeRing);   //original points for the next edit
                 TryDelete(tempKml);
                 lblStatus.Text = gStr.gsBoundarySaved;
                 Close();
@@ -1408,6 +1552,7 @@ namespace AgOpenGPS
                 // boundaries are gone, so only the new obstacle circles get applied.
                 deletedInnerIdx.Clear();
                 ApplyObstacleChanges();
+                SaveSourceRing(madeRing);   //original points for the next edit
             }
             finally
             {
