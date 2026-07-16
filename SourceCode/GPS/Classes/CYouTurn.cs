@@ -2227,9 +2227,9 @@ namespace AgOpenGPS
                     pl.Add(new vec2(px, py));
                 }
                 redStart = pl.Count;                 // crossing past the line draws red
-                //field 2026-07-16: tail past the line cut 2.0 -> 0.5 m so even the
-                //end-of-path fallback completes right at the row and AB takes over
-                int nCross = (int)Math.Round(0.5 / ps);
+                //field 2026-07-16: tail past the line cut to the 0.1 m minimum (user)
+                //so even the end-of-path fallback completes AT the row, AB takes over
+                int nCross = Math.Max(1, (int)Math.Round(0.1 / ps));
                 for (int i = 0; i < nCross; i++)
                 {
                     px += ps * Math.Sin(hEnt); py += ps * Math.Cos(hEnt);
@@ -2253,8 +2253,8 @@ namespace AgOpenGPS
                     p2.Add(new vec2(px, py));
                 }
                 p2Red = p2.Count;
-                //field 2026-07-16: same 0.5 m tail on the split part 2 (see above)
-                int nCross = (int)Math.Round(0.5 / ps);
+                //field 2026-07-16: same 0.1 m minimum tail on the split part 2
+                int nCross = Math.Max(1, (int)Math.Round(0.1 / ps));
                 for (int i = 0; i < nCross; i++)
                 {
                     px += ps * Math.Sin(hEnt); py += ps * Math.Cos(hEnt);

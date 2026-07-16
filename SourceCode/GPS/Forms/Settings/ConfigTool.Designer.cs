@@ -50,6 +50,10 @@ namespace AgOpenGPS
                 chkOrchardOnePass.Checked = Properties.ToolSettings.Default.setTool_orchardOnePass;
                 chkOrchardCenterFirst.Checked = Properties.ToolSettings.Default.setTool_orchardCenterFirst;
 
+                //seed the toggle state for this visit (see rbtnOrchard_Click)
+                orchardWasChecked = Properties.ToolSettings.Default.setTool_isToolOrchard
+                    && CFeatureLock.IsOn(CFeatureLock.FeatureOrchard);
+
                 if (Properties.ToolSettings.Default.setTool_isToolOrchard
                     && CFeatureLock.IsOn(CFeatureLock.FeatureOrchard))
                 {
@@ -106,6 +110,23 @@ namespace AgOpenGPS
         {
             pnlOrchardSet.Visible = rbtnOrchard.Checked;
             if (rbtnOrchard.Checked) pnlOrchardSet.BringToFront();
+        }
+
+        //field 2026-07-16: the settings panel covers the other four type buttons, so
+        //a checked Orchard had no way OUT - clicking the green button again now
+        //toggles the mode off (back to rear-fixed, the geometry orchard rides on).
+        //NOTE: CheckedChanged fires BEFORE Click, so this flag is maintained ONLY
+        //here and on tab enter - it holds the state from before the current click.
+        private bool orchardWasChecked;
+
+        private void rbtnOrchard_Click(object sender, EventArgs e)
+        {
+            if (orchardWasChecked && rbtnOrchard.Checked)
+            {
+                rbtnOrchard.Checked = false;
+                rbtnFixedRear.Checked = true;
+            }
+            orchardWasChecked = rbtnOrchard.Checked;
         }
 
         private void tabTConfig_Leave(object sender, EventArgs e)

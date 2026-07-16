@@ -1832,6 +1832,7 @@ namespace AgOpenGPS
             this.rbtnOrchard.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
             this.rbtnOrchard.UseVisualStyleBackColor = false;
             this.rbtnOrchard.CheckedChanged += new System.EventHandler(this.rbtnOrchard_CheckedChanged);
+            this.rbtnOrchard.Click += new System.EventHandler(this.rbtnOrchard_Click);
             //
             // pnlOrchardSet (orchard processing settings; interactive image = later design pass)
             //
