@@ -1880,6 +1880,50 @@ namespace AgOpenGPS
                 (driveDir > 0 ? sounds.sndAutoSteerOn : sounds.sndAutoSteerOff).Play();
             lastGuidedDriveDir = driveDir;
 
+            //wizard redesign (2026-07-16): translucent plan-follow badge ABOVE the
+            //drive cue - green serpentine = the plan is being followed, orange with
+            //"!" = plan active but handed to the driver (manual-flex zone). Drawn
+            //with GL lines so it stays readable over any field background.
+            if (plan.IsRuntimeOn)
+            {
+                bool planWarn = plan.isFlexPause;
+                GL.Disable(EnableCap.Texture2D);
+
+                GL.Color4(1f, 1f, 1f, 0.30f);
+                DrawRoundedRectOutline(two3 - 21, 33, two3 + 21, 75, 8);
+
+                if (planWarn) GL.Color4(0.97f, 0.63f, 0.15f, 0.92f);
+                else GL.Color4(0.47f, 0.92f, 0.51f, 0.90f);
+
+                GL.LineWidth(3.5f);
+                GL.Begin(PrimitiveType.LineStrip);
+                GL.Vertex2(two3 - 11, 67);                 //left pass, bottom up
+                GL.Vertex2(two3 - 11, 47);
+                GL.Vertex2(two3 - 9.9, 44.2);              //arc over the top
+                GL.Vertex2(two3 - 5.5, 42.5);
+                GL.Vertex2(two3 - 1.1, 44.2);
+                GL.Vertex2(two3, 47);
+                GL.Vertex2(two3, 61);                      //middle pass, down
+                GL.Vertex2(two3 + 1.1, 63.8);              //arc under the bottom
+                GL.Vertex2(two3 + 5.5, 65.5);
+                GL.Vertex2(two3 + 9.9, 63.8);
+                GL.Vertex2(two3 + 11, 61);
+                GL.Vertex2(two3 + 11, 41);                 //right pass, up + arrow
+                GL.End();
+                GL.Begin(PrimitiveType.LineStrip);
+                GL.Vertex2(two3 + 7.5, 46);
+                GL.Vertex2(two3 + 11, 40);
+                GL.Vertex2(two3 + 14.5, 46);
+                GL.End();
+
+                GL.Enable(EnableCap.Texture2D);
+                if (planWarn)
+                {
+                    GL.Color4(0.97f, 0.63f, 0.15f, 0.95f);
+                    font.DrawText(two3 + 24, 33, "!", 1.2);
+                }
+            }
+
             //NV HUD skip (2026-07-11): small transparent button - thin rounded
             //outline + text. SKIP writes off the targeted pass; for 10 s after a
             //skip the same button shows UNDO with a countdown. Only with a plan.

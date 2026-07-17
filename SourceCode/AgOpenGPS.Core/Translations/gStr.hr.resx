@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -1558,5 +1558,17 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   </data>
   <data name="gsDeletePath" xml:space="preserve">
     <value>Obriši prolaz</value>
+  </data>
+  <data name="gsBack" xml:space="preserve">
+    <value>Natrag</value>
+  </data>
+  <data name="gsResetPath" xml:space="preserve">
+    <value>Reset patha</value>
+  </data>
+  <data name="gsResetPathConfirm" xml:space="preserve">
+    <value>Resetirati odrađene prolaze ovog plana? Geometrija plana ostaje.</value>
+  </data>
+  <data name="gsDefineTurnBounds" xml:space="preserve">
+    <value>Prvo definiraj granice okretanja (Map pogled: dvije turn linije + granica polja)</value>
   </data>
 </root>

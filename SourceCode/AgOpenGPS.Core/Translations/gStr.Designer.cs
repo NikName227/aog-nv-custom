@@ -4975,6 +4975,30 @@ namespace AgOpenGPS.Core.Translations {
             }
         }
 
+        public static string gsBack {
+            get {
+                return ResourceManager.GetString("gsBack", resourceCulture);
+            }
+        }
+
+        public static string gsResetPath {
+            get {
+                return ResourceManager.GetString("gsResetPath", resourceCulture);
+            }
+        }
+
+        public static string gsResetPathConfirm {
+            get {
+                return ResourceManager.GetString("gsResetPathConfirm", resourceCulture);
+            }
+        }
+
+        public static string gsDefineTurnBounds {
+            get {
+                return ResourceManager.GetString("gsDefineTurnBounds", resourceCulture);
+            }
+        }
+
         public static string gsZoneWidth {
             get {
                 return ResourceManager.GetString("gsZoneWidth", resourceCulture);

@@ -1,5 +1,6 @@
 using AgOpenGPS.Core.Models;
 using AgOpenGPS.Core.Translations;
+using AgOpenGPS.Forms;
 using GMap.NET;
 using GMap.NET.WindowsForms;
 using System;
@@ -85,17 +86,12 @@ namespace AgOpenGPS
         private void LocalizeText()
         {
             this.Text = gStr.gsTurnLimitLines;
-            chkActivate.Text = gStr.gsActivateTurn;
-            chkAutomatic.Text = gStr.gsAutomaticTurn;
-            chkAfterStop.Text = gStr.gsTurnAfterStop;
             btnAddLine.Text = gStr.gsAddLine;
             btnAddPoint.Text = gStr.gsAddPoint;
             btnDeletePoint.Text = gStr.gsDeletePoint;
             btnDeleteLine.Text = gStr.gsDeleteLine;
             chkParcels.Text = gStr.gsCadastralParcels;
             btnGoToField.Text = gStr.gsGoToPosition;
-            chkKPrimary.Text = gStr.gsKTurnPrimary;
-            chkCombined.Text = gStr.gsCombinedUK;
             lblRadius.Text = gStr.gsTurnRadiusInfo + ": " + mf.yt.youTurnRadius.ToString("N1") + " m";
             lblStatus.Text = gStr.gsTurnLineHint;
 
@@ -108,7 +104,10 @@ namespace AgOpenGPS
             btnGeneratePlan.Text = gStr.gsGeneratePlan;
             btnAddPath.Text = gStr.gsAddPath;
             btnDeletePath.Text = gStr.gsDeletePath;
-            chkFollowPlan.Text = gStr.gsFollowPlan;
+            btnResetPath.Text = gStr.gsResetPath;
+            btnWizBack.Text = gStr.gsBack;
+            btnWizNext.Text = gStr.gsNext;
+            btnWizCancel.Text = gStr.gsCancel;
 
             btnStyleK.Text = gStr.gsTurnStyleK;
             btnStyleU.Text = gStr.gsTurnStyleU;
@@ -160,13 +159,18 @@ namespace AgOpenGPS
             gMapControl.MouseMove += gMap_MouseMove;
             gMapControl.MouseUp += gMap_MouseUp;
 
-            // current per-field state. Trigger mode = Automatic turn XOR Turn after stop;
-            // both use auto-engage (isAutomatic), after-stop only changes the trigger gate.
-            chkActivate.Checked = mf.tnl.isTurnActive;
-            chkAfterStop.Checked = mf.tnl.isAfterStop;
-            chkAutomatic.Checked = mf.tnl.isAutomatic && !mf.tnl.isAfterStop;
-            chkKPrimary.Checked = mf.tnl.isKPrimary;
-            chkCombined.Checked = mf.tnl.isCombined;
+            // redesign 2026-07-16: 3-state activate (off / on / on+follow plan) and a
+            // 2-state trigger toggle (immediate / after stop). Both buttons manage
+            // their own state - AutoCheck off so a click never double-fires.
+            chkActivate.AutoCheck = false;
+            chkAutomatic.AutoCheck = false;
+            activateState = !mf.tnl.isTurnActive ? 0
+                : (mf.plan.isFollowPlan && mf.plan.HasPlan ? 2 : 1);
+            afterStopMode = mf.tnl.isAfterStop;
+            chkActivate.Click += (s, ev) => CycleActivate();
+            chkAutomatic.Click += (s, ev) => { afterStopMode = !afterStopMode; ApplyTriggerVisual(); };
+            ApplyActivateVisual();
+            ApplyTriggerVisual();
 
             LoadTurnParams();
             SetupKeypadFields();
@@ -175,24 +179,83 @@ namespace AgOpenGPS
             LoadExistingLines();
             CenterOnField();
 
-            // PATH tab: current per-field plan state
+            // path planning: current per-field plan state
             FillTrackCombo();
-            if (mf.tool.isToolOrchard) SetupOrchardPathTab();
             btnMode1.Checked = mf.plan.mode == CTurnPlan.ModeSequential;
             btnMode2.Checked = mf.plan.mode == CTurnPlan.ModeContour;
             btnMode3.Checked = mf.plan.mode == CTurnPlan.ModeZones;
             if (mf.plan.zoneCount >= (int)nudZones.Minimum && mf.plan.zoneCount <= (int)nudZones.Maximum)
                 nudZones.Value = mf.plan.zoneCount;
-            chkFollowPlan.Checked = mf.plan.isFollowPlan;
+
+            // mode buttons carry the confirmed pictograms (drawn at runtime)
+            btnMode1.Image = TurnModeIcons.Make(1, 88, 82);
+            btnMode2.Image = TurnModeIcons.Make(2, 88, 82);
+            btnMode3.Image = TurnModeIcons.Make(3, 88, 82);
+            btnMode1.TextImageRelation = TextImageRelation.ImageAboveText;
+            btnMode2.TextImageRelation = TextImageRelation.ImageAboveText;
+            btnMode3.TextImageRelation = TextImageRelation.ImageAboveText;
 
             // headland clip only makes sense with a headland defined
             bool hasHeadland = mf.bnd.bndList.Count > 0 && mf.bnd.bndList[0].hdLine.Count > 2;
             chkHeadlandClip.Enabled = hasHeadland;
             chkHeadlandClip.Checked = hasHeadland && mf.plan.clipToHeadland;
+            chkHeadlandClip.CheckedChanged += (s, ev) => { if (wizStep == 2) GenerateFromWizard(); };
+
+            lstLines.SelectedIndexChanged += lstLines_SelectedIndexChanged;
+            if (mf.tool.isToolOrchard) SetupOrchardPathTab();
+
             UpdatePlanInfo();
             if (mf.plan.HasPlan)
                 mf.plan.RebuildGeometry();
             DrawPlanOverlay();   // also highlights the active AB line even without a plan
+
+            // path planning is the DEFAULT view (redesign 2026-07-16)
+            wizStep = 0;
+            ShowTab(ViewTab.Path);
+        }
+
+        // ── row 1: 3-state activate + 2-state trigger toggle ──────────────
+        // 0 = off (gray), 1 = turning on (light green), 2 = on + follow plan
+        // (darker green, two-line caption). State 2 exists only with a plan.
+        private int activateState;
+        private bool afterStopMode;
+
+        private void CycleActivate()
+        {
+            int states = mf.plan.HasPlan ? 3 : 2;
+            activateState = (activateState + 1) % states;
+            ApplyActivateVisual();
+        }
+
+        private void ApplyActivateVisual()
+        {
+            if (activateState == 0)
+            {
+                chkActivate.BackColor = Color.Gainsboro;
+                chkActivate.ForeColor = Color.Black;
+                chkActivate.Font = new Font("Tahoma", 12F, FontStyle.Bold);
+                chkActivate.Text = gStr.gsActivateTurn;
+            }
+            else if (activateState == 1)
+            {
+                chkActivate.BackColor = Color.MediumSeaGreen;
+                chkActivate.ForeColor = Color.Black;
+                chkActivate.Font = new Font("Tahoma", 12F, FontStyle.Bold);
+                chkActivate.Text = gStr.gsActivateTurn;
+            }
+            else
+            {
+                chkActivate.BackColor = Color.SeaGreen;
+                chkActivate.ForeColor = Color.White;
+                chkActivate.Font = new Font("Tahoma", 10F, FontStyle.Bold);
+                chkActivate.Text = gStr.gsActivateTurn + "\n" + gStr.gsFollowPlan;
+            }
+        }
+
+        private void ApplyTriggerVisual()
+        {
+            chkAutomatic.Text = afterStopMode ? gStr.gsTurnAfterStop : gStr.gsAutomaticTurn;
+            chkAutomatic.BackColor = afterStopMode ? Color.Gold : Color.MediumAquamarine;
         }
 
         private void FormTurnLine_Shown(object sender, EventArgs e)
@@ -208,8 +271,31 @@ namespace AgOpenGPS
             gMapControl.Zoom = z;
             gMapControl.ReloadMap();
 
+            ZoomToField();   // redesign: the whole field neatly fills the view
             LoadParcelsFromCache();
             UpdatePreview();
+            UpdateWizard();
+        }
+
+        // fit-to-field zoom: bbox of the fence + a margin, instead of a fixed deep zoom
+        private void ZoomToField()
+        {
+            if (mf.bnd.bndList.Count == 0 || mf.bnd.bndList[0].fenceLine.Count < 3) return;
+
+            double minLat = double.MaxValue, maxLat = double.MinValue;
+            double minLng = double.MaxValue, maxLng = double.MinValue;
+            foreach (var v in mf.bnd.bndList[0].fenceLine)
+            {
+                PointLatLng p = LocalToLatLng(v.easting, v.northing);
+                if (p.Lat < minLat) minLat = p.Lat;
+                if (p.Lat > maxLat) maxLat = p.Lat;
+                if (p.Lng < minLng) minLng = p.Lng;
+                if (p.Lng > maxLng) maxLng = p.Lng;
+            }
+            double mLat = (maxLat - minLat) * 0.15 + 1e-6;
+            double mLng = (maxLng - minLng) * 0.15 + 1e-6;
+            gMapControl.SetZoomToFitRect(RectLatLng.FromLTRB(
+                minLng - mLng, maxLat + mLat, maxLng + mLng, minLat - mLat));
         }
 
         // ── conversions local plane <-> WGS84 ─────────────────────────────
@@ -548,28 +634,6 @@ namespace AgOpenGPS
             return Math.Sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy));
         }
 
-        // ── trigger mode checkboxes (mutually exclusive) ──────────────────
-        private void chkAutomatic_CheckedChanged(object sender, EventArgs e)
-        {
-            if (chkAutomatic.Checked) chkAfterStop.Checked = false;
-        }
-
-        private void chkAfterStop_CheckedChanged(object sender, EventArgs e)
-        {
-            if (chkAfterStop.Checked) chkAutomatic.Checked = false;
-        }
-
-        // ── maneuver checkboxes (mutually exclusive) ──────────────────────
-        private void chkKPrimary_CheckedChanged(object sender, EventArgs e)
-        {
-            if (chkKPrimary.Checked) chkCombined.Checked = false;
-        }
-
-        private void chkCombined_CheckedChanged(object sender, EventArgs e)
-        {
-            if (chkCombined.Checked) chkKPrimary.Checked = false;
-        }
-
         // ── preview: wheel-safety line + does a U-turn fit ────────────────
         private void UpdatePreview()
         {
@@ -675,17 +739,18 @@ namespace AgOpenGPS
                 mf.tnl.lines.Add(tll);
             }
 
-            mf.tnl.isTurnActive = chkActivate.Checked;
-            mf.tnl.isAfterStop = chkAfterStop.Checked;
-            // auto-engage the youturn button in either trigger mode (Automatic or After stop)
-            mf.tnl.isAutomatic = chkAutomatic.Checked || chkAfterStop.Checked;
-            mf.tnl.isKPrimary = chkKPrimary.Checked;
-            mf.tnl.isCombined = chkCombined.Checked;
+            mf.tnl.isTurnActive = activateState >= 1;
+            mf.tnl.isAfterStop = afterStopMode;
+            mf.tnl.isAutomatic = true;   // trigger is always automatic (2-state toggle picks HOW)
+            // redesign 2026-07-16: the K-only / combined choice is gone from the UI -
+            // the maneuver is always combined U/K (auto pick by available space)
+            mf.tnl.isKPrimary = false;
+            mf.tnl.isCombined = true;
             mf.tnl.BuildEffectiveLines();
 
             SaveTurnParams();
 
-            mf.plan.isFollowPlan = chkFollowPlan.Checked;
+            mf.plan.isFollowPlan = activateState == 2;   // 3rd state = follow plan
             mf.FileSaveTurnPlan();
 
             mf.FileSaveTurnLines();
@@ -774,9 +839,9 @@ namespace AgOpenGPS
             vehicleTimer.Stop();
         }
 
-        // ── MAP / PARAMS / PATH icon tabs ─────────────────────────────────
+        // ── PATH / PARAMS / MAP views (row 2 buttons) ─────────────────────
         private enum ViewTab { Map, Params, Path }
-        private ViewTab activeTab = ViewTab.Map;
+        private ViewTab activeTab = ViewTab.Path;
 
         private void ShowTab(ViewTab tab)
         {
@@ -785,6 +850,7 @@ namespace AgOpenGPS
 
             pnlParams.Visible = tab == ViewTab.Params;
             pnlPath.Visible = tab == ViewTab.Path;
+            pnlMapTools.Visible = tab == ViewTab.Map;
             gMapControl.Visible = mapVisible;
             btnZoomIn.Visible = mapVisible;
             btnZoomOut.Visible = mapVisible;
@@ -802,8 +868,208 @@ namespace AgOpenGPS
             else if (tab == ViewTab.Path)
             {
                 pnlPath.BringToFront();
-                UpdatePlanInfo();
+                UpdateWizard();
             }
+            else
+            {
+                pnlMapTools.BringToFront();
+            }
+        }
+
+        // ── Reset path: forget the worked/skipped flags, keep the geometry ──
+        private void btnResetPath_Click(object sender, EventArgs e)
+        {
+            if (!mf.plan.HasPlan)
+            {
+                lblPlanStatus.Text = gStr.gsNoPlanHint;
+                return;
+            }
+            if (FormDialog.ShowQuestion(gStr.gsResetPath, gStr.gsResetPathConfirm,
+                    DialogSeverity.Warning) != DialogResult.OK) return;
+
+            foreach (var p in mf.plan.entries)
+            {
+                p.isWorked = false;
+                p.isSkipped = false;
+            }
+            mf.plan.isFlexPause = false;
+            mf.plan.InvalidateRun();
+            mf.FileSaveTurnPlan();
+            DrawPlanOverlay();
+            UpdatePlanInfo();
+        }
+
+        // ── path planning mini-wizard (default view) ──────────────────────
+        // -1 = prerequisites missing, 0 = start/overview, 1 = pick the line,
+        //  2 = headland + zones, 3 = mode (pictograms) + manual passes
+        private int wizStep;
+
+        private bool PlanPrereqsOk()
+        {
+            if (mf.tool.isToolOrchard) return true;   // orchard plans from rows
+            return mf.bnd.bndList.Count > 0
+                && mf.bnd.bndList[0].fenceLine.Count > 2
+                && editLines.Count >= 2;              // both turn boundaries drawn
+        }
+
+        private void UpdateWizard()
+        {
+            if (mf.tool.isToolOrchard) { UpdateWizardOrchard(); return; }
+
+            //hide everything, then switch on what the step needs
+            lstLines.Visible = false;
+            btnMode1.Visible = btnMode2.Visible = btnMode3.Visible = false;
+            chkHeadlandClip.Visible = false;
+            lblZones.Visible = nudZones.Visible = false;
+            SetZoneStepperVisible(false);
+            lblPlanInfo.Visible = false;
+            btnGeneratePlan.Visible = false;
+            btnAddPath.Visible = btnDeletePath.Visible = false;
+            btnWizBack.Visible = btnWizNext.Visible = btnWizCancel.Visible = false;
+
+            if (!PlanPrereqsOk()) wizStep = -1;
+            else if (wizStep == -1) wizStep = 0;
+
+            switch (wizStep)
+            {
+                case -1:
+                    lblWizTitle.Text = gStr.gsDefineTurnBounds;
+                    lblPlanStatus.Text = "";
+                    break;
+
+                case 0:
+                    if (mf.plan.HasPlan)
+                    {
+                        //overview: the plan draws on the map, Next walks the steps
+                        lblWizTitle.Text = gStr.gsGeneratePlan;
+                        lblPlanInfo.Visible = true;
+                        btnWizNext.Visible = true;
+                        UpdatePlanInfo();
+                    }
+                    else
+                    {
+                        lblWizTitle.Text = "";
+                        btnGeneratePlan.Visible = true;
+                        lblPlanStatus.Text = "";
+                    }
+                    break;
+
+                case 1:
+                    lblWizTitle.Text = gStr.gsSelectLineFirst;
+                    lstLines.Visible = true;
+                    btnWizBack.Visible = btnWizNext.Visible = btnWizCancel.Visible = true;
+                    btnWizNext.Enabled = lstLines.SelectedIndex >= 0;
+                    break;
+
+                case 2:
+                    lblWizTitle.Text = gStr.gsZones;
+                    chkHeadlandClip.Visible = true;
+                    lblZones.Visible = nudZones.Visible = true;
+                    SetZoneStepperVisible(true);
+                    lblPlanInfo.Visible = true;
+                    btnWizBack.Visible = btnWizNext.Visible = btnWizCancel.Visible = true;
+                    btnWizNext.Enabled = true;
+                    UpdatePlanInfo();
+                    break;
+
+                case 3:
+                    lblWizTitle.Text = gStr.gsRowByRow + " / " + gStr.gsContour + " / " + gStr.gsZonesSkip;
+                    btnMode1.Visible = btnMode2.Visible = btnMode3.Visible = true;
+                    lstLines.Visible = true;                     // manual pass target line
+                    lstLines.Top = 214; lstLines.Height = 182;
+                    btnAddPath.Visible = btnDeletePath.Visible = true;
+                    btnWizBack.Visible = btnWizCancel.Visible = true;
+                    btnWizNext.Visible = false;                  // OK (row 1) finishes
+                    break;
+            }
+
+            if (wizStep != 3) { lstLines.Top = 64; lstLines.Height = 260; }
+        }
+
+        //orchard (F50): no wizard - the plan comes from rows + implement settings
+        private void UpdateWizardOrchard()
+        {
+            lstLines.Visible = false;
+            btnMode1.Visible = btnMode2.Visible = btnMode3.Visible = false;
+            chkHeadlandClip.Visible = false;
+            lblZones.Visible = nudZones.Visible = false;
+            SetZoneStepperVisible(false);
+            btnAddPath.Visible = btnDeletePath.Visible = false;
+            btnWizBack.Visible = btnWizNext.Visible = btnWizCancel.Visible = false;
+            lblWizTitle.Text = "Orchard";
+            lblPlanInfo.Visible = true;
+            btnGeneratePlan.Visible = true;
+        }
+
+        // the -/+ stepper buttons MakeKeypadField adds beside nudZones
+        private readonly List<System.Windows.Forms.Button> zoneSteppers = new List<System.Windows.Forms.Button>();
+        private void SetZoneStepperVisible(bool vis)
+        {
+            foreach (var b in zoneSteppers) b.Visible = vis;
+        }
+
+        private void lstLines_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            //the hidden legacy combo stays the single source of truth for the track
+            if (lstLines.SelectedIndex >= 0 && lstLines.SelectedIndex < cboTrack.Items.Count)
+                cboTrack.SelectedIndex = lstLines.SelectedIndex;
+            if (wizStep == 1) btnWizNext.Enabled = lstLines.SelectedIndex >= 0;
+        }
+
+        private void btnWizNext_Click(object sender, EventArgs e)
+        {
+            if (wizStep == 0) { wizStep = 1; UpdateWizard(); return; }
+            if (wizStep == 1)
+            {
+                if (!RequireTrackChoice()) return;
+                wizStep = 2;
+                GenerateFromWizard();   //zones show interactively right away
+                UpdateWizard();
+                return;
+            }
+            if (wizStep == 2)
+            {
+                wizStep = 3;
+                GenerateFromWizard();
+                UpdateWizard();
+            }
+        }
+
+        private void btnWizBack_Click(object sender, EventArgs e)
+        {
+            if (wizStep > 0) wizStep--;
+            UpdateWizard();
+        }
+
+        private void btnWizCancel_Click(object sender, EventArgs e)
+        {
+            wizStep = 0;   //back to the wizard start ("Generate path")
+            UpdateWizard();
+        }
+
+        //regenerate the plan from the current wizard choices (every step persists)
+        private void GenerateFromWizard()
+        {
+            if (cboTrack.SelectedIndex < 0) return;
+
+            mf.plan.mode = btnMode1.Checked ? CTurnPlan.ModeSequential
+                         : btnMode2.Checked ? CTurnPlan.ModeContour
+                         : CTurnPlan.ModeZones;
+            mf.plan.zoneCount = (int)nudZones.Value;
+            mf.plan.trackName = cboTrack.SelectedItem?.ToString() ?? "";
+            mf.plan.clipToHeadland = chkHeadlandClip.Enabled && chkHeadlandClip.Checked;
+
+            if (!mf.plan.Generate(out string error))
+            {
+                lblPlanStatus.Text = error;
+                planOverlay.Routes.Clear();
+                planOverlay.Markers.Clear();
+                gMapControl.Invalidate();
+                return;
+            }
+            mf.FileSaveTurnPlan();
+            DrawPlanOverlay();
+            UpdatePlanInfo();
         }
 
         private void btnTabMap_Click(object sender, EventArgs e)
@@ -828,27 +1094,35 @@ namespace AgOpenGPS
             Color.Goldenrod, Color.Tomato, Color.DarkTurquoise, Color.SlateBlue, Color.HotPink
         };
 
-        // three-way exclusive mode toggle (Sequential / Contour / Zones); always one on
+        // three-way exclusive mode toggle (Sequential / Contour / Zones); always one
+        // on. In wizard step 3 a mode click regenerates the plan immediately.
         private void btnMode1_CheckedChanged(object sender, EventArgs e)
         {
-            if (btnMode1.Checked) { btnMode2.Checked = false; btnMode3.Checked = false; }
+            if (btnMode1.Checked) { btnMode2.Checked = false; btnMode3.Checked = false; ModePicked(); }
             else if (!btnMode2.Checked && !btnMode3.Checked) btnMode1.Checked = true;
+        }
+
+        private void ModePicked()
+        {
+            if (wizStep == 3) GenerateFromWizard();
         }
 
         private void btnMode2_CheckedChanged(object sender, EventArgs e)
         {
-            if (btnMode2.Checked) { btnMode1.Checked = false; btnMode3.Checked = false; }
+            if (btnMode2.Checked) { btnMode1.Checked = false; btnMode3.Checked = false; ModePicked(); }
             else if (!btnMode1.Checked && !btnMode3.Checked) btnMode2.Checked = true;
         }
 
         private void btnMode3_CheckedChanged(object sender, EventArgs e)
         {
-            if (btnMode3.Checked) { btnMode1.Checked = false; btnMode2.Checked = false; }
+            if (btnMode3.Checked) { btnMode1.Checked = false; btnMode2.Checked = false; ModePicked(); }
             else if (!btnMode1.Checked && !btnMode2.Checked) btnMode3.Checked = true;
         }
 
         private void nudZones_ValueChanged(object sender, EventArgs e)
         {
+            //step 2 is interactive: the zone split redraws on every change
+            if (wizStep == 2) GenerateFromWizard();
             UpdatePlanInfo();
         }
 
@@ -858,19 +1132,26 @@ namespace AgOpenGPS
         private void FillTrackCombo()
         {
             cboTrack.Items.Clear();
+            lstLines.Items.Clear();
             for (int i = 0; i < mf.trk.gArr.Count; i++)
             {
                 var t = mf.trk.gArr[i];
                 if (t.mode != TrackMode.AB && t.curvePts.Count < 2) continue;
                 cboTrack.Items.Add(t.name);
+                lstLines.Items.Add(t.name);
             }
             cboTrack.SelectedIndex = -1;
-            cboTrack.BackColor = Color.Salmon;
+
+            //preselect the plan's own line so reopening shows the real state
+            if (mf.plan.HasPlan && !string.IsNullOrEmpty(mf.plan.trackName))
+            {
+                int idx = cboTrack.Items.IndexOf(mf.plan.trackName);
+                if (idx >= 0) { cboTrack.SelectedIndex = idx; lstLines.SelectedIndex = idx; }
+            }
 
             cboTrack.SelectedIndexChanged += (s, e) =>
             {
                 if (cboTrack.SelectedIndex < 0) return;
-                cboTrack.BackColor = SystemColors.Window;
                 mf.plan.trackName = cboTrack.SelectedItem?.ToString() ?? "";
                 DrawPlanOverlay();
                 UpdatePlanInfo();
@@ -881,7 +1162,6 @@ namespace AgOpenGPS
         private bool RequireTrackChoice()
         {
             if (cboTrack.SelectedIndex >= 0) return true;
-            cboTrack.BackColor = Color.Salmon;
             lblPlanStatus.Text = gStr.gsSelectLineFirst;
             return false;
         }
@@ -967,30 +1247,14 @@ namespace AgOpenGPS
                 + (warns.Count > 0 ? "  ·  " + warns.Count + " warning(s): " + warns[0] : "");
         }
 
+        //"Generate path" now opens the wizard (line -> zones -> mode); each step
+        //generates and persists, so the plan is ready the moment the mode is picked
         private void btnGeneratePlan_Click(object sender, EventArgs e)
         {
             if (mf.tool.isToolOrchard) { GenerateOrchardPlan(); return; }
 
-            if (!RequireTrackChoice()) return;
-
-            mf.plan.mode = btnMode1.Checked ? CTurnPlan.ModeSequential
-                         : btnMode2.Checked ? CTurnPlan.ModeContour
-                         : CTurnPlan.ModeZones;
-            mf.plan.zoneCount = (int)nudZones.Value;
-            mf.plan.trackName = cboTrack.SelectedItem?.ToString() ?? "";
-            mf.plan.clipToHeadland = chkHeadlandClip.Enabled && chkHeadlandClip.Checked;
-
-            if (!mf.plan.Generate(out string error))
-            {
-                lblPlanStatus.Text = error;
-                planOverlay.Routes.Clear();
-                planOverlay.Markers.Clear();
-                gMapControl.Invalidate();
-                return;
-            }
-
-            DrawPlanOverlay();
-            UpdatePlanInfo();
+            wizStep = 1;
+            UpdateWizard();
         }
 
         // one manual closing pass beside the line selected in the combo; every
@@ -1235,10 +1499,11 @@ namespace AgOpenGPS
             MakeKeypadField(nudInU, 0.5);
             MakeKeypadField(nudOvershootU, 0.5);
             MakeKeypadField(nudTolerance, 0.5);
-            MakeKeypadField(nudZones, 1);
+            MakeKeypadField(nudZones, 1, zoneSteppers);   //wizard step 2 shows/hides these
         }
 
-        private void MakeKeypadField(System.Windows.Forms.NumericUpDown nud, double step)
+        private void MakeKeypadField(System.Windows.Forms.NumericUpDown nud, double step,
+            List<System.Windows.Forms.Button> collect = null)
         {
             if (nud.Controls.Count > 0) nud.Controls[0].Visible = false;   // hide built-in spinner
             nud.ReadOnly = true;
@@ -1275,6 +1540,7 @@ namespace AgOpenGPS
             p.Controls.Add(plus);
             minus.BringToFront();
             plus.BringToFront();
+            if (collect != null) { collect.Add(minus); collect.Add(plus); }
         }
 
         private void StepNud(System.Windows.Forms.NumericUpDown nud, double d)

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -1925,5 +1925,17 @@ USE AT OWN RISK.</value>
   </data>
   <data name="gsDeletePath" xml:space="preserve">
     <value>Delete path</value>
+  </data>
+  <data name="gsBack" xml:space="preserve">
+    <value>Back</value>
+  </data>
+  <data name="gsResetPath" xml:space="preserve">
+    <value>Reset path</value>
+  </data>
+  <data name="gsResetPathConfirm" xml:space="preserve">
+    <value>Reset the worked passes of this plan? The plan geometry stays.</value>
+  </data>
+  <data name="gsDefineTurnBounds" xml:space="preserve">
+    <value>Define the turn boundaries first (Map view: two turn lines + field boundary)</value>
   </data>
 </root>
