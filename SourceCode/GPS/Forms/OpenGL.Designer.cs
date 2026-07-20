@@ -1887,40 +1887,42 @@ namespace AgOpenGPS
             if (plan.IsRuntimeOn)
             {
                 bool planWarn = plan.isFlexPause;
+                //feedback 2026-07-20: nudged a little to the right of the drive cue
+                double loopCx = two3 + 10;
                 GL.Disable(EnableCap.Texture2D);
 
                 GL.Color4(1f, 1f, 1f, 0.30f);
-                DrawRoundedRectOutline(two3 - 21, 33, two3 + 21, 75, 8);
+                DrawRoundedRectOutline(loopCx - 21, 33, loopCx + 21, 75, 8);
 
                 if (planWarn) GL.Color4(0.97f, 0.63f, 0.15f, 0.92f);
                 else GL.Color4(0.47f, 0.92f, 0.51f, 0.90f);
 
                 GL.LineWidth(3.5f);
                 GL.Begin(PrimitiveType.LineStrip);
-                GL.Vertex2(two3 - 11, 67);                 //left pass, bottom up
-                GL.Vertex2(two3 - 11, 47);
-                GL.Vertex2(two3 - 9.9, 44.2);              //arc over the top
-                GL.Vertex2(two3 - 5.5, 42.5);
-                GL.Vertex2(two3 - 1.1, 44.2);
-                GL.Vertex2(two3, 47);
-                GL.Vertex2(two3, 61);                      //middle pass, down
-                GL.Vertex2(two3 + 1.1, 63.8);              //arc under the bottom
-                GL.Vertex2(two3 + 5.5, 65.5);
-                GL.Vertex2(two3 + 9.9, 63.8);
-                GL.Vertex2(two3 + 11, 61);
-                GL.Vertex2(two3 + 11, 41);                 //right pass, up + arrow
+                GL.Vertex2(loopCx - 11, 67);                 //left pass, bottom up
+                GL.Vertex2(loopCx - 11, 47);
+                GL.Vertex2(loopCx - 9.9, 44.2);              //arc over the top
+                GL.Vertex2(loopCx - 5.5, 42.5);
+                GL.Vertex2(loopCx - 1.1, 44.2);
+                GL.Vertex2(loopCx, 47);
+                GL.Vertex2(loopCx, 61);                      //middle pass, down
+                GL.Vertex2(loopCx + 1.1, 63.8);              //arc under the bottom
+                GL.Vertex2(loopCx + 5.5, 65.5);
+                GL.Vertex2(loopCx + 9.9, 63.8);
+                GL.Vertex2(loopCx + 11, 61);
+                GL.Vertex2(loopCx + 11, 41);                 //right pass, up + arrow
                 GL.End();
                 GL.Begin(PrimitiveType.LineStrip);
-                GL.Vertex2(two3 + 7.5, 46);
-                GL.Vertex2(two3 + 11, 40);
-                GL.Vertex2(two3 + 14.5, 46);
+                GL.Vertex2(loopCx + 7.5, 46);
+                GL.Vertex2(loopCx + 11, 40);
+                GL.Vertex2(loopCx + 14.5, 46);
                 GL.End();
 
                 GL.Enable(EnableCap.Texture2D);
                 if (planWarn)
                 {
                     GL.Color4(0.97f, 0.63f, 0.15f, 0.95f);
-                    font.DrawText(two3 + 24, 33, "!", 1.2);
+                    font.DrawText(loopCx + 24, 33, "!", 1.2);
                 }
             }
 
@@ -1942,9 +1944,10 @@ namespace AgOpenGPS
                     GL.Color4(0.92f, 0.92f, 0.92f, 0.85f);
                     skipText = "SKIP";
                 }
-                DrawRoundedRectOutline(two3 - 48, 186, two3 + 64, 222, 8);
+                //feedback 2026-07-20: nudged down so it clears the "U READY" state text above
+                DrawRoundedRectOutline(two3 - 48, 202, two3 + 64, 238, 8);
                 GL.Enable(EnableCap.Texture2D);
-                font.DrawText(-38 + two3, 192, skipText, 1.0);
+                font.DrawText(-38 + two3, 208, skipText, 1.0);
             }
         }
 

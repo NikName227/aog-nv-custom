@@ -121,6 +121,7 @@ namespace AgOpenGPS
             oglSelf.MouseEnter += (s, e) => { if (oglSelf.CanFocus) oglSelf.Focus(); };
             // tapping the Name field pops up the AOG on-screen keyboard
             tboxName.Click += (s, e) => tboxName.ShowKeyboard(this);
+            tboxName.TextChanged += (s, e) => RecolorNameBox();
         }
 
         // ── Window controls (touch) + layout ──────────────────────────────
@@ -1050,8 +1051,9 @@ namespace AgOpenGPS
         {
             mode = m;
             bool build = m == LineMode.Build;
-            btnAddPoint.Enabled = build;
-            btnDeletePoint.Enabled = build;
+            // Add/Delete-point are meaningless outside Build - hide them, not just disable
+            btnAddPoint.Enabled = btnAddPoint.Visible = build;
+            btnDeletePoint.Enabled = btnDeletePoint.Visible = build;
             btnPoint.Enabled = build;
             tboxName.Enabled = true; // name editable in Browse too (rename active line) and in Build
             if (!build)
@@ -1064,6 +1066,7 @@ namespace AgOpenGPS
             UpdateNavButtons();
             UpdateSmoothUI();
             UpdateArrowColors();
+            RecolorNameBox();
             oglSelf.Invalidate();
         }
 
@@ -1123,6 +1126,19 @@ namespace AgOpenGPS
         {
             if (activeIdx >= 0 && activeIdx < gTemp.Count)
                 tboxName.Text = gTemp[activeIdx].name ?? "";
+            RecolorNameBox();
+        }
+
+        // Name box background reflects save state: red = empty/missing, yellow =
+        // typed but line not stored yet, white = saved (only saved names are white).
+        private void RecolorNameBox()
+        {
+            if (tboxName.Text.Trim().Length == 0)
+                tboxName.BackColor = System.Drawing.Color.FromArgb(255, 190, 190);   // missing
+            else if (mode == LineMode.Build && workIdx < 0)
+                tboxName.BackColor = System.Drawing.Color.FromArgb(255, 255, 200);   // unsaved WIP
+            else
+                tboxName.BackColor = System.Drawing.Color.White;                     // saved
         }
 
         private void btnDeleteLine_Click(object sender, EventArgs e)
@@ -1174,6 +1190,7 @@ namespace AgOpenGPS
             else { gTemp.Add(t); ctrlPts.Add(new List<vec2>(pts)); workIdx = gTemp.Count - 1; }
             checkBoxes.Clear(); // line changed -> old check marks are stale
             smoothVal = -1; smoothLine = null; UpdateSmoothUI();
+            RecolorNameBox();   // line is now stored -> name box goes white
             oglSelf.Invalidate();
         }
 

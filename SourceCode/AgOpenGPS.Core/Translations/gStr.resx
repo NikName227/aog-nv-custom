@@ -925,7 +925,7 @@ The order you push them will be the order they appear on the menu from bottom up
     <value>DRIVE REVERSE</value>
   </data>
   <data name="gsSelectLineFirst" xml:space="preserve">
-    <value>Select an AB line first</value>
+    <value>Select the reference AB line</value>
   </data>
   <data name="gsPastEndOfCurve" xml:space="preserve">
     <value>Past End Of Curve</value>
@@ -1904,6 +1904,15 @@ USE AT OWN RISK.</value>
   </data>
   <data name="gsGeneratePlan" xml:space="preserve">
     <value>Generate plan</value>
+  </data>
+  <data name="gsPlanExists" xml:space="preserve">
+    <value>Pass plan exists</value>
+  </data>
+  <data name="gsFinish" xml:space="preserve">
+    <value>Finish</value>
+  </data>
+  <data name="gsManualPasses" xml:space="preserve">
+    <value>Manual passes</value>
   </data>
   <data name="gsFollowPlan" xml:space="preserve">
     <value>Follow plan</value>
