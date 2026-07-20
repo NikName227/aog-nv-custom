@@ -1924,6 +1924,17 @@ namespace AgOpenGPS
                     GL.Color4(0.97f, 0.63f, 0.15f, 0.95f);
                     font.DrawText(loopCx + 24, 33, "!", 1.2);
                 }
+
+                //feedback 2026-07-20: pass counter directly UNDER the loop badge,
+                //e.g. "1/8" (current pass / total). Tied to the badge - shows only
+                //while the plan is being followed. The rotating name/state text stays above.
+                CPlanEntry curPass = plan.CurrentEntry() ?? plan.NextEntry();
+                string passTxt = (curPass == null)
+                    ? plan.WorkedCount() + "/" + plan.entries.Count
+                    : curPass.order + "/" + plan.entries.Count;
+                double passSc = 0.9;
+                GL.Color4(0.96f, 0.96f, 0.96f, 0.95f);
+                font.DrawText((int)(loopCx - passTxt.Length * 0.45 * 22 * passSc), 78, passTxt, passSc);
             }
 
             //NV HUD skip (2026-07-11): small transparent button - thin rounded
