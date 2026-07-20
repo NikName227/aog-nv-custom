@@ -4969,6 +4969,24 @@ namespace AgOpenGPS.Core.Translations {
             }
         }
 
+        public static string gsPlanExists {
+            get {
+                return ResourceManager.GetString("gsPlanExists", resourceCulture);
+            }
+        }
+
+        public static string gsFinish {
+            get {
+                return ResourceManager.GetString("gsFinish", resourceCulture);
+            }
+        }
+
+        public static string gsManualPasses {
+            get {
+                return ResourceManager.GetString("gsManualPasses", resourceCulture);
+            }
+        }
+
         public static string gsFollowPlan {
             get {
                 return ResourceManager.GetString("gsFollowPlan", resourceCulture);

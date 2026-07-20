@@ -202,6 +202,7 @@ namespace AgOpenGPS
             chkHeadlandClip.CheckedChanged += (s, ev) => { if (wizStep == 2) GenerateFromWizard(); };
 
             lstLines.SelectedIndexChanged += lstLines_SelectedIndexChanged;
+            SetupPrereqChecklist();
             if (mf.tool.isToolOrchard) SetupOrchardPathTab();
 
             UpdatePlanInfo();
@@ -904,12 +905,82 @@ namespace AgOpenGPS
         //  2 = headland + zones, 3 = mode (pictograms) + manual passes
         private int wizStep;
 
+        // path-plan preconditions, split so the checklist can show each one
+        private bool HasFieldBoundary() =>
+            mf.bnd.bndList.Count > 0 && mf.bnd.bndList[0].fenceLine.Count > 2;
+
+        private bool HasReferenceLine()               // at least one AB line or curve
+        {
+            for (int i = 0; i < mf.trk.gArr.Count; i++)
+            {
+                var t = mf.trk.gArr[i];
+                if (t.mode == TrackMode.AB || t.curvePts.Count >= 2) return true;
+            }
+            return false;
+        }
+
+        private bool HasTurnBoundaries() => editLines.Count >= 2;   // both turn boundaries drawn
+
         private bool PlanPrereqsOk()
         {
             if (mf.tool.isToolOrchard) return true;   // orchard plans from rows
-            return mf.bnd.bndList.Count > 0
-                && mf.bnd.bndList[0].fenceLine.Count > 2
-                && editLines.Count >= 2;              // both turn boundaries drawn
+            return HasFieldBoundary() && HasReferenceLine() && HasTurnBoundaries();
+        }
+
+        // three checklist rows shown under "Generiraj plan" when a prereq is missing.
+        // Built at runtime (like the zone steppers) so the designer stays untouched.
+        private Label[] prereqLabels;
+        private Label lblManualPass;
+        private void SetupPrereqChecklist()
+        {
+            prereqLabels = new Label[3];
+            for (int i = 0; i < 3; i++)
+            {
+                var lbl = new Label
+                {
+                    Location = new System.Drawing.Point(14, 70 + i * 42),
+                    Size = new System.Drawing.Size(322, 38),
+                    TextAlign = System.Drawing.ContentAlignment.MiddleLeft,
+                    Visible = false
+                };
+                prereqLabels[i] = lbl;
+                pnlPath.Controls.Add(lbl);
+                lbl.BringToFront();
+            }
+
+            // step-3 caption above the manual-pass list ("Ručno dodavanje prolaza")
+            lblManualPass = new Label
+            {
+                Text = gStr.gsManualPasses,
+                Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold),
+                Location = new System.Drawing.Point(10, 210),
+                Size = new System.Drawing.Size(326, 30),
+                TextAlign = System.Drawing.ContentAlignment.MiddleLeft,
+                Visible = false
+            };
+            pnlPath.Controls.Add(lblManualPass);
+            lblManualPass.BringToFront();
+        }
+
+        private void RenderPrereqChecklist()
+        {
+            bool[] ok = { HasFieldBoundary(), HasReferenceLine(), HasTurnBoundaries() };
+            string[] names = { gStr.gsBoundary, gStr.gsTrack + " / " + gStr.gsCurve, gStr.gsTurnLimitLines };
+            for (int i = 0; i < 3; i++)
+            {
+                var lbl = prereqLabels[i];
+                lbl.Text = (ok[i] ? "✓  " : "X  ") + names[i];
+                lbl.ForeColor = ok[i] ? System.Drawing.Color.ForestGreen : System.Drawing.Color.Firebrick;
+                lbl.Font = new System.Drawing.Font("Tahoma", 11.25F,
+                    ok[i] ? System.Drawing.FontStyle.Bold : System.Drawing.FontStyle.Regular);
+                lbl.Visible = true;
+            }
+        }
+
+        private void HidePrereqChecklist()
+        {
+            if (prereqLabels == null) return;
+            foreach (var l in prereqLabels) l.Visible = false;
         }
 
         private void UpdateWizard()
@@ -926,6 +997,9 @@ namespace AgOpenGPS
             btnGeneratePlan.Visible = false;
             btnAddPath.Visible = btnDeletePath.Visible = false;
             btnWizBack.Visible = btnWizNext.Visible = btnWizCancel.Visible = false;
+            btnWizNext.Text = gStr.gsNext;
+            if (lblManualPass != null) lblManualPass.Visible = false;
+            HidePrereqChecklist();
 
             if (!PlanPrereqsOk()) wizStep = -1;
             else if (wizStep == -1) wizStep = 0;
@@ -933,15 +1007,18 @@ namespace AgOpenGPS
             switch (wizStep)
             {
                 case -1:
-                    lblWizTitle.Text = gStr.gsDefineTurnBounds;
+                    // prereq missing: title "Generiraj plan" + a checklist below it
+                    // (X / green ✓, ✓ rows bold). Next stays hidden until all three ✓.
+                    lblWizTitle.Text = gStr.gsGeneratePlan;
                     lblPlanStatus.Text = "";
+                    RenderPrereqChecklist();
                     break;
 
                 case 0:
                     if (mf.plan.HasPlan)
                     {
                         //overview: the plan draws on the map, Next walks the steps
-                        lblWizTitle.Text = gStr.gsGeneratePlan;
+                        lblWizTitle.Text = gStr.gsPlanExists;
                         lblPlanInfo.Visible = true;
                         btnWizNext.Visible = true;
                         UpdatePlanInfo();
@@ -975,11 +1052,13 @@ namespace AgOpenGPS
                 case 3:
                     lblWizTitle.Text = gStr.gsRowByRow + " / " + gStr.gsContour + " / " + gStr.gsZonesSkip;
                     btnMode1.Visible = btnMode2.Visible = btnMode3.Visible = true;
+                    lblManualPass.Visible = true;                // "Ručno dodavanje prolaza"
                     lstLines.Visible = true;                     // manual pass target line
-                    lstLines.Top = 214; lstLines.Height = 182;
+                    lstLines.Top = 244; lstLines.Height = 152;   // shrunk to fit the caption above
                     btnAddPath.Visible = btnDeletePath.Visible = true;
                     btnWizBack.Visible = btnWizCancel.Visible = true;
-                    btnWizNext.Visible = false;                  // OK (row 1) finishes
+                    btnWizNext.Visible = true;                   // repurposed as "Završi" (same as OK)
+                    btnWizNext.Text = gStr.gsFinish;
                     break;
             }
 
@@ -1032,6 +1111,12 @@ namespace AgOpenGPS
                 wizStep = 3;
                 GenerateFromWizard();
                 UpdateWizard();
+                return;
+            }
+            if (wizStep == 3)
+            {
+                //step 3: the Next slot is relabeled "Završi" and finishes like the top OK
+                btnSave_Click(sender, e);
             }
         }
 

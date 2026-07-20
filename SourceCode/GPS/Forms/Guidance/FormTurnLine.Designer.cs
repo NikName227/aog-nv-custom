@@ -413,6 +413,7 @@ namespace AgOpenGPS
             this.lblWizTitle.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
             //
             this.lstLines.Font = new System.Drawing.Font("Tahoma", 12F);
+            this.lstLines.HorizontalScrollbar = true;
             this.lstLines.ItemHeight = 32;
             this.lstLines.Location = new System.Drawing.Point(10, 64);
             this.lstLines.Name = "lstLines";
