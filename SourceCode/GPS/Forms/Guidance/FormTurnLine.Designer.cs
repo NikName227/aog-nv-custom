@@ -30,6 +30,7 @@ namespace AgOpenGPS
             this.btnZoomIn = new System.Windows.Forms.Button();
             this.btnZoomOut = new System.Windows.Forms.Button();
             this.btnMeasure = new System.Windows.Forms.Button();
+            this.lblMeasure = new System.Windows.Forms.Label();
             this.btnWinFull = new System.Windows.Forms.Button();
             this.btnWinClose = new System.Windows.Forms.Button();
             this.pnlMapTools = new System.Windows.Forms.Panel();
@@ -235,16 +236,26 @@ namespace AgOpenGPS
             //
             // btnMeasure
             //
-            this.btnMeasure.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.btnMeasure.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
             this.btnMeasure.BackColor = System.Drawing.Color.White;
-            this.btnMeasure.Font = new System.Drawing.Font("Tahoma", 18F, System.Drawing.FontStyle.Bold);
-            this.btnMeasure.Location = new System.Drawing.Point(960, 250);
+            this.btnMeasure.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.btnMeasure.Location = new System.Drawing.Point(74, 500);
             this.btnMeasure.Name = "btnMeasure";
-            this.btnMeasure.Size = new System.Drawing.Size(56, 56);
-            this.btnMeasure.TabIndex = 12;
-            this.btnMeasure.Text = "↔";
+            this.btnMeasure.Size = new System.Drawing.Size(110, 46);
+            this.btnMeasure.TabIndex = 20;
+            this.btnMeasure.Text = "Measure";
             this.btnMeasure.UseVisualStyleBackColor = false;
             this.btnMeasure.Click += new System.EventHandler(this.btnMeasure_Click);
+            //
+            // lblMeasure
+            //
+            this.lblMeasure.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
+            this.lblMeasure.Font = new System.Drawing.Font("Tahoma", 12F, System.Drawing.FontStyle.Bold);
+            this.lblMeasure.Location = new System.Drawing.Point(74, 472);
+            this.lblMeasure.Name = "lblMeasure";
+            this.lblMeasure.Size = new System.Drawing.Size(110, 26);
+            this.lblMeasure.TabIndex = 21;
+            this.lblMeasure.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
             //
             this.btnWinFull.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.btnWinFull.BackColor = System.Drawing.Color.Transparent;
@@ -289,6 +300,8 @@ namespace AgOpenGPS
             this.pnlMapTools.Controls.Add(this.btnDeleteLine);
             this.pnlMapTools.Controls.Add(this.chkParcels);
             this.pnlMapTools.Controls.Add(this.btnGoToField);
+            this.pnlMapTools.Controls.Add(this.lblMeasure);
+            this.pnlMapTools.Controls.Add(this.btnMeasure);
             //
             this.btnAddLine.BackColor = System.Drawing.Color.PapayaWhip;
             this.btnAddLine.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
@@ -883,7 +896,6 @@ namespace AgOpenGPS
             this.Controls.Add(this.btnWinClose);
             this.Controls.Add(this.btnZoomIn);
             this.Controls.Add(this.btnZoomOut);
-            this.Controls.Add(this.btnMeasure);
             this.Controls.Add(this.lblStatus);
             this.Controls.Add(this.btnSave);
             this.Controls.Add(this.lblRadius);
@@ -927,6 +939,7 @@ namespace AgOpenGPS
         private System.Windows.Forms.Button btnZoomIn;
         private System.Windows.Forms.Button btnZoomOut;
         private System.Windows.Forms.Button btnMeasure;
+        private System.Windows.Forms.Label lblMeasure;
         private System.Windows.Forms.Button btnWinFull;
         private System.Windows.Forms.Button btnWinClose;
         private System.Windows.Forms.Panel pnlMapTools;
