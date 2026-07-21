@@ -123,8 +123,8 @@
        ContinueOnError so the build still passes when S: is not mounted. -->
   <Target Name="CopyToTestTemp" AfterTargets="Build" Condition="'$(Configuration)' == 'Debug'">
     <PropertyGroup>
-      <TestTempDir Condition="Exists('S:\Test')">S:\Test\AgOpenGPS_test</TestTempDir>
-      <TestTempDir Condition="'$(TestTempDir)' == ''">\\wsl.localhost\Ubuntu\mnt\shared\Test\AgOpenGPS_test</TestTempDir>
+      <TestTempDir Condition="Exists('S:\AI_dev\Test')">S:\AI_dev\Test\AgOpenGPS_test</TestTempDir>
+      <TestTempDir Condition="'$(TestTempDir)' == ''">\\wsl.localhost\Ubuntu\mnt\shared\AI_dev\Test\AgOpenGPS_test</TestTempDir>
     </PropertyGroup>
     <ItemGroup>
       <TestTempFiles Include="$(OutDir)**\*.*" />

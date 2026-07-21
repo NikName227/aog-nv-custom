@@ -10,8 +10,8 @@
 
   Builds every app (AgOpenGPS, AgIO, AgDiag, ModSim, GPS_Out, AgOpenGPS.Updater) in
   Release, assembles them into one flat folder (all exes run from StartupPath), and
-  copies it into ShareFolder/Relese as release_<Version> (next to the Debug
-  test build in ShareFolder/Test/AgOpenGPS_test).
+  copies it into ShareFolder/AI_dev/Relese as release_<Version> (next to the Debug
+  test build in ShareFolder/AI_dev/Test/AgOpenGPS_test).
 
 .PARAMETER Version
   Release version, e.g. 6.8.5.2 (default).
@@ -28,7 +28,7 @@
 #>
 param(
     [string]$Version  = "6.8.5.3",
-    [string]$DestRoot = "S:\Relese",
+    [string]$DestRoot = "S:\AI_dev\Relese",
     [string]$Sdk      = "9.0.201"
 )
 
@@ -37,7 +37,7 @@ $ErrorActionPreference = "Stop"
 # Fall back to the WSL UNC path when the S: mapping is not reachable
 # (e.g. when invoked from WSL interop where mapped drives are unavailable).
 if (-not (Test-Path (Split-Path $DestRoot -Qualifier))) {
-    $DestRoot = "\\wsl.localhost\Ubuntu\mnt\shared\Relese"
+    $DestRoot = "\\wsl.localhost\Ubuntu\mnt\shared\AI_dev\Relese"
 }
 $repo = Split-Path -Parent $MyInvocation.MyCommand.Definition   # ...\AgOpenGPS
 $src  = Join-Path $repo "SourceCode"
