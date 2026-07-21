@@ -543,7 +543,7 @@ namespace AgOpenGPS
             this.lblPlanInfo.ForeColor = System.Drawing.Color.DimGray;
             this.lblPlanInfo.Location = new System.Drawing.Point(10, 170);
             this.lblPlanInfo.Name = "lblPlanInfo";
-            this.lblPlanInfo.Size = new System.Drawing.Size(326, 56);
+            this.lblPlanInfo.Size = new System.Drawing.Size(326, 88);
             this.lblPlanInfo.TabIndex = 10;
             //
             this.btnGeneratePlan.BackColor = System.Drawing.Color.PapayaWhip;

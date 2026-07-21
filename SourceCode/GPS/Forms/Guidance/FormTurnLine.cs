@@ -1391,7 +1391,12 @@ namespace AgOpenGPS
         {
             if (mf.plan.TryZoneInfo((int)nudZones.Value, out double zoneWidth, out int passesPerZone))
             {
-                lblPlanInfo.Text = gStr.gsZoneWidth + ": " + zoneWidth.ToString("N1") + " m\n"
+                // which AB line/curve the plan is built on, two rows above the zone info
+                string abName = mf.plan.trackName;
+                if (string.IsNullOrEmpty(abName) && mf.trk.idx >= 0 && mf.trk.idx < mf.trk.gArr.Count)
+                    abName = mf.trk.gArr[mf.trk.idx].name;
+                lblPlanInfo.Text = gStr.gsABline + ": " + abName + "\n\n"
+                    + gStr.gsZoneWidth + ": " + zoneWidth.ToString("N1") + " m\n"
                     + passesPerZone + " " + gStr.gsPassesPerZone;
             }
             else
