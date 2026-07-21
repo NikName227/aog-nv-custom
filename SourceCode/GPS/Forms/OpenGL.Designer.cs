@@ -1887,8 +1887,8 @@ namespace AgOpenGPS
             if (plan.IsRuntimeOn)
             {
                 bool planWarn = plan.isFlexPause;
-                //feedback 2026-07-21: moved further right, ~2 icon widths clear of the drive cue
-                double loopCx = two3 + 94;
+                //feedback 2026-07-21: moved further right, ~3 icon widths clear of the drive cue
+                double loopCx = two3 + 136;
                 GL.Disable(EnableCap.Texture2D);
 
                 GL.Color4(1f, 1f, 1f, 0.30f);
