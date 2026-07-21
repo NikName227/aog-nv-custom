@@ -1911,6 +1911,12 @@ USE AT OWN RISK.</value>
   <data name="gsFinish" xml:space="preserve">
     <value>Finish</value>
   </data>
+  <data name="gsSmartCurve" xml:space="preserve">
+    <value>Smart Curve</value>
+  </data>
+  <data name="gsAllowedDev" xml:space="preserve">
+    <value>Allowed deviation from boundary</value>
+  </data>
   <data name="gsManualPasses" xml:space="preserve">
     <value>Manual passes</value>
   </data>

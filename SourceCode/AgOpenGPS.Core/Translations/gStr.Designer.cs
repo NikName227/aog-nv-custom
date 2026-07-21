@@ -4981,6 +4981,18 @@ namespace AgOpenGPS.Core.Translations {
             }
         }
 
+        public static string gsSmartCurve {
+            get {
+                return ResourceManager.GetString("gsSmartCurve", resourceCulture);
+            }
+        }
+
+        public static string gsAllowedDev {
+            get {
+                return ResourceManager.GetString("gsAllowedDev", resourceCulture);
+            }
+        }
+
         public static string gsManualPasses {
             get {
                 return ResourceManager.GetString("gsManualPasses", resourceCulture);
