@@ -942,6 +942,22 @@ namespace AgOpenGPS
         }
 
         /// <summary>
+        /// True if the exact AB line/curve this plan was built on still exists. Unlike
+        /// TryResolveTrack (which falls back to the active track), this is STRICT: a plan
+        /// bound to a since-deleted line is stale and must be rebuilt, not silently
+        /// re-pointed at whatever track happens to be active.
+        /// </summary>
+        public bool ReferenceTrackExists()
+        {
+            if (entries.Count == 0) return true;   // no plan = nothing to validate
+            if (string.IsNullOrEmpty(trackName))   // "" = built on the active track
+                return mf.trk.idx >= 0 && mf.trk.idx < mf.trk.gArr.Count;
+            foreach (var t in mf.trk.gArr)
+                if (t.name == trackName) return true;
+            return false;
+        }
+
+        /// <summary>
         /// Range of offset indices whose pass strip [k*W .. (k+1)*W] can touch the
         /// boundary. AB: signed perpendicular distance of the fence points from the
         /// ref line. Curve: signed distance of the fence points from the ref polyline.

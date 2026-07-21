@@ -1089,10 +1089,14 @@ namespace AgOpenGPS
         private void UpdateNavButtons()
         {
             bool has = gTemp.Count > 0;
+            bool browse = mode == LineMode.Browse;
             btnPrevLine.Enabled = has;
             btnNextLine.Enabled = has;
-            btnDeleteLine.Enabled = has;
-            btnEdit.Enabled = has && mode == LineMode.Browse;
+            // Delete removes a SAVED line - hide it while building/editing so an accidental
+            // click during new-line creation can't wipe a stored line
+            btnDeleteLine.Visible = browse;
+            btnDeleteLine.Enabled = has && browse;
+            btnEdit.Enabled = has && browse;
         }
 
         private void btnNew_Click(object sender, EventArgs e)
