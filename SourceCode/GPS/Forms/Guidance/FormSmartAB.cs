@@ -1165,7 +1165,7 @@ namespace AgOpenGPS
             workIdx = -1;
             if (activeIdx >= gTemp.Count) activeIdx = gTemp.Count - 1;
             if (gTemp.Count == 0) btnNew_Click(null, null);
-            else { UpdateNavButtons(); lblActiveOp.Text = "deleted"; }
+            else { UpdateNavButtons(); RefreshActiveName(); lblActiveOp.Text = "deleted"; }
             oglSelf.Invalidate();
         }
 
