@@ -25,6 +25,7 @@ namespace AgOpenGPS
         private readonly FormGPS mf;
 
         private readonly GMapOverlay boundaryOverlay = new GMapOverlay("bnd");
+        private readonly GMapOverlay headlandOverlay = new GMapOverlay("headland");
         private readonly GMapOverlay parcelOverlay = new GMapOverlay("parcels");
         private readonly GMapOverlay planOverlay = new GMapOverlay("plan");
         private readonly GMapOverlay previewOverlay = new GMapOverlay("preview");
@@ -143,6 +144,7 @@ namespace AgOpenGPS
 
             gMapControl.Overlays.Add(parcelOverlay);
             gMapControl.Overlays.Add(boundaryOverlay);
+            gMapControl.Overlays.Add(headlandOverlay);
             gMapControl.Overlays.Add(planOverlay);
             gMapControl.Overlays.Add(previewOverlay);
             gMapControl.Overlays.Add(lineOverlay);
@@ -199,7 +201,8 @@ namespace AgOpenGPS
             bool hasHeadland = mf.bnd.bndList.Count > 0 && mf.bnd.bndList[0].hdLine.Count > 2;
             chkHeadlandClip.Enabled = hasHeadland;
             chkHeadlandClip.Checked = hasHeadland && mf.plan.clipToHeadland;
-            chkHeadlandClip.CheckedChanged += (s, ev) => { if (wizStep == 2) GenerateFromWizard(); };
+            chkHeadlandClip.CheckedChanged += (s, ev) => { DrawHeadland(); if (wizStep == 2) GenerateFromWizard(); };
+            DrawHeadland();
 
             lstLines.SelectedIndexChanged += lstLines_SelectedIndexChanged;
             SetupPrereqChecklist();
@@ -328,6 +331,27 @@ namespace AgOpenGPS
                 Fill = new SolidBrush(Color.FromArgb(18, Color.LimeGreen)),
                 Stroke = new Pen(Color.LimeGreen, 3f)
             });
+        }
+
+        // f05gui-08: draw the headland ring (bndList[0].hdLine) on the map ONLY while
+        // the "Inside headland" (Unutar uvrtina) box is on - just the line, nothing else.
+        private void DrawHeadland()
+        {
+            headlandOverlay.Routes.Clear();
+            if (chkHeadlandClip.Enabled && chkHeadlandClip.Checked
+                && mf.bnd.bndList.Count > 0 && mf.bnd.bndList[0].hdLine.Count > 2)
+            {
+                var hd = mf.bnd.bndList[0].hdLine;
+                var ring = new List<PointLatLng>(hd.Count + 1);
+                for (int i = 0; i < hd.Count; i++)
+                    ring.Add(LocalToLatLng(hd[i].easting, hd[i].northing));
+                ring.Add(ring[0]);   // close the ring
+                headlandOverlay.Routes.Add(new GMapRoute(ring, "headland")
+                {
+                    Stroke = new Pen(Color.DarkOrange, 2.5f)
+                });
+            }
+            gMapControl.Invalidate();
         }
 
         private void LoadExistingLines()
