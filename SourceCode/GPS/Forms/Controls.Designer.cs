@@ -138,7 +138,8 @@ namespace AgOpenGPS
                 flp1.Controls[1].Visible = isBnd && !isEasyDriveMode;
 
                 flp1.Controls[2].Visible = true;
-                flp1.Controls[3].Visible = true;
+                //F06: orchard launcher (Controls[3]) only when the feature is unlocked
+                flp1.Controls[3].Visible = CFeatureLock.IsOn(CFeatureLock.FeatureOrchard);
 
                 //auto snap to pivot
                 flp1.Controls[4].Visible = tracksVisible > 0;
