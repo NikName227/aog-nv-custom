@@ -87,6 +87,14 @@ namespace AgOpenGPS
         private int smoothVal = -1;
         private List<vec3> smoothLine;
 
+        // f05gui-10: Smart Curve = auto-filtered boundary slice. smartBase keeps the raw
+        // slice so re-solving smooths from the original instead of compounding filters.
+        private bool smartMode;
+        private List<vec3> smartBase;
+
+        // class-level bilingual fallback (the ctor has a local L(); this one is reusable)
+        private static string LS(string s, string def) => string.IsNullOrEmpty(s) ? def : s;
+
         // Measure tool: a temporary ruler — two free RED points joined by a thin red line.
         // Always draggable while on; shows the distance between them; never saved anywhere.
         private bool measureOn;
@@ -488,6 +496,7 @@ namespace AgOpenGPS
             if (lastMake == "AB" && pts.Count == 2) btnMakeAB_Click(null, null);
             else if (lastMake == "Curve" && pts.Count > 2) btnMakeCurve_Click(null, null);
             else if (lastMake == "Bnd" && pts.Count == 2) btnMakeBndCurve_Click(null, null);
+            else if (lastMake == "Smart" && pts.Count == 2) MakeSmartCurve();
         }
 
         private void DeletePoint(int idx)
@@ -812,12 +821,14 @@ namespace AgOpenGPS
         {
             checkCm = Math.Min(200, checkCm + 5);
             tboxCheckCm.Text = checkCm.ToString();
+            if (smartMode) SolveSmartCurve();   // f05gui-10: re-fit to the new tolerance
         }
 
         private void btnCheckDown_Click(object sender, EventArgs e)
         {
             checkCm = Math.Max(5, checkCm - 5);
             tboxCheckCm.Text = checkCm.ToString();
+            if (smartMode) SolveSmartCurve();
         }
 
         private List<vec2> LinePoints(CTrk t)
@@ -1045,7 +1056,9 @@ namespace AgOpenGPS
             int n = pts.Count;
             btnMakeAB.Enabled = build && (n == 2);
             btnMakeBndCurve.Enabled = build && (n == 2);
-            btnMakeCurve.Enabled = build && (n > 2);
+            btnMakeCurve.Enabled = build && (n >= 2);
+            // f05gui-10: with exactly 2 points "Krivulja" acts as the auto "Smart Krivulja"
+            btnMakeCurve.Text = (n == 2) ? LS(gStr.gsSmartCurve, "Smart Curve") : LS(gStr.gsCurve, "Curve");
         }
 
         // ── Phase 2b: New / Browse / Edit line management ─────────────────
@@ -1060,6 +1073,7 @@ namespace AgOpenGPS
             tboxName.Enabled = true; // name editable in Browse too (rename active line) and in Build
             if (!build)
             {
+                ExitSmartMode();
                 ResetAddStage(); btnDeletePoint.Checked = false;
                 selIndex = -1; pointMode = PointEdit.Off;
                 btnPoint.BackColor = Color.Gainsboro; lblPointMode.Text = "";
@@ -1084,6 +1098,7 @@ namespace AgOpenGPS
         private void btnNew_Click(object sender, EventArgs e)
         {
             pts.Clear(); workIdx = -1; lastMake = null; selIndex = -1;
+            ExitSmartMode();
             tboxName.Text = "";
             checkBoxes.Clear();                               // clear stale check marks too
             smoothVal = -1; smoothLine = null; UpdateSmoothUI();
@@ -1206,6 +1221,7 @@ namespace AgOpenGPS
         private void btnMakeAB_Click(object sender, EventArgs e)
         {
             if (pts.Count != 2 || bIndex < 0) return;
+            ExitSmartMode();
             lastMake = "AB";
             vec2 a = pts[aIndex], b = pts[bIndex];
             double abHead = Math.Atan2(b.easting - a.easting, b.northing - a.northing);
@@ -1221,7 +1237,9 @@ namespace AgOpenGPS
 
         private void btnMakeCurve_Click(object sender, EventArgs e)
         {
+            if (pts.Count == 2) { MakeSmartCurve(); return; }   // f05gui-10: 2 pts = Smart Curve
             if (pts.Count < 3) return;
+            ExitSmartMode();
             lastMake = "Curve";
             var ordered = OrderPointsAtoB();        // A → nearest-neighbour … → B
             var des = Densify(ordered, 1.6);
@@ -1249,6 +1267,7 @@ namespace AgOpenGPS
         private void btnMakeBndCurve_Click(object sender, EventArgs e)
         {
             if (pts.Count != 2) return;
+            ExitSmartMode();
             lastMake = "Bnd";
             try
             {
@@ -1297,6 +1316,94 @@ namespace AgOpenGPS
                 lblActiveOp.Text = "Curve by boundary error";
                 Log.EventWriter("SmartAB CurveByBoundary " + ex.Message);
             }
+        }
+
+        // ── f05gui-10: Smart Curve ────────────────────────────────────────
+        // Automates the manual "Curve by Boundary -> Smooth -> Check deviation" loop:
+        // take the boundary slice between the two points, then auto-pick the strongest
+        // smoothing whose CORE still stays within the allowed deviation. The manual
+        // Check button and the Ublaži (Smooth) controls are hidden while this runs.
+        private void MakeSmartCurve()
+        {
+            if (pts.Count != 2) return;
+            btnMakeBndCurve_Click(null, null);      // base = boundary slice (also clears smart)
+            int show = workIdx;
+            if (show < 0 || show >= gTemp.Count || gTemp[show].curvePts.Count < 4)
+            { lblActiveOp.Text = "Smart curve error"; return; }
+
+            lastMake = "Smart";
+            smartMode = true;
+            smartBase = new List<vec3>(gTemp[show].curvePts);   // keep the raw slice
+            checkCm = 20;                                        // default allowed deviation (cm)
+            tboxCheckCm.Text = checkCm.ToString();
+            SetSmartModeUI(true);
+            SolveSmartCurve();
+        }
+
+        private void SolveSmartCurve()
+        {
+            if (!smartMode || smartBase == null) return;
+            int show = (mode == LineMode.Browse) ? activeIdx : workIdx;
+            if (show < 0 || show >= gTemp.Count) return;
+
+            double tol = checkCm / 100.0;
+            vec2 a = gTemp[show].ptA, b = gTemp[show].ptB;
+
+            // binary search the smoothing window: the largest whose core stays within tol
+            int lo = 0, hi = 60, bestS = 0;
+            while (lo <= hi)
+            {
+                int mid = (lo + hi) / 2;
+                var sm = (mid < 2) ? smartBase : SmoothPoints(smartBase, mid * 2);
+                if (MaxCoreDeviation(sm, a, b) <= tol) { bestS = mid; lo = mid + 1; }
+                else hi = mid - 1;
+            }
+
+            var result = (bestS < 2) ? smartBase : SmoothPoints(smartBase, bestS * 2);
+            gTemp[show].curvePts.Clear();
+            foreach (vec3 p in result) gTemp[show].curvePts.Add(p);
+            var cp = gTemp[show].curvePts; CABCurve.CalculateHeadings(ref cp);
+            ctrlPts[show] = null;                    // curve no longer matches the control points
+            smoothVal = -1; smoothLine = null; checkBoxes.Clear();
+            lblActiveOp.Text = "Smart curve  (smooth " + bestS + ", within " + checkCm + " cm)";
+            oglSelf.Invalidate();
+        }
+
+        // Max distance of the curve CORE (A->B, 150 m tails excluded) from the boundary.
+        private double MaxCoreDeviation(List<vec3> curve, vec2 a, vec2 b)
+        {
+            var flat = new List<vec2>(curve.Count);
+            foreach (vec3 p in curve) flat.Add(new vec2(p.easting, p.northing));
+            var core = TrimToCore(flat, a, b);
+            double max = 0;
+            foreach (var p in core)
+            {
+                double d = DistToBoundary(p);
+                if (d < 3.0 && d > max) max = d;     // ignore the far side of the field
+            }
+            return max;
+        }
+
+        // Smart mode hides the manual Check button and the Ublaži (Smooth) controls,
+        // and relabels the Check caption to "allowed deviation".
+        private void SetSmartModeUI(bool on)
+        {
+            btnCheck.Visible = !on;
+            lblCheck.Text = on ? LS(gStr.gsAllowedDev, "Allowed deviation from boundary")
+                               : LS(gStr.gsCheckOutline, "Check boundary outline");
+            btnSmoothUp.Visible = !on;
+            btnSmoothDown.Visible = !on;
+            btnSmoothApply.Visible = !on;
+            lblSmoot.Visible = !on;
+            lblSmoothVal.Visible = !on;
+        }
+
+        private void ExitSmartMode()
+        {
+            if (!smartMode) return;
+            smartMode = false;
+            smartBase = null;
+            SetSmartModeUI(false);
         }
 
         private const double ExtendMeters = 150.0; // guidance tail length each end

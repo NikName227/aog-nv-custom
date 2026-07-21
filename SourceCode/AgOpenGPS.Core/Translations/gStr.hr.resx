@@ -1544,6 +1544,12 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsFinish" xml:space="preserve">
     <value>Završi</value>
   </data>
+  <data name="gsSmartCurve" xml:space="preserve">
+    <value>Smart Krivulja</value>
+  </data>
+  <data name="gsAllowedDev" xml:space="preserve">
+    <value>Dozvoljeno odstupanje od granice</value>
+  </data>
   <data name="gsManualPasses" xml:space="preserve">
     <value>Ručno dodavanje prolaza</value>
   </data>
