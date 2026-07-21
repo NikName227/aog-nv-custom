@@ -31,6 +31,11 @@ namespace AgOpenGPS
         private readonly GMapOverlay previewOverlay = new GMapOverlay("preview");
         private readonly GMapOverlay lineOverlay = new GMapOverlay("lines");
         private readonly GMapOverlay vehicleOverlay = new GMapOverlay("vehicle");
+        private readonly GMapOverlay measureOverlay = new GMapOverlay("measure");
+
+        // f05gui-09: temporary 2-tap ruler (never saved)
+        private bool measureOn;
+        private readonly List<PointLatLng> measurePts = new List<PointLatLng>();
         private VehicleMarker vehicleMarker;
         private readonly Timer vehicleTimer = new Timer();
 
@@ -149,6 +154,7 @@ namespace AgOpenGPS
             gMapControl.Overlays.Add(previewOverlay);
             gMapControl.Overlays.Add(lineOverlay);
             gMapControl.Overlays.Add(vehicleOverlay);
+            gMapControl.Overlays.Add(measureOverlay);
 
             vehicleMarker = new VehicleMarker(new PointLatLng(
                 mf.AppModel.CurrentLatLon.Latitude,
@@ -581,6 +587,14 @@ namespace AgOpenGPS
         {
             if (e.Button != MouseButtons.Left) return;
 
+            if (measureOn)
+            {
+                if (measurePts.Count >= 2) measurePts.Clear();   // third tap = fresh measurement
+                measurePts.Add(gMapControl.FromLocalToLatLng(e.X, e.Y));
+                DrawMeasure();
+                return;
+            }
+
             if (btnAddPoint.Checked)
             {
                 if (NearestSegment(e.X, e.Y, 40, out EditLine el, out int seg))
@@ -828,6 +842,76 @@ namespace AgOpenGPS
         {
             if (gMapControl.Zoom > gMapControl.MinZoom)
                 gMapControl.Zoom = (int)gMapControl.Zoom - 1;
+        }
+
+        // f05gui-09: 2-tap ruler on the map (the measure tool already in the app,
+        // exposed here). Toggle on, tap two points -> straight-line distance; a
+        // third tap starts over. Temporary overlay, nothing is saved.
+        private void btnMeasure_Click(object sender, EventArgs e)
+        {
+            measureOn = !measureOn;
+            measurePts.Clear();
+            btnMeasure.BackColor = measureOn ? Color.IndianRed : Color.White;
+            DrawMeasure();
+        }
+
+        private void DrawMeasure()
+        {
+            measureOverlay.Routes.Clear();
+            measureOverlay.Markers.Clear();
+
+            for (int i = 0; i < measurePts.Count; i++)
+                measureOverlay.Markers.Add(new MeasureDotMarker(measurePts[i]));
+
+            if (measurePts.Count == 2)
+            {
+                measureOverlay.Routes.Add(new GMapRoute(
+                    new List<PointLatLng> { measurePts[0], measurePts[1] }, "measure")
+                {
+                    Stroke = new Pen(Color.Yellow, 3f) { DashStyle = DashStyle.Dash }
+                });
+
+                vec3 a = LatLngToLocal(measurePts[0]);
+                vec3 b = LatLngToLocal(measurePts[1]);
+                double dx = b.easting - a.easting, dy = b.northing - a.northing;
+                double d = Math.Sqrt(dx * dx + dy * dy);
+                string txt = d < 1.0 ? (d * 100.0).ToString("0") + " cm" : d.ToString("0.00") + " m";
+                measureOverlay.Markers.Add(new MeasureLabelMarker(
+                    new PointLatLng((measurePts[0].Lat + measurePts[1].Lat) / 2.0,
+                                    (measurePts[0].Lng + measurePts[1].Lng) / 2.0), txt));
+            }
+            gMapControl.Invalidate();
+        }
+
+        // yellow endpoint dot for the ruler
+        private class MeasureDotMarker : GMapMarker
+        {
+            public MeasureDotMarker(PointLatLng pos) : base(pos) { }
+            public override void OnRender(Graphics g)
+            {
+                using (var b = new SolidBrush(Color.Yellow))
+                    g.FillEllipse(b, LocalPosition.X - 5, LocalPosition.Y - 5, 10, 10);
+                using (var p = new Pen(Color.Black, 1.5f))
+                    g.DrawEllipse(p, LocalPosition.X - 5, LocalPosition.Y - 5, 10, 10);
+            }
+        }
+
+        // distance readout above the ruler midpoint
+        private class MeasureLabelMarker : GMapMarker
+        {
+            private readonly string text;
+            public MeasureLabelMarker(PointLatLng pos, string t) : base(pos) { text = t; }
+            public override void OnRender(Graphics g)
+            {
+                using (var f = new Font("Tahoma", 10f, FontStyle.Bold))
+                {
+                    SizeF sz = g.MeasureString(text, f);
+                    float x = LocalPosition.X - sz.Width / 2f, y = LocalPosition.Y - sz.Height - 8f;
+                    using (var back = new SolidBrush(Color.FromArgb(220, Color.Black)))
+                        g.FillRectangle(back, x - 4f, y - 2f, sz.Width + 8f, sz.Height + 4f);
+                    g.DrawString(text, f, Brushes.Yellow, x, y);
+                }
+            }
         }
 
         private void btnWinFull_Click(object sender, EventArgs e)
