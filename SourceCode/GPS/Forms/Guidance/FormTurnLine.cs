@@ -191,6 +191,11 @@ namespace AgOpenGPS
             LoadExistingLines();
             CenterOnField();
 
+            // if the plan's reference AB line/curve was deleted, the plan is stale - drop
+            // it so the wizard shows the prereqs and lets the user rebuild on another line
+            if (mf.plan.HasPlan && !mf.plan.ReferenceTrackExists())
+                mf.plan.Reset();
+
             // path planning: current per-field plan state
             FillTrackCombo();
             btnMode1.Checked = mf.plan.mode == CTurnPlan.ModeSequential;
