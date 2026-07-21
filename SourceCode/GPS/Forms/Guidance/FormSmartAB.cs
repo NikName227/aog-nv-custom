@@ -119,8 +119,10 @@ namespace AgOpenGPS
             oglSelf.MouseWheel += oglSelf_MouseWheel; // wheel = zoom
             // wheel events go to the focused control, so grab focus when the mouse is over the map
             oglSelf.MouseEnter += (s, e) => { if (oglSelf.CanFocus) oglSelf.Focus(); };
-            // tapping the Name field pops up the AOG on-screen keyboard
-            tboxName.Click += (s, e) => tboxName.ShowKeyboard(this);
+            // tapping the Name field pops up the AOG on-screen keyboard.
+            // ShowKeyboard saves+restores BackColor, which overwrites the save-state
+            // color RecolorNameBox set while typing -> re-apply it after it closes.
+            tboxName.Click += (s, e) => { tboxName.ShowKeyboard(this); RecolorNameBox(); };
             tboxName.TextChanged += (s, e) => RecolorNameBox();
         }
 
