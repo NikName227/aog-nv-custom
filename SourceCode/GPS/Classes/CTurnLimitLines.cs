@@ -71,13 +71,10 @@ namespace AgOpenGPS
         {
             Reset();
             if (data == null) return;
-#if NV_HIDE_TURN
-            //NV: release builds never activate the WIP turn feature, even when a
-            //field file has it enabled (the editor window is hidden too)
-            isTurnActive = false;
-#else
+            //F05/F06: activation follows the field file; the F06 turnapp/orchard
+            //gate in SaveOpen decides whether this is ever called with real data
+            //(locked installs get ApplyLoaded(null) and never reach here).
             isTurnActive = data.active;
-#endif
             isAutomatic = data.automatic;
             isKPrimary = data.kPrimary;
             isCombined = data.combined;

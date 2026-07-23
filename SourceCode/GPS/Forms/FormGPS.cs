@@ -369,11 +369,6 @@ namespace AgOpenGPS
             //winform initialization
             InitializeComponent();
 
-#if NV_HIDE_TURN
-            //NV: turn feature (F05) is work in progress - hidden in release builds
-            turnLinesToolStripMenuItem.Visible = false;
-#endif
-
             //NV F06 feature lock: optional features stay hidden unless the
             //encrypted per-install config unlocks them (basic vs advanced user)
             CFeatureLock.Load();
