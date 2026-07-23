@@ -14,9 +14,6 @@
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
     <DebugType>none</DebugType>
-    <!-- NV: turn feature (F05, work in progress) is hidden in release builds;
-         the code stays in, Debug/test builds keep the option. -->
-    <DefineConstants>$(DefineConstants);NV_HIDE_TURN</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
