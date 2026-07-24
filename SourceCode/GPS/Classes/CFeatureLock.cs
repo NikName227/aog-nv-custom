@@ -19,6 +19,7 @@ namespace AgOpenGPS
         public const string FeatureGeoportal = "geoportal";  // Map App (F01) + Geoportal boundary (F02)
         public const string FeatureTurnApp = "turnapp";      // Turn lines + pass plan (F05)
         public const string FeatureOrchard = "orchard";      // Orchard planner (F50)
+        public const string FeatureIntegrationTest = "integrationtest"; // Integration Test wizard (F07)
 
         // unremarkable file name on purpose (not "license"/"premium")
         private static readonly string configPath = Path.Combine(
