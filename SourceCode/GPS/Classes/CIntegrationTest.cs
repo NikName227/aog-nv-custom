@@ -156,16 +156,16 @@ namespace AgOpenGPS
                 big = ((int)(p * 100)).ToString(CultureInfo.InvariantCulture) + " %";
                 return p;
             }
-            // straight: seconds in each band
+            // straight: seconds accumulated in each band (monotonic — samples only add)
             double[] sec = BandSeconds();
-            double filled = 0; int worst = 0; double worstSec = double.MaxValue;
-            for (int i = 0; i < 3; i++)
-            {
-                filled += Math.Min(sec[i], targetPerBandSec);
-                if (sec[i] < worstSec) { worstSec = sec[i]; worst = i; }
-            }
+            double filled = 0;
+            for (int i = 0; i < 3; i++) filled += Math.Min(sec[i], targetPerBandSec);
+            // guide sequentially: the first band (low -> high) that isn't full yet.
+            // Stable order 3 -> 7 -> 10, no flicker (a band only advances once complete).
+            int next = 2;
+            for (int i = 0; i < 3; i++) { if (sec[i] < targetPerBandSec) { next = i; break; } }
             action = hr ? "Vozi ravno na" : "Drive straight at";
-            big = bandCenter[worst].ToString("0", CultureInfo.InvariantCulture) + " km/h";
+            big = bandCenter[next].ToString("0", CultureInfo.InvariantCulture) + " km/h";
             return Clamp01(filled / (3 * targetPerBandSec));
         }
 
