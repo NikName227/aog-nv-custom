@@ -117,9 +117,13 @@ namespace AgOpenGPS
             }
             lastE = E; lastN = N;
 
-            double imuRad = mf.timerSim.Enabled
-                ? mf.ahrs.imuHeading                             // sim: already radians
-                : glm.toRadians(mf.ahrs.imuHeading);            // real: degrees
+            // Roll arrives as ahrs.imuRoll (deg) whatever the source (IMU / dual / HPR),
+            // so the roll test is source-agnostic. Heading: with dual-as-IMU, imuHeading
+            // holds the dual heading (deg); 99999 = no IMU/dual heading -> NaN so the
+            // heading checks skip instead of feeding garbage.
+            double imuRaw = mf.ahrs.imuHeading;
+            double imuRad = (imuRaw > 3600.0) ? double.NaN
+                : (mf.timerSim.Enabled ? imuRaw : glm.toRadians(imuRaw));
 
             var smp = new ITSample
             {
@@ -141,15 +145,16 @@ namespace AgOpenGPS
             prevFixRad = mf.fixHeading;
         }
 
-        // 0..1 progress + a short driver hint (localized).
-        public double Progress(out string hint, bool hr)
+        // 0..1 progress + driver hint split into an action line and a big value
+        // (so the UI can show the target speed large and readable while driving).
+        public double Progress(out string action, out string big, bool hr)
         {
             if (mode == ITMode.Circle)
             {
-                double p = cumHeadingRad / circleTargetRad;
-                hint = hr ? "Drži konstantan kut — vozi krug"
-                          : "Hold a constant angle — drive the circle";
-                return Clamp01(p);
+                double p = Clamp01(cumHeadingRad / circleTargetRad);
+                action = hr ? "Drži konstantan kut — vozi krug" : "Hold a constant angle — drive the circle";
+                big = ((int)(p * 100)).ToString(CultureInfo.InvariantCulture) + " %";
+                return p;
             }
             // straight: seconds in each band
             double[] sec = BandSeconds();
@@ -159,8 +164,8 @@ namespace AgOpenGPS
                 filled += Math.Min(sec[i], targetPerBandSec);
                 if (sec[i] < worstSec) { worstSec = sec[i]; worst = i; }
             }
-            hint = (hr ? "Vozi ravno na " : "Drive straight at ")
-                 + bandCenter[worst].ToString("0", CultureInfo.InvariantCulture) + " km/h";
+            action = hr ? "Vozi ravno na" : "Drive straight at";
+            big = bandCenter[worst].ToString("0", CultureInfo.InvariantCulture) + " km/h";
             return Clamp01(filled / (3 * targetPerBandSec));
         }
 
@@ -280,16 +285,25 @@ namespace AgOpenGPS
 
             // F2F heading noise vs speed
             double[] nz = F2FNoiseVsSpeed(hr);
-            var fc = new ITCheck { name = hr ? "F2F heading (po brzini)" : "F2F heading (by speed)" };
-            // nz[0..2] = std deg for 3/7/10
+            var fc = new ITCheck { name = hr ? "Heading (IMU/dual vs F2F)" : "Heading (IMU/dual vs F2F)" };
             int firstOk = -1;
-            for (int i = 0; i < 3; i++) if (nz[i] >= 0 && nz[i] < 1.0) { firstOk = i; break; }
-            if (firstOk < 0) { fc.status = 1; fc.desc = hr ? "F2F šumovit na svim brzinama." : "F2F noisy at all tested speeds."; fc.value = "—"; }
+            if (!HasImuHeading())
+            {
+                fc.status = 1;
+                fc.desc = hr ? "Nema IMU/dual heading za usporedbu — preskočeno (treba IMU ili dual-as-IMU)."
+                             : "No IMU/dual heading to compare — skipped (needs IMU or dual-as-IMU).";
+                fc.value = "N/A";
+            }
             else
             {
-                fc.status = 0;
-                fc.desc = hr ? "Šum pada s brzinom — upotrebljiv od navedene." : "Noise drops with speed — usable from shown speed.";
-                fc.value = "≥" + bandCenter[firstOk].ToString("0") + " km/h";
+                for (int i = 0; i < 3; i++) if (nz[i] >= 0 && nz[i] < 1.0) { firstOk = i; break; }
+                if (firstOk < 0) { fc.status = 1; fc.desc = hr ? "F2F šumovit na svim brzinama." : "F2F noisy at all tested speeds."; fc.value = "—"; }
+                else
+                {
+                    fc.status = 0;
+                    fc.desc = hr ? "F2F šum pada s brzinom — upotrebljiv od navedene." : "F2F noise drops with speed — usable from shown speed.";
+                    fc.value = "≥" + bandCenter[firstOk].ToString("0") + " km/h";
+                }
             }
             r.checks.Add(fc);
 
@@ -327,24 +341,35 @@ namespace AgOpenGPS
             double geoSweep = UnwrapSweep(geo);
             double sign = geoSweep >= 0 ? 1 : -1;
 
-            // per-source tracking error vs tangent (mounting offset removed)
-            double[] imuErr, f2fErr;
-            double imuScale, f2fScale;
-            SourceVsTangent(idx, geo, sign, true, out imuErr, out imuScale, geoSweep);
+            // per-source tracking error vs tangent (mounting offset removed).
+            // F2F (course-over-ground) always available; IMU/dual only if present.
+            double[] f2fErr; double f2fScale;
             SourceVsTangent(idx, geo, sign, false, out f2fErr, out f2fScale, geoSweep);
-            double imuMax = MaxAbs(imuErr), f2fMax = MaxAbs(f2fErr);
+            double f2fMax = MaxAbs(f2fErr);
+            double imuMax = 0, sp = 0;
+            bool hasImu = HasImuHeading();
 
-            var c1 = new ITCheck { name = hr ? "IMU prati zavoj" : "IMU tracks turn" };
-            c1.status = imuMax < 1.0 ? 0 : (imuMax < 2.5 ? 1 : 2);
-            c1.desc = hr ? "Odstupanje IMU headinga od tangente kroz krug." : "IMU heading vs tangent over the lap.";
-            c1.value = "± " + imuMax.ToString("0.0") + "°";
+            var c1 = new ITCheck { name = hr ? "IMU/dual prati zavoj" : "IMU/dual tracks turn" };
+            var c2 = new ITCheck { name = hr ? "IMU/dual yaw scale" : "IMU/dual yaw scale" };
+            if (hasImu)
+            {
+                double[] imuErr; double imuScale;
+                SourceVsTangent(idx, geo, sign, true, out imuErr, out imuScale, geoSweep);
+                imuMax = MaxAbs(imuErr);
+                sp = (imuScale - 1.0) * 100.0;
+                c1.status = imuMax < 1.0 ? 0 : (imuMax < 2.5 ? 1 : 2);
+                c1.desc = hr ? "Odstupanje IMU/dual headinga od tangente kroz krug." : "IMU/dual heading vs tangent over the lap.";
+                c1.value = "± " + imuMax.ToString("0.0") + "°";
+                c2.status = Math.Abs(sp) < 1.0 ? 0 : (Math.Abs(sp) < 3.0 ? 1 : 2);
+                c2.desc = hr ? "Ukupno okretanje IMU/dual vs geometrijski krug." : "IMU/dual total turn vs geometric lap.";
+                c2.value = (sp >= 0 ? "+" : "") + sp.ToString("0.0") + " %";
+            }
+            else
+            {
+                c1.status = 1; c1.value = "N/A"; c1.desc = hr ? "Nema IMU/dual heading — preskočeno." : "No IMU/dual heading — skipped.";
+                c2.status = 1; c2.value = "N/A"; c2.desc = hr ? "Nema IMU/dual heading — preskočeno." : "No IMU/dual heading — skipped.";
+            }
             r.checks.Add(c1);
-
-            var c2 = new ITCheck { name = hr ? "IMU yaw scale" : "IMU yaw scale" };
-            double sp = (imuScale - 1.0) * 100.0;
-            c2.status = Math.Abs(sp) < 1.0 ? 0 : (Math.Abs(sp) < 3.0 ? 1 : 2);
-            c2.desc = hr ? "Ukupno okretanje IMU-a vs geometrijski krug." : "IMU total turn vs geometric lap.";
-            c2.value = (sp >= 0 ? "+" : "") + sp.ToString("0.0") + " %";
             r.checks.Add(c2);
 
             var c3 = new ITCheck { name = hr ? "F2F prati zavoj" : "F2F tracks turn" };
@@ -384,6 +409,7 @@ namespace AgOpenGPS
         // ================================================================ helpers
         private List<int> AllIdx() { var l = new List<int>(); for (int i = 0; i < s.Count; i++) l.Add(i); return l; }
         private double[] SteerAbs() { var a = new double[s.Count]; for (int i = 0; i < s.Count; i++) a[i] = Math.Abs(s[i].steer); return a; }
+        private bool HasImuHeading() { for (int i = 0; i < s.Count; i++) if (!double.IsNaN(s[i].imuRad)) return true; return false; }
 
         private bool HasSpread(List<int> idx, bool xte)
         {
@@ -455,7 +481,8 @@ namespace AgOpenGPS
             {
                 var d = new List<double>();
                 for (int i = 0; i < s.Count; i++)
-                    if (Math.Abs(s[i].speed - bandCenter[b]) <= bandTol) d.Add(WrapPi(s[i].f2fRad - s[i].imuRad));
+                    if (Math.Abs(s[i].speed - bandCenter[b]) <= bandTol && !double.IsNaN(s[i].imuRad))
+                        d.Add(WrapPi(s[i].f2fRad - s[i].imuRad));
                 if (d.Count < 15) continue;
                 double off = CircularMean(d.ToArray());
                 double ss = 0; foreach (double v in d) { double e = WrapPi(v - off); ss += e * e; }

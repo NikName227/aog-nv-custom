@@ -19,7 +19,7 @@ namespace AgOpenGPS
         private readonly CIntegrationTest test = new CIntegrationTest();
         private readonly Timer poll = new Timer();
 
-        private Label lblTitle, lblStatus;
+        private Label lblTitle, lblHintTop, lblHintBig, lblHintSub;
         private ProgressBar bar;
         private Button btnStraight, btnCircle, btnFinish, btnClose;
 
@@ -33,7 +33,7 @@ namespace AgOpenGPS
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;
             MaximizeBox = false; MinimizeBox = false;
-            ClientSize = new Size(430, 300);
+            ClientSize = new Size(440, 348);
             BackColor = Color.FromArgb(24, 33, 29);
             ForeColor = Color.Gainsboro;
             Font = new Font("Tahoma", 9.75f);
@@ -52,24 +52,38 @@ namespace AgOpenGPS
             btnStraight.Click += (s, e) => StartTest(ITMode.Straight);
             btnCircle.Click += (s, e) => StartTest(ITMode.Circle);
 
-            lblStatus = new Label
+            // 3-line driver hint: action / BIG value (target km/h) / progress — big + centered so it reads on the tablet while driving
+            lblHintTop = new Label
             {
                 Text = hr ? "Preporuka: prvo pravac (geometrija), pa kružnica (heading)."
                           : "Recommended: straight first (geometry), then circle (heading).",
-                AutoSize = false, Location = new Point(16, 140), Size = new Size(398, 60),
-                ForeColor = Color.FromArgb(150, 170, 160)
+                AutoSize = false, Location = new Point(16, 126), Size = new Size(408, 26),
+                TextAlign = ContentAlignment.MiddleCenter, Font = new Font("Tahoma", 11.5f),
+                ForeColor = Color.FromArgb(200, 214, 206)
+            };
+            lblHintBig = new Label
+            {
+                Text = "", AutoSize = false, Location = new Point(16, 152), Size = new Size(408, 44),
+                TextAlign = ContentAlignment.MiddleCenter,
+                Font = new Font("Tahoma", 26f, FontStyle.Bold), ForeColor = Color.FromArgb(90, 200, 220)
+            };
+            lblHintSub = new Label
+            {
+                Text = "", AutoSize = false, Location = new Point(16, 198), Size = new Size(408, 20),
+                TextAlign = ContentAlignment.MiddleCenter, Font = new Font("Tahoma", 9.5f),
+                ForeColor = Color.FromArgb(140, 160, 150)
             };
 
-            bar = new ProgressBar { Location = new Point(16, 204), Size = new Size(398, 18), Minimum = 0, Maximum = 100, Visible = false };
+            bar = new ProgressBar { Location = new Point(16, 224), Size = new Size(408, 16), Minimum = 0, Maximum = 100, Visible = false };
 
-            btnFinish = MakeBtn(hr ? "Završi + report" : "Finish + report", new Point(16, 236), new Size(240, 46), Color.FromArgb(46, 139, 79));
+            btnFinish = MakeBtn(hr ? "Završi + report" : "Finish + report", new Point(16, 252), new Size(250, 46), Color.FromArgb(46, 139, 79));
             btnFinish.Enabled = false;
             btnFinish.Click += (s, e) => Finish();
 
-            btnClose = MakeBtn(hr ? "Zatvori" : "Close", new Point(264, 236), new Size(150, 46), Color.FromArgb(60, 71, 64));
+            btnClose = MakeBtn(hr ? "Zatvori" : "Close", new Point(274, 252), new Size(150, 46), Color.FromArgb(60, 71, 64));
             btnClose.Click += (s, e) => Close();
 
-            Controls.AddRange(new Control[] { lblTitle, btnStraight, btnCircle, lblStatus, bar, btnFinish, btnClose });
+            Controls.AddRange(new Control[] { lblTitle, btnStraight, btnCircle, lblHintTop, lblHintBig, lblHintSub, bar, btnFinish, btnClose });
 
             poll.Interval = 100;   // ~10 Hz
             poll.Tick += Poll_Tick;
@@ -94,6 +108,7 @@ namespace AgOpenGPS
             btnStraight.Enabled = btnCircle.Enabled = false;
             btnFinish.Enabled = true;
             bar.Visible = true; bar.Value = 0;
+            lblHintBig.Text = ""; lblHintSub.Text = "";
             lblTitle.Text = m == ITMode.Straight
                 ? (hr ? "Test pravac — vozi" : "Straight test — drive")
                 : (hr ? "Test kružnica — vozi" : "Circle test — drive");
@@ -103,11 +118,12 @@ namespace AgOpenGPS
         private void Poll_Tick(object sender, EventArgs e)
         {
             test.RecordFrom(mf);
-            string hint;
-            double p = test.Progress(out hint, hr);
+            string action, big;
+            double p = test.Progress(out action, out big, hr);
             bar.Value = (int)(p * 100);
-            lblStatus.Text = hint + "   ·   " + (hr ? "uzoraka: " : "samples: ") + test.SampleCount
-                           + "   ·   " + (p * 100).ToString("0") + "%";
+            lblHintTop.Text = action;
+            lblHintBig.Text = big;
+            lblHintSub.Text = (hr ? "uzoraka " : "samples ") + test.SampleCount + " · " + (p * 100).ToString("0") + "%";
             if (test.IsComplete()) Finish();
         }
 
@@ -120,7 +136,7 @@ namespace AgOpenGPS
             ITResult r = test.Analyze(mf, hr);
             if (!r.ok)
             {
-                lblStatus.Text = r.message;
+                ShowMsg(r.message);
                 // allow retry
                 btnStraight.Enabled = btnCircle.Enabled = true;
                 bar.Visible = false;
@@ -138,17 +154,19 @@ namespace AgOpenGPS
                 File.WriteAllText(Path.Combine(dir, baseName + ".html"), BuildReportHtml(r), Encoding.UTF8);
                 File.WriteAllText(Path.Combine(dir, baseName + ".csv"), test.BuildCsv(), Encoding.UTF8);
 
-                lblStatus.Text = (hr ? "Report spremljen: " : "Report saved: ") + baseName + ".html";
+                ShowMsg((hr ? "Report spremljen: " : "Report saved: ") + baseName + ".html");
                 System.Diagnostics.Process.Start(Path.Combine(dir, baseName + ".html"));
             }
             catch (Exception ex)
             {
-                lblStatus.Text = (hr ? "Greška pri spremanju: " : "Save error: ") + ex.Message;
+                ShowMsg((hr ? "Greška pri spremanju: " : "Save error: ") + ex.Message);
             }
 
             btnStraight.Enabled = btnCircle.Enabled = true;
             bar.Visible = false;
         }
+
+        private void ShowMsg(string s) { lblHintTop.Text = s; lblHintBig.Text = ""; lblHintSub.Text = ""; }
 
         // ---------------------------------------------------------------- report
         private string BuildReportHtml(ITResult r)
