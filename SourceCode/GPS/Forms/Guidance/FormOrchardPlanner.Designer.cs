@@ -51,6 +51,7 @@ namespace AgOpenGPS
             this.btnCancel = new System.Windows.Forms.Button();
             this.btnAccept = new System.Windows.Forms.Button();
             this.btnNewOrchard = new System.Windows.Forms.Button();
+            this.btnTreesOnRow = new System.Windows.Forms.Button();
             this.pnlGen = new System.Windows.Forms.Panel();
             this.lblGenCap = new System.Windows.Forms.Label();
             this.lblGenRowSpace = new System.Windows.Forms.Label();
@@ -562,6 +563,22 @@ namespace AgOpenGPS
             this.btnNewOrchard.UseVisualStyleBackColor = false;
             this.btnNewOrchard.Click += new System.EventHandler(this.btnNewOrchard_Click);
             //
+            // btnTreesOnRow (planting: re-space the seedlings along the active row after
+            // it was hand-edited, and put seedlings on a row drawn by hand for an odd
+            // corner of the field). Tucked into the free corner of the arrow pad.
+            //
+            this.btnTreesOnRow.BackColor = System.Drawing.Color.OldLace;
+            this.btnTreesOnRow.Enabled = false;
+            this.btnTreesOnRow.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnTreesOnRow.Font = new System.Drawing.Font("Tahoma", 8.25F, System.Drawing.FontStyle.Bold);
+            this.btnTreesOnRow.Location = new System.Drawing.Point(772, 220);
+            this.btnTreesOnRow.Name = "btnTreesOnRow";
+            this.btnTreesOnRow.Size = new System.Drawing.Size(78, 58);
+            this.btnTreesOnRow.TabIndex = 41;
+            this.btnTreesOnRow.Text = "Trees\r\non row";
+            this.btnTreesOnRow.UseVisualStyleBackColor = false;
+            this.btnTreesOnRow.Click += new System.EventHandler(this.btnTreesOnRow_Click);
+            //
             // pnlGen - planting layout settings; sits over the row buttons so the drawing
             // tools (arrow pad, add/delete point, measure) stay reachable above it
             //
@@ -727,6 +744,7 @@ namespace AgOpenGPS
             this.Controls.Add(this.btnCancel);
             this.Controls.Add(this.btnAccept);
             this.Controls.Add(this.btnNewOrchard);
+            this.Controls.Add(this.btnTreesOnRow);
             this.Controls.Add(this.pnlGen);
             this.Controls.Add(this.oglSelf);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.None;
@@ -784,6 +802,7 @@ namespace AgOpenGPS
         private System.Windows.Forms.Button btnAccept;
         //planting: new-orchard layout generator
         private System.Windows.Forms.Button btnNewOrchard;
+        private System.Windows.Forms.Button btnTreesOnRow;
         private System.Windows.Forms.Panel pnlGen;
         private System.Windows.Forms.Label lblGenCap;
         private System.Windows.Forms.Label lblGenRowSpace;

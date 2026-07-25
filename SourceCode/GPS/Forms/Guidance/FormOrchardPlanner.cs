@@ -280,16 +280,33 @@ namespace AgOpenGPS
             GL.End();
         }
 
+        // Trees / planting spots as brown dots; the target row's own trees are drawn
+        // brighter and bigger so it is obvious which row an edit will act on.
         private void DrawTrees()
         {
+            int hotRow = genMode ? -1 : TargetRow();
+
             var all = new List<vec2>(trees);
-            foreach (var r in rows) all.AddRange(r.trees);
-            if (all.Count == 0) return;
-            GL.Color3(0.55f, 0.35f, 0.15f); // brown dots
-            GL.PointSize(5f);
-            GL.Begin(PrimitiveType.Points);
-            foreach (var p in all) GL.Vertex3(p.easting, p.northing, 0);
-            GL.End();
+            for (int i = 0; i < rows.Count; i++)
+                if (i != hotRow) all.AddRange(rows[i].trees);
+
+            if (all.Count > 0)
+            {
+                GL.Color3(0.55f, 0.35f, 0.15f);
+                GL.PointSize(5f);
+                GL.Begin(PrimitiveType.Points);
+                foreach (var p in all) GL.Vertex3(p.easting, p.northing, 0);
+                GL.End();
+            }
+
+            if (hotRow >= 0 && rows[hotRow].trees.Count > 0)
+            {
+                GL.Color3(1.0f, 0.65f, 0.25f);
+                GL.PointSize(8f);
+                GL.Begin(PrimitiveType.Points);
+                foreach (var p in rows[hotRow].trees) GL.Vertex3(p.easting, p.northing, 0);
+                GL.End();
+            }
         }
 
         // Control-point markers. Selected = green, first = cyan, last = orange, others white.
@@ -528,7 +545,11 @@ namespace AgOpenGPS
             rows[workIdx].pts = new List<vec2>(pts);
             rows[workIdx].BuildCurve();
             midlines.Clear();            // rows changed -> old path is stale
-            lblWarn.Text = "";
+            //the seedlings still sit on the OLD shape - say so instead of moving them
+            //behind the driver's back (a small nudge may well be intentional)
+            lblWarn.Text = rows[workIdx].trees.Count > 0
+                ? "Row edited - tap 'Trees on row' to re-space the seedlings"
+                : "";
             oglSelf.Invalidate();
         }
 
@@ -817,6 +838,14 @@ namespace AgOpenGPS
             btnDeleteRow.Enabled = has;
             btnEdit.Enabled = has && mode == ViewMode.Browse;
             btnMakePath.Enabled = rows.Count >= 2;
+            btnTreesOnRow.Enabled = !genMode && TargetRow() >= 0;
+        }
+
+        /// <summary>The row the row-level actions apply to: the edited one, else the browsed one.</summary>
+        private int TargetRow()
+        {
+            int t = (mode == ViewMode.Build) ? workIdx : activeIdx;
+            return (t >= 0 && t < rows.Count) ? t : -1;
         }
 
         private void btnNewRow_Click(object sender, EventArgs e)
@@ -854,7 +883,8 @@ namespace AgOpenGPS
             }
             UpdateNavButtons();
             RefreshActiveName();
-            lblActiveOp.Text = (rows[activeIdx].name ?? "row") + "  (" + (activeIdx + 1) + "/" + rows.Count + ")";
+            lblActiveOp.Text = (rows[activeIdx].name ?? "row") + "  (" + (activeIdx + 1) + "/" + rows.Count + ")"
+                + (rows[activeIdx].trees.Count > 0 ? "  -  " + rows[activeIdx].trees.Count + " trees" : "");
             oglSelf.Invalidate();
         }
 
@@ -965,6 +995,23 @@ namespace AgOpenGPS
             UpdateNavButtons();
             lblGenResult.Text = made.Count + " rows, " + treeCount + " trees";
             lblActiveOp.Text = "Generated " + made.Count + " rows / " + treeCount + " trees";
+            oglSelf.Invalidate();
+        }
+
+        // Seedlings along ONE row, at the current tree spacing / setback / headland.
+        // Used after hand-editing a generated row and for rows drawn by hand to fill an
+        // odd corner of the field.
+        private void btnTreesOnRow_Click(object sender, EventArgs e)
+        {
+            int t = TargetRow();
+            if (t < 0) { lblActiveOp.Text = "Pick a row first"; return; }
+
+            COrchard.PlaceTreesOnRow(rows[t], FieldBounds(),
+                (double)nudGenTreeSpace.Value, (double)nudGenSetback.Value,
+                (double)nudGenHeadland.Value);
+
+            lblWarn.Text = "";
+            lblActiveOp.Text = (rows[t].name ?? "row") + ": " + rows[t].trees.Count + " trees";
             oglSelf.Invalidate();
         }
 
