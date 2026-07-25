@@ -114,6 +114,10 @@ namespace AgOpenGPS
             this.nudOrchardSafe = new System.Windows.Forms.NumericUpDown();
             this.chkOrchardOnePass = new System.Windows.Forms.CheckBox();
             this.chkOrchardCenterFirst = new System.Windows.Forms.CheckBox();
+            this.lblPlantLateral = new System.Windows.Forms.Label();
+            this.nudPlantLateral = new System.Windows.Forms.NumericUpDown();
+            this.lblPlantBehind = new System.Windows.Forms.Label();
+            this.nudPlantBehind = new System.Windows.Forms.NumericUpDown();
             this.tabTHitch = new System.Windows.Forms.TabPage();
             this.label112 = new System.Windows.Forms.Label();
             this.labelTractorUnits = new System.Windows.Forms.Label();
@@ -1888,6 +1892,29 @@ namespace AgOpenGPS
             this.chkOrchardCenterFirst.Location = new System.Drawing.Point(20, 264);
             this.chkOrchardCenterFirst.Size = new System.Drawing.Size(440, 30);
             this.chkOrchardCenterFirst.Text = "Center pass first (odd pass count)";
+            //planter geometry (F50 planting): the seedling drop point, used by the
+            //"next tree" HUD and the planted marking - guidance still steers the pivot
+            this.lblPlantLateral.Font = new System.Drawing.Font("Tahoma", 12F);
+            this.lblPlantLateral.Location = new System.Drawing.Point(20, 310);
+            this.lblPlantLateral.Size = new System.Drawing.Size(300, 26);
+            this.lblPlantLateral.Text = "Planter offset - right + / left - (m)";
+            this.nudPlantLateral.DecimalPlaces = 2;
+            this.nudPlantLateral.Font = new System.Drawing.Font("Tahoma", 12F);
+            this.nudPlantLateral.Increment = new decimal(new int[] { 5, 0, 0, 131072 });
+            this.nudPlantLateral.Location = new System.Drawing.Point(340, 306);
+            this.nudPlantLateral.Minimum = new decimal(new int[] { 10, 0, 0, -2147483648 });
+            this.nudPlantLateral.Maximum = new decimal(new int[] { 10, 0, 0, 0 });
+            this.nudPlantLateral.Size = new System.Drawing.Size(120, 30);
+            this.lblPlantBehind.Font = new System.Drawing.Font("Tahoma", 12F);
+            this.lblPlantBehind.Location = new System.Drawing.Point(20, 352);
+            this.lblPlantBehind.Size = new System.Drawing.Size(300, 26);
+            this.lblPlantBehind.Text = "Planter behind rear axle (m)";
+            this.nudPlantBehind.DecimalPlaces = 2;
+            this.nudPlantBehind.Font = new System.Drawing.Font("Tahoma", 12F);
+            this.nudPlantBehind.Increment = new decimal(new int[] { 5, 0, 0, 131072 });
+            this.nudPlantBehind.Location = new System.Drawing.Point(340, 348);
+            this.nudPlantBehind.Maximum = new decimal(new int[] { 15, 0, 0, 0 });
+            this.nudPlantBehind.Size = new System.Drawing.Size(120, 30);
             this.pnlOrchardSet.Controls.Add(this.lblOrchardMode);
             this.pnlOrchardSet.Controls.Add(this.cboOrchardMode);
             this.pnlOrchardSet.Controls.Add(this.lblOrchardRowOffset);
@@ -1898,6 +1925,10 @@ namespace AgOpenGPS
             this.pnlOrchardSet.Controls.Add(this.nudOrchardSafe);
             this.pnlOrchardSet.Controls.Add(this.chkOrchardOnePass);
             this.pnlOrchardSet.Controls.Add(this.chkOrchardCenterFirst);
+            this.pnlOrchardSet.Controls.Add(this.lblPlantLateral);
+            this.pnlOrchardSet.Controls.Add(this.nudPlantLateral);
+            this.pnlOrchardSet.Controls.Add(this.lblPlantBehind);
+            this.pnlOrchardSet.Controls.Add(this.nudPlantBehind);
             //
             // tabTHitch
             //
@@ -8923,6 +8954,11 @@ namespace AgOpenGPS
         private System.Windows.Forms.NumericUpDown nudOrchardRowOffset;
         private System.Windows.Forms.CheckBox chkOrchardOnePass;
         private System.Windows.Forms.CheckBox chkOrchardCenterFirst;
+        //F50 planting: planter geometry (seedling drop point)
+        private System.Windows.Forms.Label lblPlantLateral;
+        private System.Windows.Forms.NumericUpDown nudPlantLateral;
+        private System.Windows.Forms.Label lblPlantBehind;
+        private System.Windows.Forms.NumericUpDown nudPlantBehind;
         private NudlessNumericUpDown nudAntennaHeight;
         private NudlessNumericUpDown nudAntennaPivot;
         private System.Windows.Forms.PictureBox pboxAntenna;

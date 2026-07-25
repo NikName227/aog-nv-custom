@@ -39,6 +39,10 @@ namespace AgOpenGPS
         // Generated mid-inter-row path (yellow). Rebuilt by "Make path"; committed on Accept.
         private readonly List<CTrk> midlines = new List<CTrk>();
 
+        // Planting: while the new-orchard panel is open, "pts" holds the REFERENCE line
+        // (row direction) instead of a row - the layout is generated from it.
+        private bool genMode;
+
         private enum ViewMode { Browse, Build }
         private ViewMode mode = ViewMode.Build;
         private int activeIdx = -1; // Browse selection
@@ -226,6 +230,7 @@ namespace AgOpenGPS
             DrawTrees();
             DrawRows();
             DrawMidlines();
+            DrawRefLine();
             if (mode == ViewMode.Build) DrawPoints();
             DrawMeasure();
 
@@ -262,6 +267,17 @@ namespace AgOpenGPS
                 foreach (vec3 p in t.curvePts) GL.Vertex3(p.easting, p.northing, 0);
                 GL.End();
             }
+        }
+
+        // Planting reference line (cyan): the direction the generated rows follow.
+        private void DrawRefLine()
+        {
+            if (!genMode || pts.Count < 2) return;
+            GL.LineWidth(2);
+            GL.Color3(0.2f, 0.9f, 1.0f);
+            GL.Begin(PrimitiveType.LineStrip);
+            foreach (var p in pts) GL.Vertex3(p.easting, p.northing, 0);
+            GL.End();
         }
 
         private void DrawTrees()
@@ -402,10 +418,10 @@ namespace AgOpenGPS
             {
                 if (AddActive)
                 {
-                    EnsureWorkRow();
+                    if (!genMode) EnsureWorkRow();   // in genMode the points are the reference line
                     pts.Add(ScreenToWorld(e.X, e.Y));
                     BuildActiveRow();
-                    lblActiveOp.Text = "Add point";
+                    lblActiveOp.Text = genMode ? "Reference line: " + pts.Count + " points" : "Add point";
                 }
                 else if (btnDeletePoint.Checked)
                 {
@@ -507,7 +523,8 @@ namespace AgOpenGPS
         // Sync the edited control points into the work row and rebuild its curve.
         private void BuildActiveRow()
         {
-            if (workIdx < 0 || workIdx >= rows.Count) return;
+            //planting: the edited points are the reference line, not a row
+            if (genMode || workIdx < 0 || workIdx >= rows.Count) { oglSelf.Invalidate(); return; }
             rows[workIdx].pts = new List<vec2>(pts);
             rows[workIdx].BuildCurve();
             midlines.Clear();            // rows changed -> old path is stale
@@ -877,6 +894,93 @@ namespace AgOpenGPS
                 lblActiveOp.Text = "KML: +" + newRows.Count + " rows, " + trees.Count + " trees";
                 oglSelf.Invalidate();
             }
+        }
+
+        // ── New orchard (planting): generate rows + seedling spots ────────
+        // The orchard does not exist yet: the driver draws ONE reference line inside the
+        // boundary (2 points = straight, more = curve) and the layout settings turn it
+        // into the full grid of rows and planting positions.
+        private List<List<vec2>> FieldBounds()
+        {
+            var b = new List<List<vec2>>();
+            for (int i = 0; i < mf.bnd.bndList.Count; i++)
+            {
+                var ring = mf.bnd.bndList[i].fenceLineEar;
+                if (ring != null && ring.Count >= 3) b.Add(new List<vec2>(ring));
+            }
+            return b;
+        }
+
+        private void btnNewOrchard_Click(object sender, EventArgs e)
+        {
+            if (FieldBounds().Count == 0)
+            {
+                lblActiveOp.Text = "New orchard needs a field boundary first";
+                return;
+            }
+
+            genMode = true;
+            pnlGen.Visible = true;
+            pnlGen.BringToFront();
+            lblGenResult.Text = "";
+
+            pts.Clear(); workIdx = -1; selIndex = -1;
+            SetMode(ViewMode.Build);
+            lblActiveOp.Text = "New orchard - set the spacings, then draw the reference line";
+            oglSelf.Invalidate();
+        }
+
+        private void btnGenLine_Click(object sender, EventArgs e)
+        {
+            pts.Clear(); selIndex = -1;
+            btnDeletePoint.Checked = false;
+            SetMode(ViewMode.Build);
+            addStage = 1;
+            ApplyAddStageVisual();
+            lblActiveOp.Text = "Draw the reference line - tap 2 points (more = curved rows)";
+            oglSelf.Invalidate();
+        }
+
+        private void btnGenerate_Click(object sender, EventArgs e)
+        {
+            if (pts.Count < 2) { lblGenResult.Text = "Draw the reference line first"; return; }
+
+            var bounds = FieldBounds();
+            var made = COrchard.GenerateOrchard(pts, bounds,
+                (double)nudGenRowSpace.Value, (double)nudGenTreeSpace.Value,
+                (double)nudGenHeadland.Value, (double)nudGenSetback.Value,
+                chkGenStagger.Checked, out string err);
+
+            if (err != null && made.Count == 0) { lblGenResult.Text = err; return; }
+
+            // regenerating replaces the previous layout, hand-drawn/imported rows stay
+            rows.RemoveAll(r => r.source == RowSource.Generated);
+            foreach (var r in made) rows.Add(r);
+
+            int treeCount = 0;
+            foreach (var r in made) treeCount += r.trees.Count;
+
+            midlines.Clear(); lblWarn.Text = "";
+            ResetAddStage();
+            UpdateNavButtons();
+            lblGenResult.Text = made.Count + " rows, " + treeCount + " trees";
+            lblActiveOp.Text = "Generated " + made.Count + " rows / " + treeCount + " trees";
+            oglSelf.Invalidate();
+        }
+
+        private void btnGenClose_Click(object sender, EventArgs e)
+        {
+            genMode = false;
+            pnlGen.Visible = false;
+            pts.Clear(); selIndex = -1;
+            ResetAddStage();
+            btnDeletePoint.Checked = false;
+
+            if (rows.Count > 0) { activeIdx = 0; SetMode(ViewMode.Browse); RefreshActiveName(); }
+            else SetMode(ViewMode.Build);
+            UpdateNavButtons();
+            lblActiveOp.Text = "";
+            oglSelf.Invalidate();
         }
 
         // ── Make path (phase 2: passes from the IMPLEMENT settings) ───────
