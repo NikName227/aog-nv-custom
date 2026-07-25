@@ -1021,6 +1021,9 @@ namespace AgOpenGPS
             //NV follow plan: track how much of the current pass is driven
             plan.UpdateProgress();
 
+            //F50 planting: follow the planter drop point, tick off the seedlings it passes
+            planting.Update();
+
             #region Youturn
 
             //if an outer boundary is set, then apply critical stop logic

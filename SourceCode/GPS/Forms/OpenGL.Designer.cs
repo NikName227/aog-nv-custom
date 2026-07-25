@@ -416,6 +416,9 @@ namespace AgOpenGPS
 
                     #endregion
 
+                    //F50 planting: where every seedling goes, and what is already planted
+                    if (planting.IsOn) DrawPlantSpots();
+
                     #region Flags
 
                     if (flagPts.Count > 0) DrawFlags();
@@ -500,6 +503,9 @@ namespace AgOpenGPS
                     }
 
                     if (trk.idx > -1 && !ct.isContourBtnOn) DrawTrackInfo();
+
+                    //F50 planting: distance to the next seedling
+                    if (planting.IsOn) DrawPlantingHud();
 
                     if (bnd.bndList.Count > 0 && yt.isYouTurnBtnOn) DrawUTurnBtn();
 
@@ -769,6 +775,9 @@ namespace AgOpenGPS
 
                     //NMEA elevation file
                     if (isLogElevation && sbGrid.Length > 0) FileSaveElevation();
+
+                    //F50 planting: same reason - a planting day must survive a crash
+                    planting.SaveIfDirty(GetFieldDir(true));
 
                     //ExportFieldAs_KML();
                 }
@@ -2109,6 +2118,47 @@ namespace AgOpenGPS
             {
                 flagNumberPicked = 0;
             }
+        }
+
+        //F50 planting: the planned seedling spots. Planted ones go green so a glance at
+        //the map shows how far the job got; the one being driven at is ringed.
+        private void DrawPlantSpots()
+        {
+            GL.PointSize(6f);
+            GL.Begin(PrimitiveType.Points);
+            foreach (var s in planting.spots)
+            {
+                if (s.planted) GL.Color3(0.25f, 0.85f, 0.3f);
+                else GL.Color3(0.85f, 0.7f, 0.25f);
+                GL.Vertex3(s.pos.easting, s.pos.northing, 0);
+            }
+            GL.End();
+
+            //the planter drop point itself - what the distance readout is measured from
+            GL.PointSize(8f);
+            GL.Color3(1.0f, 0.35f, 0.9f);
+            GL.Begin(PrimitiveType.Points);
+            GL.Vertex3(planting.PlantPoint.easting, planting.PlantPoint.northing, 0);
+            GL.End();
+        }
+
+        //F50 planting HUD: metres to the next seedling (one decimal) + job progress.
+        //Mirrors the turn HUD on the other side of the screen.
+        private void DrawPlantingHud()
+        {
+            int rx = oglMain.Width / 4;
+
+            string dist = planting.DistToNext >= 0
+                ? planting.DistToNext.ToString("N1") + " m"
+                : "--";
+
+            //inside half a metre the seedling should be going in the ground right now
+            if (planting.DistToNext >= 0 && planting.DistToNext < 0.5) GL.Color4(0.25f, 0.97f, 0.35f, 0.95f);
+            else GL.Color4(0.60f, 0.90f, 0.95f, 0.92f);
+            font.DrawText(rx - 40, 82, dist, 1.5);
+
+            GL.Color4(0.92f, 0.92f, 0.92f, 0.85f);
+            font.DrawText(rx - 40, 130, planting.PlantedCount + "/" + planting.spots.Count, 0.9);
         }
 
         private void DrawFlags()

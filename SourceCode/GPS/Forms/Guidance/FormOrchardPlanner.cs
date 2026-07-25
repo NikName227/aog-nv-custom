@@ -43,6 +43,10 @@ namespace AgOpenGPS
         // (row direction) instead of a row - the layout is generated from it.
         private bool genMode;
 
+        // set once the seedling layout is actually used in this session, so Accept knows
+        // this is a planting orchard and not a survey of trees that already stand
+        private bool plantingTouched;
+
         private enum ViewMode { Browse, Build }
         private ViewMode mode = ViewMode.Build;
         private int activeIdx = -1; // Browse selection
@@ -992,6 +996,7 @@ namespace AgOpenGPS
 
             midlines.Clear(); lblWarn.Text = "";
             ResetAddStage();
+            plantingTouched = true;
             UpdateNavButtons();
             lblGenResult.Text = made.Count + " rows, " + treeCount + " trees";
             lblActiveOp.Text = "Generated " + made.Count + " rows / " + treeCount + " trees";
@@ -1011,6 +1016,7 @@ namespace AgOpenGPS
                 (double)nudGenHeadland.Value);
 
             lblWarn.Text = "";
+            plantingTouched = true;
             lblActiveOp.Text = (rows[t].name ?? "row") + ": " + rows[t].trees.Count + " trees";
             oglSelf.Invalidate();
         }
@@ -1074,6 +1080,15 @@ namespace AgOpenGPS
             // persist rows + loose trees under the field (fixed reference lines)
             try { COrchard.SaveRows(FieldDir(), rows, trees); }
             catch (Exception ex) { Log.EventWriter("Orchard SaveRows: " + ex); }
+
+            // planting: the seedling spots become the driving job. Only when this really
+            // is a planting orchard - a survey orchard (KML/recorded rows of trees that
+            // already stand) must not start nagging the driver to plant them.
+            if (plantingTouched || mf.planting.IsOn)
+            {
+                mf.planting.BuildFromRows(rows);
+                mf.planting.Save(FieldDir());
+            }
 
             // commit the generated mid-lines as ordinary Curve tracks (driven by AOG guidance + K-turn)
             if (midlines.Count > 0)
