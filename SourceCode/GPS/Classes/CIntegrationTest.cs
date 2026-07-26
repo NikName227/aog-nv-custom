@@ -39,6 +39,7 @@ namespace AgOpenGPS
         public bool sameWay;    // driving A->B (true) or B->A (false)
         public bool steerOn;    // autosteer engaged — it regulates the very signal we measure
         public int step;        // which guided sub-step produced this sample
+        public bool inCone;     // heading within the cone around the line — false while turning
     }
 
     public sealed class ITCheck
@@ -116,6 +117,7 @@ namespace AgOpenGPS
         private const double passTargetM = 100.0;       // wanted length per direction, m
         private const double latNearLine = 3.0;         // further off the line = turning, drop it
         private const int minPairedBins = 15;           // bins covered in both directions
+        private const double passConeDeg = 30.0;        // heading must sit this close to the line
 
         public int SampleCount { get { return s.Count; } }
 
@@ -246,7 +248,7 @@ namespace AgOpenGPS
             // direction, which would silently cancel exactly the there-and-back
             // difference this test is built on.
             double station = double.NaN, lat = double.NaN;
-            bool sameWay = true;
+            bool sameWay = true, inCone = false;
             if (mf.trk.idx >= 0 && mf.trk.idx < mf.trk.gArr.Count)
             {
                 CTrk tk = mf.trk.gArr[mf.trk.idx];
@@ -256,7 +258,13 @@ namespace AgOpenGPS
                     double dE = E - tk.ptA.easting, dN = N - tk.ptA.northing;
                     station = (dE * Math.Sin(h)) + (dN * Math.Cos(h));
                     lat = (dE * Math.Cos(h)) - (dN * Math.Sin(h));
-                    sameWay = Math.Cos(mf.fixHeading - h) > 0;
+
+                    // A cone around the line, not just "which half": while turning
+                    // around, the heading sweeps through everything in between and
+                    // those samples belong to neither pass.
+                    double dh = glm.toDegrees(Math.Abs(WrapPi(mf.fixHeading - h)));
+                    if (dh <= passConeDeg) { sameWay = true; inCone = true; }
+                    else if (dh >= 180.0 - passConeDeg) { sameWay = false; inCone = true; }
                 }
             }
 
@@ -275,6 +283,7 @@ namespace AgOpenGPS
                 station = station,
                 lat = lat,
                 sameWay = sameWay,
+                inCone = inCone,
                 steerOn = mf.isBtnAutoSteerOn,
                 step = stepIdx,
             };
@@ -303,8 +312,8 @@ namespace AgOpenGPS
                 return;
             }
 
-            if (double.IsNaN(smp.station)) return;
-            if (Math.Abs(smp.lat) > latNearLine) return;          // off the line = turning
+            if (double.IsNaN(smp.station) || !smp.inCone) return;  // turning across the line
+            if (Math.Abs(smp.lat) > latNearLine) return;           // too far off to be this pass
             if (!firstSameWay.HasValue) firstSameWay = smp.sameWay;
             int dir = smp.sameWay == firstSameWay.Value ? 0 : 1;
             if (dir != st.dir) return;                            // wrong way for this step
@@ -438,7 +447,8 @@ namespace AgOpenGPS
             // steady-straight mask
             var idx = new List<int>();
             for (int i = 0; i < s.Count; i++)
-                if (Math.Abs(s[i].steer) < 3.0 && Math.Abs(s[i].yaw) < 3.0 && !double.IsNaN(s[i].lat)) idx.Add(i);
+                if (Math.Abs(s[i].steer) < 3.0 && Math.Abs(s[i].yaw) < 3.0
+                    && !double.IsNaN(s[i].lat) && s[i].inCone) idx.Add(i);
 
             if (idx.Count < 30)
             {
@@ -591,42 +601,96 @@ namespace AgOpenGPS
             }
             r.checks.Add(g);
 
-            // IMU lag via cross-correlation roll x residual. Sampling is ~10 Hz, so
-            // the lag is quantised to one sample — reporting a smooth millisecond
-            // figure would imply a precision this method does not have.
+            // IMU lag. A delayed roll makes the residual respond to roll(t - tau),
+            // which to first order is a*roll - a*tau*d(roll)/dt — so fitting the
+            // derivative alongside roll recovers tau continuously instead of in
+            // whole samples. Cross-correlation stays as the sanity check: if it
+            // cannot even find a peak, there is nothing to fit.
             const int maxLag = 12;
             double resMs = MeanDt() * 1000.0;
-            // cross-correlation needs the raw time-ordered residual, not the binned one
-            double[] rollSeq = new double[idx.Count];
-            for (int k = 0; k < idx.Count; k++) rollSeq[k] = s[idx[k]].rollDeg;
-            int lagN; double peak; CrossCorrLag(rollSeq, yRaw, maxLag, out lagN, out peak);
-            double lagMs = Math.Abs(lagN) * resMs;
+            // the lateral must be free to respond, so prefer the manual passes
+            var lagIdx = new List<int>();
+            foreach (int i in idx) if (!s[i].steerOn) lagIdx.Add(i);
+            bool lagManual = lagIdx.Count >= 60;
+            if (!lagManual) lagIdx = idx;
+
+            int nL = lagIdx.Count;
+            var lagT = new double[nL]; var lagX = new double[nL]; var lagY = new double[nL];
+            for (int k = 0; k < nL; k++)
+            {
+                lagT[k] = s[lagIdx[k]].t;
+                lagX[k] = Math.Sin(glm.toRadians(s[lagIdx[k]].rollDeg));
+                lagY[k] = s[lagIdx[k]].lat * (s[lagIdx[k]].sameWay ? 1.0 : -1.0);
+            }
+            RemovePerDirectionMean(lagIdx, lagY);
+            double[] lagD = Derivative(lagT, lagX);
+
+            // drop the samples sitting across a gap in the mask
+            var fx = new List<double>(); var fd = new List<double>(); var fy = new List<double>();
+            for (int k = 0; k < nL; k++)
+            {
+                if (double.IsNaN(lagD[k])) continue;
+                fx.Add(lagX[k]); fd.Add(lagD[k]); fy.Add(lagY[k]);
+            }
+
+            int lagN; double peak;
+            CrossCorrLag(lagX, lagY, maxLag, out lagN, out peak);
+
+            // resid responds to roll(t - tau) ~= a*roll + a*tau*d(roll)/dt, so the
+            // derivative coefficient over the roll coefficient is tau itself
+            double la, lc2, lr2, lse, tauMs = 0, tauSeMs = 0;
+            bool tauOk = false;
+            if (fx.Count >= 40 && Ols2(fx.ToArray(), fd.ToArray(), fy.ToArray(), out la, out lc2, out lr2, out lse))
+            {
+                double r2One, aOne, bOne;
+                Ols(fx.ToArray(), fy.ToArray(), out aOne, out bOne, out r2One);
+                // tau only means anything if roll itself explains something and the
+                // derivative term actually earns its place
+                if (Math.Abs(la) > 0.01 && lr2 - r2One > 0.02)
+                {
+                    tauMs = lc2 / la * 1000.0;
+                    tauSeMs = Math.Abs(lse / la) * 1000.0;
+                    tauOk = tauMs > -50 && tauMs < 600;
+                    if (tauMs < 0) tauMs = 0;
+                }
+            }
 
             var lc = new ITCheck { name = "IMU timing" };
-            string lagCond = (hr ? "rezolucija ~" : "resolution ~") + resMs.ToString("0") + " ms · "
-                           + (hr ? "raspon ±" : "range +/-") + (maxLag * resMs).ToString("0") + " ms";
+            string lagCond = (hr ? "fit derivacije · uzorak ~" : "derivative fit · sample ~")
+                           + resMs.ToString("0") + " ms · "
+                           + (hr ? "xcorr " : "xcorr ") + (Math.Abs(lagN) * resMs).ToString("0") + " ms"
+                           + (lagManual ? (hr ? " · ručni prolazi" : " · manual passes")
+                                        : (hr ? " · svi prolazi" : " · all passes"));
             if (rollRms < 0.6)
             {
                 lc.status = 3; lc.value = "—";
                 lc.desc = hr ? "Premala roll pobuda za mjerenje kašnjenja." : "Too little roll excitation to measure lag.";
                 lc.note = lagCond;
             }
-            else if (Math.Abs(lagN) >= maxLag)
+            else if (Math.Abs(lagN) >= maxLag || !tauOk)
             {
-                // the peak sits on the edge of the search range: there is no peak
                 lc.status = 3; lc.value = "—";
-                lc.desc = hr ? "Nema vrha korelacije — kašnjenje se ne da izmjeriti."
-                             : "No correlation peak — lag is not measurable.";
+                lc.desc = hr ? "Roll i rezidual nisu dovoljno povezani — kašnjenje se ne da izmjeriti."
+                             : "Roll and residual are not coupled enough — lag is not measurable.";
+                lc.note = lagCond;
+            }
+            else if (tauMs < 2.0 * tauSeMs)
+            {
+                // not separable from noise — say so instead of quoting the number
+                lc.status = 0;
+                lc.desc = hr ? "Kašnjenje se ne razlikuje od šuma mjerenja."
+                             : "Lag is not separable from the measurement noise.";
+                lc.value = "< " + (2.0 * tauSeMs).ToString("0") + " ms";
                 lc.note = lagCond;
             }
             else
             {
-                lc.status = lagN == 0 ? 0 : (Math.Abs(lagN) == 1 ? 1 : 2);
-                lc.desc = lagN == 0
-                    ? (hr ? "Kašnjenje ispod rezolucije mjerenja." : "Lag below the measurement resolution.")
-                    : (Math.Abs(lagN) == 1 ? (hr ? "Blago kašnjenje IMU rolla." : "Slight IMU roll lag.")
-                                           : (hr ? "Znatno kašnjenje IMU rolla." : "Significant IMU roll lag."));
-                lc.value = lagN == 0 ? "< " + resMs.ToString("0") + " ms" : "~" + lagMs.ToString("0") + " ms";
+                lc.status = tauMs < 40 ? 0 : (tauMs < 120 ? 1 : 2);
+                lc.desc = tauMs < 40
+                    ? (hr ? "Roll bez značajnog kašnjenja." : "Roll with no significant lag.")
+                    : (tauMs < 120 ? (hr ? "Blago kašnjenje IMU rolla." : "Slight IMU roll lag.")
+                                   : (hr ? "Znatno kašnjenje IMU rolla." : "Significant IMU roll lag."));
+                lc.value = tauMs.ToString("0") + " ± " + tauSeMs.ToString("0") + " ms";
                 lc.note = lagCond;
             }
             r.checks.Add(lc);
@@ -1169,7 +1233,8 @@ namespace AgOpenGPS
                 List<int> src = pass == 0 ? ia : ib;
                 foreach (int i in src)
                 {
-                    if (double.IsNaN(s[i].lat) || Math.Abs(s[i].lat) > latNearLine) continue;
+                    if (double.IsNaN(s[i].lat) || !s[i].inCone) continue;
+                    if (Math.Abs(s[i].lat) > latNearLine) continue;
                     int bin = (int)Math.Floor(s[i].station / passBinM);
                     double[] acc;
                     if (!sums.TryGetValue(bin, out acc)) { acc = new double[6]; sums[bin] = acc; }
@@ -1203,7 +1268,7 @@ namespace AgOpenGPS
             autA = new List<int>(); autB = new List<int>();
             foreach (int i in idx)
             {
-                if (double.IsNaN(s[i].lat)) continue;
+                if (double.IsNaN(s[i].lat) || !s[i].inCone) continue;
                 bool dirA = s[i].sameWay;
                 if (s[i].steerOn) { if (dirA) autA.Add(i); else autB.Add(i); }
                 else { if (dirA) manA.Add(i); else manB.Add(i); }
@@ -1230,6 +1295,52 @@ namespace AgOpenGPS
             double ss = 0; int n = y.Length;
             for (int i = 0; i < n; i++) { double e = y[i] - (a * x[i] + b); ss += e * e; }
             return Math.Sqrt(ss / n);
+        }
+
+        // Two-predictor least squares on centred data: y = a*x1 + c*x2.
+        // Returns false when the predictors are collinear or flat.
+        private static bool Ols2(double[] x1, double[] x2, double[] y,
+                                 out double a, out double c, out double r2, out double seC)
+        {
+            a = c = r2 = seC = 0;
+            int n = y.Length;
+            if (n < 10) return false;
+            double m1 = Mean(x1), m2 = Mean(x2), my = Mean(y);
+            double s11 = 0, s22 = 0, s12 = 0, s1y = 0, s2y = 0, syy = 0;
+            for (int i = 0; i < n; i++)
+            {
+                double d1 = x1[i] - m1, d2 = x2[i] - m2, dy = y[i] - my;
+                s11 += d1 * d1; s22 += d2 * d2; s12 += d1 * d2;
+                s1y += d1 * dy; s2y += d2 * dy; syy += dy * dy;
+            }
+            double det = (s11 * s22) - (s12 * s12);
+            if (Math.Abs(det) < 1e-12 || syy < 1e-12) return false;
+            a = ((s22 * s1y) - (s12 * s2y)) / det;
+            c = ((s11 * s2y) - (s12 * s1y)) / det;
+            r2 = ((a * s1y) + (c * s2y)) / syy;
+            // standard error of the derivative coefficient — this is what says
+            // whether a lag was measured or merely fitted to noise
+            double sse = syy - ((a * s1y) + (c * s2y));
+            if (sse < 0) sse = 0;
+            seC = Math.Sqrt(sse / (n - 3) * s11 / det);
+            return true;
+        }
+
+        // Plain central difference against the real timestamps. Pre-smoothing was
+        // tried and rejected: it attenuates the derivative more than the signal, and
+        // biased the lag high by about 5%. Samples whose neighbours are more than
+        // half a second away sit across a gap in the mask and are marked NaN.
+        private static double[] Derivative(double[] t, double[] v)
+        {
+            int n = v.Length;
+            var d = new double[n];
+            for (int i = 0; i < n; i++)
+            {
+                int lo = i > 0 ? i - 1 : i, hi = i < n - 1 ? i + 1 : i;
+                double dt = t[hi] - t[lo];
+                d[i] = (dt > 1e-6 && dt < 0.5) ? (v[hi] - v[lo]) / dt : double.NaN;
+            }
+            return d;
         }
 
         private static void CrossCorrLag(double[] x, double[] y, int maxLag, out int bestLag, out double bestPeak)
