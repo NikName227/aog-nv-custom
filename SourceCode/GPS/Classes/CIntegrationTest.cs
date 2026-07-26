@@ -98,7 +98,9 @@ namespace AgOpenGPS
         // straight speed bands (km/h) — center + tolerance
         // speed bands are opportunistic now — only the F2F-noise-vs-speed check
         // uses them; the geometry findings come from the two-way pass instead
-        private static readonly double[] bandCenter = { 3, 7, 10 };
+        // must match the speeds the guided steps actually ask for, or the report
+        // names a speed the driver never drove
+        private static readonly double[] bandCenter = { 4, 7, 10 };
         private const double bandTol = 1.6;
         private const double circleTargetRad = 2 * Math.PI * 2; // ~2 laps
 
@@ -1210,30 +1212,6 @@ namespace AgOpenGPS
 
         // metres of line covered in one direction, used for progress and for the
         // "did we actually drive a full pass" gate
-        public double PassLength(bool sameWay)
-        {
-            double mn = double.MaxValue, mx = double.MinValue;
-            for (int i = 0; i < s.Count; i++)
-            {
-                if (double.IsNaN(s[i].station) || s[i].sameWay != sameWay) continue;
-                if (Math.Abs(s[i].lat) > latNearLine) continue;
-                if (s[i].station < mn) mn = s[i].station;
-                if (s[i].station > mx) mx = s[i].station;
-            }
-            return mx > mn ? mx - mn : 0;
-        }
-
-        public bool HasBothDirections()
-        {
-            bool a = false, b = false;
-            for (int i = 0; i < s.Count; i++)
-            {
-                if (double.IsNaN(s[i].lat)) continue;
-                if (s[i].sameWay) a = true; else b = true;
-                if (a && b) return true;
-            }
-            return false;
-        }
 
         private static void Ols(double[] x, double[] y, out double a, out double b, out double r2)
         {
