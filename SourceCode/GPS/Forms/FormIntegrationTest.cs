@@ -104,6 +104,16 @@ namespace AgOpenGPS
 
         private void StartTest(ITMode m)
         {
+            // The straight test measures the lateral residual against the AB line.
+            // Without one there is no reference worth reporting, so refuse up front
+            // rather than produce a confident wrong verdict after the drive.
+            if (m == ITMode.Straight && !HasAbLine())
+            {
+                ShowMsg(hr ? "Treba aktivna AB linija — postavi je pa pokreni test."
+                           : "An AB line is required — set one, then start the test.");
+                return;
+            }
+
             test.Start(m);
             btnStraight.Enabled = btnCircle.Enabled = false;
             btnFinish.Enabled = true;
@@ -152,7 +162,7 @@ namespace AgOpenGPS
                 string baseName = "Report_" + stamp + "_" + modeTag;
 
                 File.WriteAllText(Path.Combine(dir, baseName + ".html"), BuildReportHtml(r), Encoding.UTF8);
-                File.WriteAllText(Path.Combine(dir, baseName + ".csv"), test.BuildCsv(), Encoding.UTF8);
+                File.WriteAllText(Path.Combine(dir, baseName + ".csv"), test.BuildCsv(mf), Encoding.UTF8);
 
                 ShowMsg((hr ? "Report spremljen: " : "Report saved: ") + baseName + ".html");
                 System.Diagnostics.Process.Start(Path.Combine(dir, baseName + ".html"));
@@ -167,6 +177,12 @@ namespace AgOpenGPS
         }
 
         private void ShowMsg(string s) { lblHintTop.Text = s; lblHintBig.Text = ""; lblHintSub.Text = ""; }
+
+        private bool HasAbLine()
+        {
+            return mf.trk.idx >= 0 && mf.trk.idx < mf.trk.gArr.Count
+                && mf.trk.gArr[mf.trk.idx].mode == TrackMode.AB;
+        }
 
         // ---------------------------------------------------------------- report
         private string BuildReportHtml(ITResult r)

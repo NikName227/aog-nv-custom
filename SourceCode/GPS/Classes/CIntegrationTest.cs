@@ -31,6 +31,12 @@ namespace AgOpenGPS
         public double yaw;      // IMU yaw rate (raw)
         public double speed;    // km/h
         public double steer;    // module steer angle, degrees
+        // AB line geometry, NaN without a line. lat is measured in the line's own
+        // frame (+ right of the A->B direction) rather than the travel direction,
+        // so a there-and-back pair can be compared without sign bookkeeping.
+        public double station;  // distance along the line from point A, m
+        public double lat;      // signed perpendicular offset in the LINE frame, m
+        public bool sameWay;    // driving A->B (true) or B->A (false)
     }
 
     public sealed class ITCheck
@@ -92,11 +98,23 @@ namespace AgOpenGPS
 
         public void Stop() { running = false; }
 
-        public string BuildCsv()
+        // Raw log for offline analysis. The '#' header carries the machine geometry,
+        // without which the numbers cannot be interpreted afterwards.
+        public string BuildCsv(FormGPS mf)
         {
             var ci = CultureInfo.InvariantCulture;
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine("t,rollDeg,imuRad,f2fRad,fixRad,E,N,xte,yaw,speed,steer");
+            sb.AppendLine("# AgOpenGPS F07 Integration Test raw log");
+            sb.AppendLine("# mode," + mode);
+            sb.AppendLine("# recorded," + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", ci));
+            sb.AppendLine("# antennaHeight," + mf.vehicle.VehicleConfig.AntennaHeight.ToString("0.###", ci));
+            sb.AppendLine("# antennaOffset," + mf.vehicle.VehicleConfig.AntennaOffset.ToString("0.###", ci));
+            sb.AppendLine("# antennaPivot," + mf.vehicle.VehicleConfig.AntennaPivot.ToString("0.###", ci));
+            sb.AppendLine("# wheelbase," + mf.vehicle.VehicleConfig.Wheelbase.ToString("0.###", ci));
+            sb.AppendLine("# maxSteerAngle," + mf.vehicle.maxSteerAngle.ToString("0.#", ci));
+            sb.AppendLine("# sampleRateHz," + (MeanDt() > 0 ? (1.0 / MeanDt()) : 0).ToString("0.#", ci));
+            sb.AppendLine("# samples," + s.Count.ToString(ci));
+            sb.AppendLine("t,rollDeg,imuRad,f2fRad,fixRad,E,N,xte,yaw,speed,steer,station,lat,sameWay");
             foreach (var x in s)
                 sb.AppendLine(
                     x.t.ToString("0.###", ci) + "," + x.rollDeg.ToString("0.###", ci) + "," +
@@ -104,7 +122,8 @@ namespace AgOpenGPS
                     x.fixRad.ToString("0.#####", ci) + "," + x.E.ToString("0.###", ci) + "," +
                     x.N.ToString("0.###", ci) + "," + x.xte.ToString("0.####", ci) + "," +
                     x.yaw.ToString("0.###", ci) + "," + x.speed.ToString("0.##", ci) + "," +
-                    x.steer.ToString("0.##", ci));
+                    x.steer.ToString("0.##", ci) + "," + x.station.ToString("0.###", ci) + "," +
+                    x.lat.ToString("0.####", ci) + "," + (x.sameWay ? "1" : "0"));
             return sb.ToString();
         }
 
@@ -133,6 +152,24 @@ namespace AgOpenGPS
             double imuRad = (imuRaw > 3600.0) ? double.NaN
                 : (mf.timerSim.Enabled ? imuRaw : glm.toRadians(imuRaw));
 
+            // Project onto the AB line ourselves: AOG's XTE sign follows the travel
+            // direction, which would silently cancel exactly the there-and-back
+            // difference this test is built on.
+            double station = double.NaN, lat = double.NaN;
+            bool sameWay = true;
+            if (mf.trk.idx >= 0 && mf.trk.idx < mf.trk.gArr.Count)
+            {
+                CTrk tk = mf.trk.gArr[mf.trk.idx];
+                if (tk.mode == TrackMode.AB)
+                {
+                    double h = tk.heading;
+                    double dE = E - tk.ptA.easting, dN = N - tk.ptA.northing;
+                    station = (dE * Math.Sin(h)) + (dN * Math.Cos(h));
+                    lat = (dE * Math.Cos(h)) - (dN * Math.Sin(h));
+                    sameWay = Math.Cos(mf.fixHeading - h) > 0;
+                }
+            }
+
             var smp = new ITSample
             {
                 t = (DateTime.Now - t0).TotalSeconds,
@@ -145,6 +182,9 @@ namespace AgOpenGPS
                 yaw = mf.ahrs.imuYawRate,
                 speed = mf.avgSpeed,
                 steer = mf.mc.actualSteerAngleDegrees,
+                station = station,
+                lat = lat,
+                sameWay = sameWay,
             };
             s.Add(smp);
 
@@ -256,39 +296,84 @@ namespace AgOpenGPS
             // steady-straight mask
             var idx = new List<int>();
             for (int i = 0; i < s.Count; i++)
-                if (Math.Abs(s[i].steer) < 3.0 && Math.Abs(s[i].yaw) < 3.0) idx.Add(i);
-            if (idx.Count < 30) idx = AllIdx();
+                if (Math.Abs(s[i].steer) < 3.0 && Math.Abs(s[i].yaw) < 3.0 && !double.IsNaN(s[i].lat)) idx.Add(i);
 
-            // lateral residual: prefer XTE if a line drives it (has spread), else PCA line
-            double[] resid;
-            bool usedXte = HasSpread(idx, true);
-            if (usedXte)
+            if (idx.Count < 30)
             {
-                resid = new double[idx.Count];
-                for (int k = 0; k < idx.Count; k++) resid[k] = s[idx[k]].xte;
+                // Without an AB line there is no trustworthy lateral reference. Fitting
+                // a straight line through a bowed path and blaming roll for the
+                // curvature is exactly how v1 produced a confident wrong answer.
+                r.checks.Add(new ITCheck
+                {
+                    name = hr ? "Geometrija / visina antene" : "Geometry / antenna height",
+                    status = 3,
+                    value = "—",
+                    desc = hr ? "Nema dovoljno uzoraka uz AB liniju." : "Not enough samples along an AB line.",
+                    note = hr ? "Aktiviraj AB liniju i vozi po njoj ravno i stabilno."
+                              : "Activate an AB line and drive along it straight and steady."
+                });
+                r.summary = hr ? "Test nije mjerljiv bez aktivne AB linije." : "Not measurable without an active AB line.";
+                r.subtitle = hr ? "pravac · bez linije" : "straight · no line";
+                return;
             }
-            else resid = PcaResidual(idx);
 
-            // roll excitation check
+            // Lateral in the VEHICLE frame: roll is measured in the machine's own
+            // frame, so the residual has to be flipped for the return pass or the
+            // two directions cancel each other in the fit.
+            double[] y = new double[idx.Count];
+            for (int k = 0; k < idx.Count; k++) y[k] = s[idx[k]].lat * (s[idx[k]].sameWay ? 1.0 : -1.0);
+            RemovePerDirectionMean(idx, y);
+
+            double[] x = new double[idx.Count];
+            for (int k = 0; k < idx.Count; k++) x[k] = Math.Sin(glm.toRadians(s[idx[k]].rollDeg));
+
+            // roll excitation: RMS alone is not enough — a one-sided roll (never
+            // crossing zero) leaves the slope badly conditioned, because the fit
+            // divides the residual by a tiny span of sin(roll).
             double rollRms = 0; foreach (int i in idx) rollRms += s[i].rollDeg * s[i].rollDeg;
             rollRms = Math.Sqrt(rollRms / idx.Count);
+            double sinMin = double.MaxValue, sinMax = double.MinValue;
+            for (int k = 0; k < x.Length; k++) { if (x[k] < sinMin) sinMin = x[k]; if (x[k] > sinMax) sinMax = x[k]; }
+            bool crossesZero = sinMin < -0.02 && sinMax > 0.02;
+            double sinSpan = sinMax - sinMin;
 
-            // OLS resid = a*sin(roll)+b
-            double[] x = new double[idx.Count], y = resid;
-            for (int k = 0; k < idx.Count; k++) x[k] = Math.Sin(glm.toRadians(s[idx[k]].rollDeg));
             double a, b, r2; Ols(x, y, out a, out b, out r2);
-
             double antNow = mf.vehicle.VehicleConfig.AntennaHeight;
             double antNew = antNow + a;   // a = dh (m)
 
-            // geometry / antenna height check
-            var g = new ITCheck { name = hr ? "Geometrija / visina antene" : "Geometry / antenna height" };
+            string rollCond = "roll RMS " + rollRms.ToString("0.0") + "° · "
+                            + (hr ? "raspon sin " : "sin span ") + sinSpan.ToString("0.00")
+                            + " · R² " + r2.ToString("0.00");
+
+            var g = new ITCheck { name = hr ? "Geometrija / visina antene" : "Geometry / antenna height", note = rollCond };
             if (rollRms < 0.6)
             {
-                g.status = 1;
-                g.desc = hr ? "Premala roll pobuda — vozi preko izraženijeg nagiba za pouzdan nalaz."
-                            : "Too little roll excitation — drive over more slope for a reliable result.";
-                g.value = "roll RMS " + rollRms.ToString("0.0") + "°";
+                g.status = 3; g.value = "—";
+                g.desc = hr ? "Premala roll pobuda." : "Too little roll excitation.";
+                g.note = rollCond + (hr ? " · vozi preko izraženijeg poprečnog nagiba"
+                                        : " · drive over more cross slope");
+            }
+            else if (!crossesZero)
+            {
+                g.status = 3; g.value = "—";
+                g.desc = hr ? "Roll je jednostran — nagib se ne da pouzdano odrediti."
+                            : "Roll is one-sided — the slope cannot be determined reliably.";
+                g.note = rollCond + (hr ? " · odvezi i povratni prolaz po istoj liniji"
+                                        : " · drive the return pass along the same line");
+            }
+            else if (r2 < 0.25)
+            {
+                g.status = 3; g.value = "—";
+                g.desc = hr ? "Roll objašnjava premali dio reziduala." : "Roll explains too little of the residual.";
+                g.note = rollCond + (hr ? " · treba R² ≥ 0.25" : " · needs R² >= 0.25");
+            }
+            else if (Math.Abs(a) > 0.5)
+            {
+                g.status = 3;
+                g.value = a.ToString("0.00") + " m";
+                g.desc = hr ? "Izračunata korekcija nije fizikalna — fit nije upotrebljiv."
+                            : "Computed correction is not physical — the fit is unusable.";
+                g.note = rollCond;
             }
             else if (Math.Abs(a) < 0.03)
             {
@@ -300,23 +385,49 @@ namespace AgOpenGPS
             {
                 g.status = 2;
                 string dir = a > 0 ? (hr ? "povećaj" : "raise") : (hr ? "smanji" : "lower");
-                g.desc = (hr ? "Rezidual raste s rollom (nagib " : "Residual grows with roll (slope ")
-                       + a.ToString("0.00") + ", R²=" + r2.ToString("0.00") + ") — "
+                g.desc = (hr ? "Rezidual raste s rollom — " : "Residual grows with roll — ")
                        + dir + (hr ? " visinu antene." : " antenna height.");
                 g.value = "h: " + antNow.ToString("0.00") + " → " + antNew.ToString("0.00") + " m";
             }
             r.checks.Add(g);
 
-            // IMU lag via cross-correlation roll x residual
+            // IMU lag via cross-correlation roll x residual. Sampling is ~10 Hz, so
+            // the lag is quantised to one sample — reporting a smooth millisecond
+            // figure would imply a precision this method does not have.
+            const int maxLag = 12;
+            double resMs = MeanDt() * 1000.0;
             double[] rollSeq = new double[idx.Count];
             for (int k = 0; k < idx.Count; k++) rollSeq[k] = s[idx[k]].rollDeg;
-            int lagN; double peak; CrossCorrLag(rollSeq, y, 12, out lagN, out peak);
-            double lagMs = Math.Abs(lagN) * MeanDt() * 1000.0;
-            var lc = new ITCheck { name = hr ? "IMU timing" : "IMU timing" };
-            if (lagMs < 40) { lc.status = 0; lc.desc = hr ? "Roll bez značajnog kašnjenja." : "Roll with no significant lag."; }
-            else if (lagMs < 120) { lc.status = 1; lc.desc = hr ? "Blago kašnjenje IMU rolla." : "Slight IMU roll lag."; }
-            else { lc.status = 2; lc.desc = hr ? "Znatno kašnjenje IMU rolla." : "Significant IMU roll lag."; }
-            lc.value = "lag ~" + lagMs.ToString("0") + " ms";
+            int lagN; double peak; CrossCorrLag(rollSeq, y, maxLag, out lagN, out peak);
+            double lagMs = Math.Abs(lagN) * resMs;
+
+            var lc = new ITCheck { name = "IMU timing" };
+            string lagCond = (hr ? "rezolucija ~" : "resolution ~") + resMs.ToString("0") + " ms · "
+                           + (hr ? "raspon ±" : "range +/-") + (maxLag * resMs).ToString("0") + " ms";
+            if (rollRms < 0.6)
+            {
+                lc.status = 3; lc.value = "—";
+                lc.desc = hr ? "Premala roll pobuda za mjerenje kašnjenja." : "Too little roll excitation to measure lag.";
+                lc.note = lagCond;
+            }
+            else if (Math.Abs(lagN) >= maxLag)
+            {
+                // the peak sits on the edge of the search range: there is no peak
+                lc.status = 3; lc.value = "—";
+                lc.desc = hr ? "Nema vrha korelacije — kašnjenje se ne da izmjeriti."
+                             : "No correlation peak — lag is not measurable.";
+                lc.note = lagCond;
+            }
+            else
+            {
+                lc.status = lagN == 0 ? 0 : (Math.Abs(lagN) == 1 ? 1 : 2);
+                lc.desc = lagN == 0
+                    ? (hr ? "Kašnjenje ispod rezolucije mjerenja." : "Lag below the measurement resolution.")
+                    : (Math.Abs(lagN) == 1 ? (hr ? "Blago kašnjenje IMU rolla." : "Slight IMU roll lag.")
+                                           : (hr ? "Znatno kašnjenje IMU rolla." : "Significant IMU roll lag."));
+                lc.value = lagN == 0 ? "< " + resMs.ToString("0") + " ms" : "~" + lagMs.ToString("0") + " ms";
+                lc.note = lagCond;
+            }
             r.checks.Add(lc);
 
             // F2F heading noise vs speed
@@ -325,15 +436,24 @@ namespace AgOpenGPS
             int firstOk = -1;
             if (!HasImuHeading())
             {
-                fc.status = 1;
-                fc.desc = hr ? "Nema IMU/dual heading za usporedbu — preskočeno (treba IMU ili dual-as-IMU)."
-                             : "No IMU/dual heading to compare — skipped (needs IMU or dual-as-IMU).";
-                fc.value = "N/A";
+                fc.status = 3;
+                fc.desc = hr ? "Nema IMU/dual heading za usporedbu." : "No IMU/dual heading to compare.";
+                fc.value = "—";
+                fc.note = hr ? "Treba IMU ili dual-as-IMU." : "Needs an IMU or dual-as-IMU.";
             }
             else
             {
+                int bandsDriven = 0;
+                for (int i = 0; i < 3; i++) if (nz[i] >= 0) bandsDriven++;
                 for (int i = 0; i < 3; i++) if (nz[i] >= 0 && nz[i] < 1.0) { firstOk = i; break; }
-                if (firstOk < 0) { fc.status = 1; fc.desc = hr ? "F2F šumovit na svim brzinama." : "F2F noisy at all tested speeds."; fc.value = "—"; }
+                fc.note = (hr ? "odvoženih pojaseva brzine: " : "speed bands driven: ") + bandsDriven + "/3";
+                if (bandsDriven == 0)
+                {
+                    fc.status = 3; fc.value = "—";
+                    fc.desc = hr ? "Nijedan pojas brzine nije odvožen dovoljno dugo."
+                                 : "No speed band was driven long enough.";
+                }
+                else if (firstOk < 0) { fc.status = 1; fc.desc = hr ? "F2F šumovit na svim odvoženim brzinama." : "F2F noisy at every speed driven."; fc.value = "—"; }
                 else
                 {
                     fc.status = 0;
@@ -343,12 +463,23 @@ namespace AgOpenGPS
             }
             r.checks.Add(fc);
 
-            // mount / unexplained noise
+            // Mount / unexplained noise. Only meaningful once the roll fit itself
+            // holds up — otherwise the "unexplained" part is just the bad fit.
             double unexpl = UnexplainedRms(y, x, a, b);
             var mc = new ITCheck { name = hr ? "Mount / šum" : "Mount / noise" };
-            if (unexpl < 0.03) { mc.status = 0; mc.desc = hr ? "Nizak nekorelirani rezidual — IMU čvrsto." : "Low uncorrelated residual — IMU solid."; }
-            else { mc.status = 1; mc.desc = hr ? "Povišen nekorelirani rezidual — provjeri fiksiranje IMU-a." : "Elevated uncorrelated residual — check IMU mounting."; }
-            mc.value = "RMS " + (unexpl * 100).ToString("0.0") + " cm";
+            if (g.status == 3)
+            {
+                mc.status = 3; mc.value = "—";
+                mc.desc = hr ? "Bez upotrebljivog roll fita nema smisla odvajati šum."
+                             : "Without a usable roll fit the noise cannot be separated.";
+                mc.note = rollCond;
+            }
+            else
+            {
+                if (unexpl < 0.03) { mc.status = 0; mc.desc = hr ? "Nizak nekorelirani rezidual — IMU čvrsto." : "Low uncorrelated residual — IMU solid."; }
+                else { mc.status = 1; mc.desc = hr ? "Povišen nekorelirani rezidual — provjeri fiksiranje IMU-a." : "Elevated uncorrelated residual — check IMU mounting."; }
+                mc.value = "RMS " + (unexpl * 100).ToString("0.0") + " cm";
+            }
             r.checks.Add(mc);
 
             // summary + chart
@@ -632,27 +763,31 @@ namespace AgOpenGPS
         private double[] SteerAbs() { var a = new double[s.Count]; for (int i = 0; i < s.Count; i++) a[i] = Math.Abs(s[i].steer); return a; }
         private bool HasImuHeading() { for (int i = 0; i < s.Count; i++) if (!double.IsNaN(s[i].imuRad)) return true; return false; }
 
-        private bool HasSpread(List<int> idx, bool xte)
+        // Each direction sits at its own offset from the line (line placement, plus
+        // anything fixed in the machine frame). Centring per direction leaves only
+        // the part that varies with roll, which is what the slope fit is after.
+        private void RemovePerDirectionMean(List<int> idx, double[] y)
         {
-            double mn = double.MaxValue, mx = double.MinValue;
-            foreach (int i in idx) { double v = s[i].xte; if (v < mn) mn = v; if (v > mx) mx = v; }
-            return (mx - mn) > 0.02;   // >2 cm spread => a line is driving XTE
+            double sumA = 0, sumB = 0; int nA = 0, nB = 0;
+            for (int k = 0; k < idx.Count; k++)
+            {
+                if (s[idx[k]].sameWay) { sumA += y[k]; nA++; }
+                else { sumB += y[k]; nB++; }
+            }
+            double mA = nA > 0 ? sumA / nA : 0, mB = nB > 0 ? sumB / nB : 0;
+            for (int k = 0; k < idx.Count; k++) y[k] -= s[idx[k]].sameWay ? mA : mB;
         }
 
-        private double[] PcaResidual(List<int> idx)
+        public bool HasBothDirections()
         {
-            int n = idx.Count;
-            double mE = 0, mN = 0;
-            foreach (int i in idx) { mE += s[i].E; mN += s[i].N; }
-            mE /= n; mN /= n;
-            double sEE = 0, sNN = 0, sEN = 0;
-            foreach (int i in idx) { double de = s[i].E - mE, dn = s[i].N - mN; sEE += de * de; sNN += dn * dn; sEN += de * dn; }
-            // principal axis angle of the 2x2 covariance
-            double phi = 0.5 * Math.Atan2(2 * sEN, sEE - sNN);
-            double px = -Math.Sin(phi), py = Math.Cos(phi);   // perpendicular unit
-            var res = new double[n];
-            for (int k = 0; k < n; k++) { double de = s[idx[k]].E - mE, dn = s[idx[k]].N - mN; res[k] = de * px + dn * py; }
-            return res;
+            bool a = false, b = false;
+            for (int i = 0; i < s.Count; i++)
+            {
+                if (double.IsNaN(s[i].lat)) continue;
+                if (s[i].sameWay) a = true; else b = true;
+                if (a && b) return true;
+            }
+            return false;
         }
 
         private static void Ols(double[] x, double[] y, out double a, out double b, out double r2)
@@ -801,13 +936,14 @@ namespace AgOpenGPS
 
         private string BuildStraightSummary(bool hr, ITCheck g, ITCheck lc, double a, double antNow, double antNew, int firstOk)
         {
+            if (g.status == 3)
+                return (hr ? "Geometrija nije izmjerena — " : "Geometry not measured — ") + g.desc + " "
+                     + (hr ? "Ostali nalazi u tablici vrijede."
+                           : "The remaining findings in the table still hold.");
             if (g.status == 2)
                 return hr
                     ? "Roll ne prati lateralno pomicanje antene — <b>geometrija nije dobra</b>. " + g.value + "."
                     : "Roll does not track antenna lateral movement — <b>geometry is off</b>. " + g.value + ".";
-            if (g.status == 1)
-                return hr ? "Ponovi test preko izraženijeg nagiba (nedovoljna roll pobuda)."
-                          : "Repeat over more slope (insufficient roll excitation).";
             return hr ? "Roll kompenzacija i geometrija izgledaju dobro." : "Roll compensation and geometry look good.";
         }
 
