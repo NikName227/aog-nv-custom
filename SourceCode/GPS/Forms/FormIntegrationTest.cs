@@ -45,9 +45,9 @@ namespace AgOpenGPS
                 Font = new Font("Tahoma", 11f, FontStyle.Bold), ForeColor = Color.White
             };
 
-            btnStraight = MakeBtn(hr ? "Test pravac\n(3 · 7 · 10 km/h)" : "Straight test\n(3 · 7 · 10 km/h)",
+            btnStraight = MakeBtn(hr ? "Test pravac\n(AB linija, tamo i natrag)" : "Straight test\n(AB line, there and back)",
                                   new Point(16, 48), new Size(196, 78), Color.FromArgb(15, 131, 149));
-            btnCircle = MakeBtn(hr ? "Test kružnica\n(konstantan kut)" : "Circle test\n(constant angle)",
+            btnCircle = MakeBtn(hr ? "Test kružnica\n(konstantan kut, 2 kruga)" : "Circle test\n(constant angle, 2 laps)",
                                 new Point(220, 48), new Size(196, 78), Color.FromArgb(18, 90, 110));
             btnStraight.Click += (s, e) => StartTest(ITMode.Straight);
             btnCircle.Click += (s, e) => StartTest(ITMode.Circle);

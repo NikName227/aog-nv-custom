@@ -74,9 +74,10 @@ namespace AgOpenGPS
         private double prevFixRad = double.NaN;
 
         // straight speed bands (km/h) — center + tolerance
+        // speed bands are opportunistic now — only the F2F-noise-vs-speed check
+        // uses them; the geometry findings come from the two-way pass instead
         private static readonly double[] bandCenter = { 3, 7, 10 };
         private const double bandTol = 1.6;
-        private const double targetPerBandSec = 12.0;   // needed per band
         private const double circleTargetRad = 2 * Math.PI * 2; // ~2 laps
 
         // circle geometry: the tangent reference degrades as 1/R, so a tight circle
@@ -264,17 +265,6 @@ namespace AgOpenGPS
         {
             if (mode == ITMode.Circle) return cumHeadingRad >= circleTargetRad;
             return PassLength(true) >= passTargetM && PassLength(false) >= passTargetM;
-        }
-
-        private double[] BandSeconds()
-        {
-            // approx seconds = count / sampleHz; use per-sample dt from timestamps
-            double[] sec = new double[3];
-            double dt = MeanDt();
-            for (int i = 0; i < s.Count; i++)
-                for (int b = 0; b < 3; b++)
-                    if (Math.Abs(s[i].speed - bandCenter[b]) <= bandTol) { sec[b] += dt; break; }
-            return sec;
         }
 
         private double MeanDt()
@@ -542,7 +532,9 @@ namespace AgOpenGPS
 
             // summary + chart
             r.summary = BuildStraightSummary(hr, g, lc, a, antNow, antNew, firstOk);
-            r.svg = MoneyPlotSvg(x, y, a, b);
+            // two-way plot when we have it — it shows the zero offset directly
+            r.svg = paired ? TwoWaySvg(rA, rB, RollBias(rA, rB), hr) + MoneyPlotSvg(x, y, a, b, hr)
+                           : MoneyPlotSvg(x, y, a, b, hr);
             r.subtitle = (hr ? "pravac · " : "straight · ")
                        + r.durationSec.ToString("0") + " s · roll RMS " + rollRms.ToString("0.0") + "°"
                        + (paired ? (hr ? " · dvosmjerno" : " · two-way") : (hr ? " · jednosmjerno" : " · one-way"));
@@ -847,7 +839,7 @@ namespace AgOpenGPS
             // the half-sum of the two passes over the same ground is the bias.
             var half = new double[n];
             for (int k = 0; k < n; k++) half[k] = (rA[k] + rB[k]) / 2.0;
-            double b = Mean(half);
+            double b = RollBias(rA, rB);
             double scatter = Std(half, b);
 
             bias.value = (b >= 0 ? "+" : "") + b.ToString("0.00") + "°";
@@ -934,6 +926,13 @@ namespace AgOpenGPS
                 : (hr ? "Roll se slabo ponavlja — provjeri fiksiranje IMU-a ili vozi mirnije."
                       : "Roll repeats poorly — check the IMU mounting or drive more steadily.");
             r.checks.Add(rep);
+        }
+
+        private static double RollBias(double[] rA, double[] rB)
+        {
+            var half = new double[rA.Length];
+            for (int k = 0; k < rA.Length; k++) half[k] = (rA[k] + rB[k]) / 2.0;
+            return Mean(half);
         }
 
         private static double Mean(double[] a)
@@ -1208,7 +1207,7 @@ namespace AgOpenGPS
         }
 
         // ---------------------------------------------------------------- charts
-        private string MoneyPlotSvg(double[] x, double[] y, double a, double b)
+        private string MoneyPlotSvg(double[] x, double[] y, double a, double b, bool hrPlot)
         {
             // x = sin(roll) [-.., ..], y = residual (m). Map to 360x200 box.
             double xmn = double.MaxValue, xmx = double.MinValue, ymn = double.MaxValue, ymx = double.MinValue;
@@ -1228,9 +1227,65 @@ namespace AgOpenGPS
             for (int i = 0; i < x.Length; i++)
                 sb.Append("<circle cx='").Append(F(MX(x[i]))).Append("' cy='").Append(F(MY(y[i]))).Append("' r='2.4' fill='#c23a2b'/>");
             sb.Append("<text x='330' y='196' font-size='9' fill='#5b6a63'>sin(roll)</text>");
-            sb.Append("<text x='34' y='16' font-size='9' fill='#5b6a63'>rezidual (m)</text>");
+            sb.Append("<text x='34' y='16' font-size='9' fill='#5b6a63'>")
+              .Append(hrPlot ? "rezidual (m)" : "residual (m)").Append("</text>");
             sb.Append("</svg>");
             return sb.ToString();
+        }
+
+        // The two-way plot IS the argument: over the same ground the terrain roll
+        // mirrors between passes, so plotting the return pass negated should land it
+        // on top of the first. Whatever gap remains is the sensor's zero offset.
+        private string TwoWaySvg(double[] rA, double[] rB, double bias, bool hr)
+        {
+            int n = rA.Length;
+            if (n < 2) return "";
+            double ymn = double.MaxValue, ymx = double.MinValue;
+            for (int i = 0; i < n; i++)
+            {
+                double v1 = rA[i], v2 = -rB[i];
+                if (v1 < ymn) ymn = v1; if (v1 > ymx) ymx = v1;
+                if (v2 < ymn) ymn = v2; if (v2 > ymx) ymx = v2;
+            }
+            if (ymx - ymn < 1e-6) { ymn -= 1; ymx += 1; }
+            double pad = (ymx - ymn) * 0.12; ymn -= pad; ymx += pad;
+
+            Func<int, double> MX = i => 34 + (double)i / (n - 1) * 316;
+            Func<double, double> MY = v => 178 - (v - ymn) / (ymx - ymn) * 158;
+
+            var sb = new System.Text.StringBuilder();
+            sb.Append("<svg viewBox='0 0 360 200' width='100%' style='max-width:520px'>");
+            if (ymn < 0 && ymx > 0)
+                sb.Append("<line x1='34' y1='").Append(F(MY(0))).Append("' x2='350' y2='").Append(F(MY(0)))
+                  .Append("' stroke='#cbd5d0'/>");
+            AppendPolyline(sb, MX, MY, rA, n, "#0d8395", false);
+            AppendPolyline(sb, MX, MY, rB, n, "#c9721b", true);
+            sb.Append("<line x1='34' y1='").Append(F(MY(bias))).Append("' x2='350' y2='").Append(F(MY(bias)))
+              .Append("' stroke='#c23a2b' stroke-width='1.5' stroke-dasharray='4 3'/>");
+            sb.Append("<text x='38' y='14' font-size='9' fill='#0d8395'>")
+              .Append(hr ? "prolaz A" : "pass A").Append("</text>");
+            sb.Append("<text x='96' y='14' font-size='9' fill='#c9721b'>")
+              .Append(hr ? "prolaz B (zrcaljen)" : "pass B (mirrored)").Append("</text>");
+            sb.Append("<text x='214' y='14' font-size='9' fill='#c23a2b'>")
+              .Append(hr ? "zero-offset " : "zero offset ").Append(bias.ToString("0.00", CultureInfo.InvariantCulture))
+              .Append("°</text>");
+            sb.Append("<text x='300' y='196' font-size='9' fill='#5b6a63'>")
+              .Append(hr ? "stanica" : "station").Append("</text>");
+            sb.Append("<text x='36' y='196' font-size='9' fill='#5b6a63'>roll °</text>");
+            sb.Append("</svg>");
+            return sb.ToString();
+        }
+
+        private static void AppendPolyline(System.Text.StringBuilder sb, Func<int, double> MX,
+                                           Func<double, double> MY, double[] v, int n, string colour, bool negate)
+        {
+            sb.Append("<polyline fill='none' stroke='").Append(colour).Append("' stroke-width='1.8' points='");
+            for (int i = 0; i < n; i++)
+            {
+                if (i > 0) sb.Append(' ');
+                sb.Append(F(MX(i))).Append(',').Append(F(MY(negate ? -v[i] : v[i])));
+            }
+            sb.Append("'/>");
         }
 
         private string CircleSvg(double[] E, double[] N, double cx, double cy, double R)
