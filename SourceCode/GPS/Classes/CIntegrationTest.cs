@@ -36,9 +36,10 @@ namespace AgOpenGPS
     public sealed class ITCheck
     {
         public string name;      // localized check name
-        public int status;       // 0 good, 1 warn, 2 crit
+        public int status;       // 0 good, 1 warn, 2 crit, 3 not measured
         public string desc;      // one-line finding
         public string value;     // measured value
+        public string note;      // measurement conditions, or what is missing when status 3
     }
 
     public sealed class ITResult
@@ -70,6 +71,13 @@ namespace AgOpenGPS
         private const double bandTol = 1.6;
         private const double targetPerBandSec = 12.0;   // needed per band
         private const double circleTargetRad = 2 * Math.PI * 2; // ~2 laps
+
+        // circle geometry: the tangent reference degrades as 1/R, so a tight circle
+        // is graded with widened thresholds instead of a confident wrong verdict.
+        private const double circleTargetR = 12.0;      // m, suggested to the driver
+        private const double circleMinR = 8.0;          // below this: reduced confidence
+        private const double lapFitTol = 0.08;          // reject a lap when fitRms/R exceeds this
+        private const double refNoiseK = 3.0;           // threshold = k * reference noise floor
 
         public int SampleCount { get { return s.Count; } }
 
@@ -147,13 +155,21 @@ namespace AgOpenGPS
 
         // 0..1 progress + driver hint split into an action line and a big value
         // (so the UI can show the target speed large and readable while driving).
-        public double Progress(out string action, out string big, bool hr)
+        public double Progress(FormGPS mf, out string action, out string big, bool hr)
         {
             if (mode == ITMode.Circle)
             {
                 double p = Clamp01(cumHeadingRad / circleTargetRad);
-                action = hr ? "Drži konstantan kut — vozi krug" : "Hold a constant angle — drive the circle";
-                big = ((int)(p * 100)).ToString(CultureInfo.InvariantCulture) + " %";
+                double tgtR, tgtSteer;
+                TargetCircle(mf, out tgtR, out tgtSteer);
+                action = (hr ? "Drži kut volana " : "Hold steering angle ")
+                       + tgtSteer.ToString("0", CultureInfo.InvariantCulture) + "°  ("
+                       + (hr ? "cilj R " : "target R ") + tgtR.ToString("0", CultureInfo.InvariantCulture) + " m)";
+                // live implied radius is the feedback the driver can actually act on
+                double st = Math.Abs(mf.mc.actualSteerAngleDegrees);
+                big = st > 1.0
+                    ? "R ≈ " + (mf.vehicle.VehicleConfig.Wheelbase / Math.Tan(glm.toRadians(st))).ToString("0.0", CultureInfo.InvariantCulture) + " m"
+                    : (hr ? "zakreni" : "turn in");
                 return p;
             }
             // straight: seconds accumulated in each band (monotonic — samples only add)
@@ -167,6 +183,20 @@ namespace AgOpenGPS
             action = hr ? "Vozi ravno na" : "Drive straight at";
             big = bandCenter[next].ToString("0", CultureInfo.InvariantCulture) + " km/h";
             return Clamp01(filled / (3 * targetPerBandSec));
+        }
+
+        // Suggested circle for this machine: R = wheelbase / tan(steer). Aim for the
+        // target radius, but fall back to what the machine can actually steer.
+        public static void TargetCircle(FormGPS mf, out double targetR, out double targetSteerDeg)
+        {
+            double wb = mf.vehicle.VehicleConfig.Wheelbase;
+            if (wb < 0.5) wb = 2.8;                        // unconfigured — assume a mid tractor
+            double maxDeg = mf.vehicle.maxSteerAngle;
+            if (maxDeg < 5) maxDeg = 30;
+
+            targetSteerDeg = glm.toDegrees(Math.Atan(wb / circleTargetR));
+            if (targetSteerDeg > maxDeg) targetSteerDeg = maxDeg;
+            targetR = wb / Math.Tan(glm.toRadians(targetSteerDeg));
         }
 
         public bool IsComplete()
@@ -209,9 +239,15 @@ namespace AgOpenGPS
             if (mode == ITMode.Straight) AnalyzeStraight(mf, r, hr);
             else AnalyzeCircle(mf, r, hr);
 
-            r.total = r.checks.Count;
+            // checks that could not be measured (status 3) are not scored either way
+            r.total = 0;
             r.okCount = 0;
-            foreach (var c in r.checks) if (c.status == 0) r.okCount++;
+            foreach (var c in r.checks)
+            {
+                if (c.status == 3) continue;
+                r.total++;
+                if (c.status == 0) r.okCount++;
+            }
             return r;
         }
 
@@ -322,6 +358,18 @@ namespace AgOpenGPS
                        + r.durationSec.ToString("0") + " s · roll RMS " + rollRms.ToString("0.0") + "°";
         }
 
+        // One lap, fitted on its own. Hand-driven laps are never identical, so a
+        // single global fit smears them together — each lap gets its own centre.
+        private sealed class ITLap
+        {
+            public List<int> idx;
+            public double cx, cy, R, fitRms;
+            public double imuP95, f2fP95;   // heading error vs tangent, 95th pct (deg)
+            public double imuScale, f2fScale;
+            public double sweepDeg;
+            public bool usable;
+        }
+
         private void AnalyzeCircle(FormGPS mf, ITResult r, bool hr)
         {
             var idx = new List<int>();
@@ -331,61 +379,188 @@ namespace AgOpenGPS
                 if (Math.Abs(s[i].steer) > 0.4 * medSteer) idx.Add(i);
             if (idx.Count < 30) idx = AllIdx();
 
-            double[] E = new double[idx.Count], N = new double[idx.Count];
-            for (int k = 0; k < idx.Count; k++) { E[k] = s[idx[k]].E; N[k] = s[idx[k]].N; }
-            double cx, cy, R; bool fitOk = CircleFit(E, N, out cx, out cy, out R);
+            // coarse fit over everything — used only to split the run into laps
+            double[] aE = new double[idx.Count], aN = new double[idx.Count];
+            for (int k = 0; k < idx.Count; k++) { aE[k] = s[idx[k]].E; aN[k] = s[idx[k]].N; }
+            double gcx, gcy, gR; bool fitOk = CircleFit(aE, aN, out gcx, out gcy, out gR);
 
-            // geometric angle from centre (ground truth) + tangent
-            double[] geo = new double[idx.Count];
-            for (int k = 0; k < idx.Count; k++) geo[k] = Math.Atan2(N[k] - cy, E[k] - cx);
-            double geoSweep = UnwrapSweep(geo);
-            double sign = geoSweep >= 0 ? 1 : -1;
-
-            // per-source tracking error vs tangent (mounting offset removed).
-            // F2F (course-over-ground) always available; IMU/dual only if present.
-            double[] f2fErr; double f2fScale;
-            SourceVsTangent(idx, geo, sign, false, out f2fErr, out f2fScale, geoSweep);
-            double f2fMax = MaxAbs(f2fErr);
-            double imuMax = 0, sp = 0;
             bool hasImu = HasImuHeading();
+            List<ITLap> laps = SplitLaps(idx, gcx, gcy);
+            foreach (ITLap L in laps) MeasureLap(L, hasImu);
 
-            var c1 = new ITCheck { name = hr ? "IMU/dual prati zavoj" : "IMU/dual tracks turn" };
-            var c2 = new ITCheck { name = hr ? "IMU/dual yaw scale" : "IMU/dual yaw scale" };
+            var used = new List<ITLap>();
+            foreach (ITLap L in laps) if (L.usable) used.Add(L);
+
+            if (used.Count == 0)
+            {
+                var bad = new ITCheck
+                {
+                    name = hr ? "Kvaliteta kruga" : "Circle quality",
+                    status = 3,
+                    value = "—",
+                    desc = hr ? "Nijedan krug nije dovoljno pravilan za analizu."
+                              : "No lap is round enough to analyse.",
+                    note = hr ? "Drži konstantan kut volana i vozi širi krug (R ≥ 8 m)."
+                              : "Hold a constant steering angle and drive a wider circle (R >= 8 m)."
+                };
+                r.checks.Add(bad);
+                r.summary = hr ? "Snimka nije upotrebljiva — centar kruga bježi. Ponovi test s konstantnim kutom."
+                               : "Recording unusable — the circle centre drifts. Re-run holding a constant angle.";
+                r.svg = CircleSvg(aE, aN, gcx, gcy, gR);
+                r.subtitle = (hr ? "kružnica · neupotrebljivo" : "circle · unusable");
+                return;
+            }
+
+            double medR = MedianOf(used, "R");
+            double medFit = MedianOf(used, "fit");
+            double imuP95 = MedianOf(used, "imuP95");
+            double f2fP95 = MedianOf(used, "f2fP95");
+            double imuSp = (MedianOf(used, "imuScale") - 1.0) * 100.0;
+
+            // reference noise floor: position scatter becomes an angular error of
+            // scatter/R, so a tight circle simply cannot be graded as finely.
+            double sigRef = medR > 0.1 ? glm.toDegrees(medFit / medR) : 0;
+            double warnAt = Math.Max(1.0, refNoiseK * sigRef);
+            double critAt = Math.Max(2.5, 2.0 * refNoiseK * sigRef);
+            bool tight = medR < circleMinR;
+
+            string cond = (hr ? "R " : "R ") + medR.ToString("0.0") + " m · fitRMS "
+                        + (medFit * 100).ToString("0") + " cm · " + used.Count
+                        + (hr ? " kr. · prag " : " laps · threshold ") + warnAt.ToString("0.0") + "°"
+                        + (used.Count > 1 ? (hr ? " · rasap " : " · spread ") + SpreadOf(used).ToString("0.0") + "°" : "");
+            if (tight) cond += hr ? " · smanjena pouzdanost (R < 8 m)" : " · reduced confidence (R < 8 m)";
+
+            var c1 = new ITCheck { name = hr ? "IMU/dual prati zavoj" : "IMU/dual tracks turn", note = cond };
+            var c2 = new ITCheck { name = hr ? "IMU/dual yaw scale" : "IMU/dual yaw scale", note = cond };
             if (hasImu)
             {
-                double[] imuErr; double imuScale;
-                SourceVsTangent(idx, geo, sign, true, out imuErr, out imuScale, geoSweep);
-                imuMax = MaxAbs(imuErr);
-                sp = (imuScale - 1.0) * 100.0;
-                c1.status = imuMax < 1.0 ? 0 : (imuMax < 2.5 ? 1 : 2);
-                c1.desc = hr ? "Odstupanje IMU/dual headinga od tangente kroz krug." : "IMU/dual heading vs tangent over the lap.";
-                c1.value = "± " + imuMax.ToString("0.0") + "°";
-                c2.status = Math.Abs(sp) < 1.0 ? 0 : (Math.Abs(sp) < 3.0 ? 1 : 2);
-                c2.desc = hr ? "Ukupno okretanje IMU/dual vs geometrijski krug." : "IMU/dual total turn vs geometric lap.";
-                c2.value = (sp >= 0 ? "+" : "") + sp.ToString("0.0") + " %";
+                c1.status = Grade(imuP95, warnAt, critAt, tight);
+                c1.desc = hr ? "Odstupanje IMU/dual headinga od tangente (p95, medijan po krugu)."
+                             : "IMU/dual heading vs tangent (p95, median across laps).";
+                c1.value = "± " + imuP95.ToString("0.0") + "°";
+
+                c2.status = Grade(Math.Abs(imuSp), 1.0, 3.0, tight);
+                c2.desc = hr ? "Ukupno okretanje IMU/dual vs geometrijski krug."
+                             : "IMU/dual total turn vs geometric lap.";
+                c2.value = (imuSp >= 0 ? "+" : "") + imuSp.ToString("0.0") + " %";
             }
             else
             {
-                c1.status = 1; c1.value = "N/A"; c1.desc = hr ? "Nema IMU/dual heading — preskočeno." : "No IMU/dual heading — skipped.";
-                c2.status = 1; c2.value = "N/A"; c2.desc = hr ? "Nema IMU/dual heading — preskočeno." : "No IMU/dual heading — skipped.";
+                c1.status = 3; c1.value = "—";
+                c1.desc = hr ? "Nema IMU/dual heading za usporedbu." : "No IMU/dual heading to compare.";
+                c1.note = hr ? "Treba IMU ili dual-as-IMU." : "Needs an IMU or dual-as-IMU.";
+                c2.status = 3; c2.value = "—"; c2.desc = c1.desc; c2.note = c1.note;
             }
             r.checks.Add(c1);
             r.checks.Add(c2);
 
-            var c3 = new ITCheck { name = hr ? "F2F prati zavoj" : "F2F tracks turn" };
-            c3.status = f2fMax < 1.0 ? 0 : (f2fMax < 2.5 ? 1 : 2);
-            c3.desc = hr ? "Kurs preko tla vs tangenta." : "Course-over-ground vs tangent.";
-            c3.value = "± " + f2fMax.ToString("0.0") + "°";
+            var c3 = new ITCheck
+            {
+                name = hr ? "F2F prati zavoj" : "F2F tracks turn",
+                status = Grade(f2fP95, warnAt, critAt, tight),
+                desc = hr ? "Kurs preko tla vs tangenta (p95)." : "Course-over-ground vs tangent (p95).",
+                value = "± " + f2fP95.ToString("0.0") + "°",
+                note = cond
+            };
             r.checks.Add(c3);
 
-            r.summary = BuildCircleSummary(hr, R, imuMax, sp, f2fMax, fitOk);
-            r.svg = CircleSvg(E, N, cx, cy, R);
+            // per-lap repeatability — only meaningful with more than one usable lap
+            if (used.Count > 1)
+            {
+                double spread = SpreadOf(used);
+                r.checks.Add(new ITCheck
+                {
+                    name = hr ? "Ponovljivost po krugu" : "Per-lap repeatability",
+                    status = spread < Math.Max(1.0, warnAt) ? 0 : (spread < critAt ? 1 : 2),
+                    desc = hr ? "Rasap nalaza između krugova." : "Spread of the finding across laps.",
+                    value = "± " + spread.ToString("0.0") + "°",
+                    note = LapTable(used, hr)
+                });
+            }
+
+            r.summary = BuildCircleSummary(hr, medR, imuP95, imuSp, f2fP95, fitOk, used.Count, tight, warnAt);
+            r.svg = CircleSvg(aE, aN, gcx, gcy, medR);
             r.subtitle = (hr ? "kružnica · R " : "circle · R ")
-                       + R.ToString("0.0") + " m · " + (Math.Abs(geoSweep) / (2 * Math.PI)).ToString("0.0")
-                       + (hr ? " kruga" : " laps");
+                       + medR.ToString("0.0") + " m · " + used.Count
+                       + (hr ? " kruga" : " laps")
+                       + (tight ? (hr ? " · tijesno" : " · tight") : "");
+        }
+
+        // Split the run into laps using the unwrapped position angle around the
+        // coarse centre; each lap is then fitted on its own.
+        private List<ITLap> SplitLaps(List<int> idx, double gcx, double gcy)
+        {
+            var laps = new List<ITLap>();
+            int n = idx.Count;
+            if (n == 0) return laps;
+
+            var ang = new double[n];
+            for (int k = 0; k < n; k++) ang[k] = Math.Atan2(s[idx[k]].E - gcx, s[idx[k]].N - gcy);
+            Unwrap(ang);
+
+            double start = ang[0];
+            var cur = new List<int>();
+            int lapNo = 0;
+            for (int k = 0; k < n; k++)
+            {
+                int no = (int)Math.Floor(Math.Abs(ang[k] - start) / (2 * Math.PI));
+                if (no != lapNo && cur.Count > 0)
+                {
+                    laps.Add(new ITLap { idx = cur });
+                    cur = new List<int>();
+                    lapNo = no;
+                }
+                cur.Add(idx[k]);
+            }
+            if (cur.Count > 0) laps.Add(new ITLap { idx = cur });
+            return laps;
+        }
+
+        // Fit one lap and measure every source against its own tangent.
+        private void MeasureLap(ITLap L, bool hasImu)
+        {
+            int n = L.idx.Count;
+            L.usable = false;
+            if (n < 40) return;
+
+            var E = new double[n]; var N = new double[n];
+            for (int k = 0; k < n; k++) { E[k] = s[L.idx[k]].E; N[k] = s[L.idx[k]].N; }
+            if (!CircleFit(E, N, out L.cx, out L.cy, out L.R)) return;
+            if (L.R < 1.0) return;
+
+            double acc = 0;
+            for (int k = 0; k < n; k++)
+            {
+                double d = Math.Sqrt((E[k] - L.cx) * (E[k] - L.cx) + (N[k] - L.cy) * (N[k] - L.cy)) - L.R;
+                acc += d * d;
+            }
+            L.fitRms = Math.Sqrt(acc / n);
+            if (L.fitRms / L.R > lapFitTol) return;     // centre drifted — not a circle
+
+            // position angle in the COMPASS frame (Atan2(east, north)) so it lives in
+            // the same frame as AOG heading; the tangent is then geo +/- 90 degrees.
+            var geo = new double[n];
+            for (int k = 0; k < n; k++) geo[k] = Math.Atan2(E[k] - L.cx, N[k] - L.cy);
+            double geoSweep = UnwrapSweep(geo);
+            if (Math.Abs(geoSweep) < Math.PI) return;   // less than half a lap
+            L.sweepDeg = glm.toDegrees(geoSweep);
+            double sign = geoSweep >= 0 ? 1 : -1;
+
+            double[] err;
+            SourceVsTangent(L.idx, geo, sign, false, out err, out L.f2fScale, geoSweep);
+            L.f2fP95 = Pct95Abs(err);
+            if (hasImu)
+            {
+                SourceVsTangent(L.idx, geo, sign, true, out err, out L.imuScale, geoSweep);
+                L.imuP95 = Pct95Abs(err);
+            }
+            else { L.imuScale = 1.0; L.imuP95 = 0; }
+            L.usable = true;
         }
 
         // ---- source vs tangent, offset-removed error + yaw scale ----
+        // The constant part (IMU mounting yaw + tyre sideslip) is removed, so what
+        // remains is how well the source tracks through the turn.
         private void SourceVsTangent(List<int> idx, double[] geo, double sign, bool imu,
                                      out double[] err, out double scale, double geoSweep)
         {
@@ -404,6 +579,52 @@ namespace AgOpenGPS
             for (int k = 0; k < n; k++) err[k] = glm.toDegrees(WrapPi(raw[k] - off));
             double headSweep = UnwrapSweep(head);
             scale = Math.Abs(geoSweep) > 1e-6 ? headSweep / geoSweep : 1.0;
+        }
+
+        // A tight circle cannot be graded confidently — cap at warn instead of
+        // reporting a fault that is really just geometry.
+        private static int Grade(double v, double warnAt, double critAt, bool tight)
+        {
+            int st = v < warnAt ? 0 : (v < critAt ? 1 : 2);
+            if (tight && st == 2) st = 1;
+            return st;
+        }
+
+        private static double MedianOf(List<ITLap> l, string field)
+        {
+            var a = new double[l.Count];
+            for (int i = 0; i < l.Count; i++)
+            {
+                ITLap L = l[i];
+                a[i] = field == "R" ? L.R
+                     : field == "fit" ? L.fitRms
+                     : field == "imuP95" ? L.imuP95
+                     : field == "f2fP95" ? L.f2fP95
+                     : field == "imuScale" ? L.imuScale
+                     : L.f2fScale;
+            }
+            return Median(a);
+        }
+
+        // how much the per-lap IMU finding moves between laps
+        private static double SpreadOf(List<ITLap> l)
+        {
+            double mn = double.MaxValue, mx = double.MinValue;
+            foreach (ITLap L in l) { if (L.imuP95 < mn) mn = L.imuP95; if (L.imuP95 > mx) mx = L.imuP95; }
+            return mx - mn;
+        }
+
+        private static string LapTable(List<ITLap> l, bool hr)
+        {
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < l.Count; i++)
+            {
+                if (i > 0) sb.Append(" · ");
+                sb.Append(hr ? "kr." : "lap").Append(i + 1).Append(": R ")
+                  .Append(l[i].R.ToString("0.0", CultureInfo.InvariantCulture)).Append(" m, ± ")
+                  .Append(l[i].imuP95.ToString("0.0", CultureInfo.InvariantCulture)).Append("°");
+            }
+            return sb.ToString();
         }
 
         // ================================================================ helpers
@@ -558,7 +779,23 @@ namespace AgOpenGPS
             return total;
         }
 
-        private static double MaxAbs(double[] a) { double m = 0; for (int i = 0; i < a.Length; i++) if (Math.Abs(a[i]) > m) m = Math.Abs(a[i]); return m; }
+        // unwrap an angle sequence in place (removes the 0/360 jumps)
+        private static void Unwrap(double[] a)
+        {
+            for (int i = 1; i < a.Length; i++) a[i] = a[i - 1] + WrapPi(a[i] - a[i - 1]);
+        }
+
+        // 95th percentile of |a| — robust where max is pure noise-chasing
+        private static double Pct95Abs(double[] a)
+        {
+            if (a.Length == 0) return 0;
+            var c = new double[a.Length];
+            for (int i = 0; i < a.Length; i++) c[i] = Math.Abs(a[i]);
+            Array.Sort(c);
+            int k = (int)Math.Floor(0.95 * (c.Length - 1));
+            return c[k];
+        }
+
         private static double Median(double[] a) { if (a.Length == 0) return 0; var c = (double[])a.Clone(); Array.Sort(c); return c[c.Length / 2]; }
         private static double Clamp01(double v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
 
@@ -574,19 +811,24 @@ namespace AgOpenGPS
             return hr ? "Roll kompenzacija i geometrija izgledaju dobro." : "Roll compensation and geometry look good.";
         }
 
-        private string BuildCircleSummary(bool hr, double R, double imuMax, double sp, double f2fMax, bool fitOk)
+        private string BuildCircleSummary(bool hr, double R, double imuP95, double sp, double f2fP95,
+                                          bool fitOk, int lapsUsed, bool tight, double warnAt)
         {
             if (!fitOk) return hr ? "Kružnica se ne da pouzdano fitati — vozi puniji, stabilniji krug."
                                   : "Circle could not be fit reliably — drive a fuller, steadier circle.";
-            string s1 = hr ? ("Fit R = " + R.ToString("0.0") + " m. ") : ("Fit R = " + R.ToString("0.0") + " m. ");
-            string s2 = (imuMax < 1.0 && f2fMax < 1.0)
+            string s1 = "R = " + R.ToString("0.0") + " m, " + lapsUsed + (hr ? " analiziranih krugova. " : " laps analysed. ");
+            string s2 = (imuP95 < warnAt && f2fP95 < warnAt)
                 ? (hr ? "IMU i F2F ispravno prate skretanje." : "IMU and F2F track the turn correctly.")
                 : (hr ? "Provjeri izvor s većim odstupanjem od tangente." : "Check the source with the larger tangent error.");
             string s3 = Math.Abs(sp) >= 1.0
-                ? (hr ? " IMU yaw scale " : " IMU yaw scale ") + (sp >= 0 ? "+" : "") + sp.ToString("0.0") + "% — "
+                ? " IMU yaw scale " + (sp >= 0 ? "+" : "") + sp.ToString("0.0") + "% — "
                   + (hr ? "objašnjava drift u dugim zavojima." : "explains drift in long turns.")
                 : "";
-            return s1 + s2 + s3;
+            string s4 = tight
+                ? (hr ? " <b>R je ispod 8 m</b> — referenca tangente je razmjerno šumna (skalira s 1/R), pa su nalazi orijentacijski; ponovi na R ≈ 12 m za ocjenu."
+                      : " <b>R is below 8 m</b> — the tangent reference is proportionally noisy (scales with 1/R), so findings are indicative; re-run at R ~ 12 m to grade.")
+                : "";
+            return s1 + s2 + s3 + s4;
         }
 
         // ---------------------------------------------------------------- charts

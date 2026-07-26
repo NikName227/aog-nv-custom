@@ -119,7 +119,7 @@ namespace AgOpenGPS
         {
             test.RecordFrom(mf);
             string action, big;
-            double p = test.Progress(out action, out big, hr);
+            double p = test.Progress(mf, out action, out big, hr);
             bar.Value = (int)(p * 100);
             lblHintTop.Text = action;
             lblHintBig.Text = big;
@@ -189,7 +189,9 @@ namespace AgOpenGPS
               .Append(".chk{display:grid;grid-template-columns:22px 1fr auto;gap:10px;align-items:center;padding:11px 18px;border-top:1px solid #eef1f0}")
               .Append(".ci{width:19px;height:19px;border-radius:6px;display:grid;place-items:center;font-weight:800;font-size:12px}")
               .Append(".g{background:#e4f1e8;color:#2e8b4f}.w{background:#f6ecd8;color:#b06f12}.c{background:#f7e2de;color:#c23a2b}")
+              .Append(".n{background:#eceff0;color:#8b968f}.chk.na{opacity:.62}")
               .Append(".nm{font-weight:600}.ds{color:#5b6a63;font-size:12.5px}.vl{font-family:ui-monospace,Consolas,monospace;font-size:12px;font-weight:700;white-space:nowrap}")
+              .Append(".nt{color:#8b968f;font-family:ui-monospace,Consolas,monospace;font-size:11px}")
               .Append(".chart{padding:16px 18px;border-top:1px solid #eef1f0}.sum{padding:14px 18px;border-top:1px solid #eef1f0;font-size:13.5px}")
               .Append(".foot{color:#5b6a63;font-size:11.5px;margin-top:16px}")
               .Append("</style></head><body><div class='wrap'>");
@@ -205,11 +207,15 @@ namespace AgOpenGPS
 
             foreach (var c in r.checks)
             {
-                string cls = c.status == 0 ? "g" : (c.status == 1 ? "w" : "c");
-                string sym = c.status == 0 ? "✓" : (c.status == 1 ? "~" : "!");
-                sb.Append("<div class='chk'><span class='ci ").Append(cls).Append("'>").Append(sym).Append("</span>")
-                  .Append("<span><span class='nm'>").Append(Esc(c.name)).Append("</span><br><span class='ds'>").Append(Esc(c.desc)).Append("</span></span>")
-                  .Append("<span class='vl'>").Append(Esc(c.value)).Append("</span></div>");
+                // status 3 = not measured: greyed out, and the note says what is missing
+                string cls = c.status == 0 ? "g" : (c.status == 1 ? "w" : (c.status == 3 ? "n" : "c"));
+                string sym = c.status == 0 ? "✓" : (c.status == 1 ? "~" : (c.status == 3 ? "–" : "!"));
+                sb.Append("<div class='chk").Append(c.status == 3 ? " na" : "").Append("'><span class='ci ")
+                  .Append(cls).Append("'>").Append(sym).Append("</span>")
+                  .Append("<span><span class='nm'>").Append(Esc(c.name)).Append("</span><br><span class='ds'>").Append(Esc(c.desc)).Append("</span>");
+                if (!string.IsNullOrEmpty(c.note))
+                    sb.Append("<br><span class='nt'>").Append(Esc(c.note)).Append("</span>");
+                sb.Append("</span><span class='vl'>").Append(Esc(c.value)).Append("</span></div>");
             }
 
             if (!string.IsNullOrEmpty(r.svg))
