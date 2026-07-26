@@ -38,6 +38,7 @@ namespace AgOpenGPS
         public double lat;      // signed perpendicular offset in the LINE frame, m
         public bool sameWay;    // driving A->B (true) or B->A (false)
         public bool steerOn;    // autosteer engaged — it regulates the very signal we measure
+        public int step;        // which guided sub-step produced this sample
     }
 
     public sealed class ITCheck
@@ -63,6 +64,24 @@ namespace AgOpenGPS
         public string subtitle = "";
     }
 
+    // One guided sub-step of a test. The straight test is a sequence of passes
+    // along the same AB line; the circle test is a sequence of laps.
+    public sealed class ITStep
+    {
+        public int group;          // 1 = geometry, 2 = 4 km/h, 3 = 10 km/h (straight)
+        public string head;        // group heading, null when it continues the group above
+        public string label;       // localized sub-step line
+        public int dir;            // 0 = the direction driven first, 1 = the opposite
+        public bool autosteer;     // what the driver is told to do
+        public double speed;       // target km/h, 0 = any
+        public bool optional;
+        public bool done, skipped;
+        public double minSt = double.MaxValue, maxSt = double.MinValue;   // station covered
+        public double Covered { get { return maxSt > minSt ? maxSt - minSt : 0; } }
+        public double target;      // metres, or radians of sweep for the circle
+        public double sweep;       // circle only
+    }
+
     public sealed class CIntegrationTest
     {
         public ITMode mode = ITMode.None;
@@ -72,6 +91,9 @@ namespace AgOpenGPS
         private double lastE = double.NaN, lastN = double.NaN;
         private double cumHeadingRad;           // for circle live progress
         private double prevFixRad = double.NaN;
+        private readonly List<ITStep> steps = new List<ITStep>();
+        private int stepIdx;
+        private bool? firstSameWay;             // the direction driven first defines dir 0
 
         // straight speed bands (km/h) — center + tolerance
         // speed bands are opportunistic now — only the F2F-noise-vs-speed check
@@ -95,16 +117,74 @@ namespace AgOpenGPS
 
         public int SampleCount { get { return s.Count; } }
 
-        public void Start(ITMode m)
+        public void Start(ITMode m, bool hr)
         {
             mode = m; running = true;
             s.Clear();
             t0 = DateTime.Now;
             lastE = lastN = double.NaN;
             cumHeadingRad = 0; prevFixRad = double.NaN;
+            firstSameWay = null;
+            stepIdx = 0;
+            BuildSteps(m, hr);
         }
 
         public void Stop() { running = false; }
+
+        // The straight run is three groups over the same AB line. The first pass is
+        // driven on autosteer purely to lay a straight track; the return is driven
+        // by hand along that track, which keeps the GPS loop open (the reported
+        // offset is what we measure, so it must not be steered away) while
+        // guaranteeing both passes cover the same ground.
+        private void BuildSteps(ITMode m, bool hr)
+        {
+            steps.Clear();
+            if (m == ITMode.Circle)
+            {
+                for (int i = 0; i < 2; i++)
+                    steps.Add(new ITStep
+                    {
+                        group = 1,
+                        head = i == 0 ? (hr ? "Kružnica — 2 kruga" : "Circle — 2 laps") : null,
+                        label = (hr ? "krug " : "lap ") + (i + 1),
+                        target = 2 * Math.PI,
+                    });
+                return;
+            }
+
+            string there = hr ? "→ tamo" : "-> out";
+            string back = hr ? "← natrag" : "<- back";
+            string auto = hr ? "autosteer" : "autosteer";
+            string byHand = hr ? "ručno, po tragovima" : "by hand, along the tracks";
+
+            steps.Add(new ITStep { group = 1, head = hr ? "1. Geometrija  ~7 km/h" : "1. Geometry  ~7 km/h",
+                                   label = there + " · " + auto, dir = 0, autosteer = true, target = passTargetM });
+            steps.Add(new ITStep { group = 1, label = back + " · " + byHand, dir = 1, target = passTargetM });
+            // A second manual pass is a genuinely independent reading of the offset
+            // (a different pair), not a way to reach the antenna height — a pass that
+            // follows an autosteer-laid track can never see the height error, because
+            // autosteer already steered that error into the track itself.
+            steps.Add(new ITStep { group = 1, label = there + " · " + byHand, dir = 0, target = passTargetM,
+                                   optional = true });
+
+            steps.Add(new ITStep { group = 2, head = hr ? "2. Brzina 4 km/h" : "2. Speed 4 km/h",
+                                   label = there + " · " + auto, dir = 0, autosteer = true, speed = 4, target = passTargetM });
+            steps.Add(new ITStep { group = 2, label = back + " · " + auto, dir = 1, autosteer = true, speed = 4, target = passTargetM });
+
+            steps.Add(new ITStep { group = 3, head = hr ? "3. Brzina 10 km/h" : "3. Speed 10 km/h",
+                                   label = there + " · " + auto, dir = 0, autosteer = true, speed = 10, target = passTargetM });
+            steps.Add(new ITStep { group = 3, label = back + " · " + auto, dir = 1, autosteer = true, speed = 10, target = passTargetM });
+        }
+
+        public List<ITStep> Steps { get { return steps; } }
+        public int CurrentStep { get { return stepIdx; } }
+
+        // Every step can be skipped — a short headland, no visible tracks, or a
+        // field too short for 10 km/h. What is missing is reported as missing.
+        public void SkipStep()
+        {
+            if (stepIdx < steps.Count) { steps[stepIdx].skipped = true; stepIdx++; }
+        }
 
         // Raw log for offline analysis. The '#' header carries the machine geometry,
         // without which the numbers cannot be interpreted afterwards.
@@ -194,57 +274,99 @@ namespace AgOpenGPS
                 lat = lat,
                 sameWay = sameWay,
                 steerOn = mf.isBtnAutoSteerOn,
+                step = stepIdx,
             };
             s.Add(smp);
 
             if (mode == ITMode.Circle && !double.IsNaN(prevFixRad))
                 cumHeadingRad += Math.Abs(WrapPi(mf.fixHeading - prevFixRad));
             prevFixRad = mf.fixHeading;
+
+            AdvanceStep(smp);
+        }
+
+        // Credit the sample to the current step and move on once it is full. The
+        // driver never presses "next" — direction and distance say when a pass is
+        // done. Autosteer state is recorded but not required, so forgetting to
+        // switch it does not stall the test; the analysis decides what that costs.
+        private void AdvanceStep(ITSample smp)
+        {
+            if (stepIdx >= steps.Count) return;
+            ITStep st = steps[stepIdx];
+
+            if (mode == ITMode.Circle)
+            {
+                st.sweep = cumHeadingRad - LapsBefore();
+                if (st.sweep >= st.target) { st.done = true; stepIdx++; }
+                return;
+            }
+
+            if (double.IsNaN(smp.station)) return;
+            if (Math.Abs(smp.lat) > latNearLine) return;          // off the line = turning
+            if (!firstSameWay.HasValue) firstSameWay = smp.sameWay;
+            int dir = smp.sameWay == firstSameWay.Value ? 0 : 1;
+            if (dir != st.dir) return;                            // wrong way for this step
+            if (st.speed > 0 && Math.Abs(smp.speed - st.speed) > bandTol) return;
+
+            if (smp.station < st.minSt) st.minSt = smp.station;
+            if (smp.station > st.maxSt) st.maxSt = smp.station;
+            if (st.Covered >= st.target) { st.done = true; stepIdx++; }
+        }
+
+        private double LapsBefore()
+        {
+            double d = 0;
+            for (int i = 0; i < stepIdx && i < steps.Count; i++) d += steps[i].sweep;
+            return d;
         }
 
         // 0..1 progress + driver hint split into an action line and a big value
         // (so the UI can show the target speed large and readable while driving).
         public double Progress(FormGPS mf, out string action, out string big, bool hr)
         {
+            var ci = CultureInfo.InvariantCulture;
+            if (stepIdx >= steps.Count)
+            {
+                action = hr ? "Svi koraci odrađeni." : "All steps done.";
+                big = "100 %";
+                return 1;
+            }
+            ITStep cur = steps[stepIdx];
+
             if (mode == ITMode.Circle)
             {
-                double p = Clamp01(cumHeadingRad / circleTargetRad);
                 double tgtR, tgtSteer;
                 TargetCircle(mf, out tgtR, out tgtSteer);
                 action = (hr ? "Drži kut volana " : "Hold steering angle ")
-                       + tgtSteer.ToString("0", CultureInfo.InvariantCulture) + "°  ("
-                       + (hr ? "cilj R " : "target R ") + tgtR.ToString("0", CultureInfo.InvariantCulture) + " m)";
-                // live implied radius is the feedback the driver can actually act on
-                double st = Math.Abs(mf.mc.actualSteerAngleDegrees);
-                big = st > 1.0
-                    ? "R ≈ " + (mf.vehicle.VehicleConfig.Wheelbase / Math.Tan(glm.toRadians(st))).ToString("0.0", CultureInfo.InvariantCulture) + " m"
+                       + tgtSteer.ToString("0", ci) + "°  ("
+                       + (hr ? "cilj R " : "target R ") + tgtR.ToString("0", ci) + " m)";
+                double sa = Math.Abs(mf.mc.actualSteerAngleDegrees);
+                big = sa > 1.0
+                    ? "R ≈ " + (mf.vehicle.VehicleConfig.Wheelbase / Math.Tan(glm.toRadians(sa))).ToString("0.0", ci) + " m"
                     : (hr ? "zakreni" : "turn in");
-                return p;
+                return Clamp01(cumHeadingRad / circleTargetRad);
             }
-            // straight: one pass each way over the same line. Direction-agnostic —
-            // the driver may start from either end.
-            double lenA = PassLength(true), lenB = PassLength(false);
-            double first = Math.Max(lenA, lenB), second = Math.Min(lenA, lenB);
-            double done = Math.Min(first, passTargetM) + Math.Min(second, passTargetM);
-            var ci = CultureInfo.InvariantCulture;
 
-            if (first < passTargetM)
-            {
-                action = hr ? "Prolaz 1/2 — vozi uz liniju, autosteer ISKLJUČEN, gledaj u daleku točku"
-                            : "Pass 1/2 — drive along the line, autosteer OFF, aim at a distant point";
-                big = first.ToString("0", ci) + " / " + passTargetM.ToString("0", ci) + " m";
-            }
-            else if (second < 1.0)
-            {
-                action = hr ? "Okreni se i vrati po ISTOJ liniji" : "Turn around and come back along the SAME line";
-                big = hr ? "okreni" : "turn around";
-            }
+            // The return pass is the one that matters, so spell out the trap: the
+            // offset shown on screen is the measurement, not an error to steer out.
+            if (cur.autosteer)
+                action = (hr ? "Autosteer UKLJUČEN" : "Autosteer ON")
+                       + (cur.speed > 0 ? " · " + cur.speed.ToString("0", ci) + " km/h"
+                                        : (hr ? " · ~7 km/h, polaže ravan trag" : " · ~7 km/h, lays a straight track"));
             else
+                action = hr ? "Ručno — drži kotače u tragovima, gledaj van. Zanemari liniju/XTE na ekranu."
+                            : "By hand — keep the wheels in the tracks, look outside. Ignore the line / XTE on screen.";
+
+            big = cur.Covered.ToString("0", ci) + " / " + cur.target.ToString("0", ci) + " m";
+
+            double done = 0, total = 0;
+            foreach (ITStep st in steps)
             {
-                action = hr ? "Prolaz 2/2 — povratak istom linijom" : "Pass 2/2 — return along the same line";
-                big = second.ToString("0", ci) + " / " + passTargetM.ToString("0", ci) + " m";
+                if (st.optional) continue;                 // optional work is a bonus, not progress
+                total += st.target;
+                done += st.done || st.skipped ? st.target : Math.Min(st.Covered, st.target);
             }
-            return Clamp01(done / (2 * passTargetM));
+            return total > 0 ? Clamp01(done / total) : 0;
         }
 
         // Suggested circle for this machine: R = wheelbase / tan(steer). Aim for the
@@ -263,8 +385,16 @@ namespace AgOpenGPS
 
         public bool IsComplete()
         {
-            if (mode == ITMode.Circle) return cumHeadingRad >= circleTargetRad;
-            return PassLength(true) >= passTargetM && PassLength(false) >= passTargetM;
+            foreach (ITStep st in steps)
+                if (!st.done && !st.skipped && !st.optional) return false;
+            return steps.Count > 0;
+        }
+
+        public int StepsDriven()
+        {
+            int n = 0;
+            foreach (ITStep st in steps) if (st.done) n++;
+            return n;
         }
 
         private double MeanDt()
@@ -334,34 +464,53 @@ namespace AgOpenGPS
             for (int k = 0; k < idx.Count; k++) yRaw[k] = s[idx[k]].lat * (s[idx[k]].sameWay ? 1.0 : -1.0);
             RemovePerDirectionMean(idx, yRaw);
 
-            // Two-way pairing on the same ground. This is what makes the roll zero
-            // offset observable at all: from one pass a constant bias is
-            // indistinguishable from the mean cross slope of the terrain.
+            List<int> manA, manB, autA, autB;
+            SplitByDirAndSteer(idx, out manA, out manB, out autA, out autB);
+
+            // Roll bias only needs the same ground both ways — autosteer does not
+            // regulate the roll channel, so every pass counts and they all pool.
+            var allA = new List<int>(manA); allA.AddRange(autA);
+            var allB = new List<int>(manB); allB.AddRange(autB);
             double[] rA = new double[0], rB = new double[0], lA = new double[0], lB = new double[0];
-            bool paired = false;
-            if (HasBothDirections()) paired = PairedProfile(idx, out rA, out rB, out lA, out lB);
+            bool paired = allA.Count > 0 && allB.Count > 0
+                       && PairedBins(allA, allB, out rA, out rB, out lA, out lB);
             if (!paired) { rA = rB = lA = lB = new double[0]; }
 
-            // fit set: binned two-way data when available (the pairing doubles the
-            // span of sin(roll) and makes it cross zero), raw samples otherwise
+            // The height fit needs the lateral residual free to move, which only the
+            // manual passes give: autosteer regulates that residual to zero. Pairing
+            // two manual passes also flips the sign of roll between them, which is
+            // what makes the fit conditioned on a one-sided cross slope.
+            double[] hrA = new double[0], hrB = new double[0], hlA = new double[0], hlB = new double[0];
+            bool fitPaired = false;
+            if (manA.Count > 0 && manB.Count > 0)
+                fitPaired = PairedBins(manA, manB, out hrA, out hrB, out hlA, out hlB);
             double[] x, y;
-            if (paired)
+            if (fitPaired)
             {
-                int nb = rA.Length;
+                int nb = hrA.Length;
                 x = new double[nb * 2]; y = new double[nb * 2];
-                double mLatA = Mean(lA), mLatB = Mean(lB);
+                double mA = Mean(hlA), mB = Mean(hlB);
                 for (int k = 0; k < nb; k++)
                 {
-                    x[k] = Math.Sin(glm.toRadians(rA[k]));
-                    y[k] = lA[k] - mLatA;
-                    x[nb + k] = Math.Sin(glm.toRadians(rB[k]));
-                    y[nb + k] = -(lB[k] - mLatB);
+                    x[k] = Math.Sin(glm.toRadians(hrA[k]));
+                    y[k] = hlA[k] - mA;
+                    x[nb + k] = Math.Sin(glm.toRadians(hrB[k]));
+                    y[nb + k] = -(hlB[k] - mB);
                 }
             }
             else
             {
-                x = new double[idx.Count]; y = yRaw;
-                for (int k = 0; k < idx.Count; k++) x[k] = Math.Sin(glm.toRadians(s[idx[k]].rollDeg));
+                // no manual pair: fall back to whatever manual driving there was,
+                // and to the whole run only if there was none at all
+                var src = new List<int>(manA); src.AddRange(manB);
+                if (src.Count < 30) src = idx;
+                x = new double[src.Count]; y = new double[src.Count];
+                for (int k = 0; k < src.Count; k++)
+                {
+                    x[k] = Math.Sin(glm.toRadians(s[src[k]].rollDeg));
+                    y[k] = s[src[k]].lat * (s[src[k]].sameWay ? 1.0 : -1.0);
+                }
+                RemovePerDirectionMean(src, y);
             }
 
             // roll excitation: RMS alone is not enough — a one-sided roll (never
@@ -384,7 +533,7 @@ namespace AgOpenGPS
                             + (paired ? (hr ? " · dvosmjerno, " : " · two-way, ") + rA.Length + (hr ? " binova" : " bins")
                                       : (hr ? " · jednosmjerno" : " · one-way"));
 
-            AddTwoWayChecks(mf, r, hr, paired, rA, rB, lA, lB);
+            AddTwoWayChecks(mf, r, hr, paired, rA, rB, manA, manB, autA, autB);
 
             var g = new ITCheck { name = hr ? "Geometrija / visina antene" : "Geometry / antenna height", note = rollCond };
             if (rollRms < 0.6)
@@ -406,7 +555,15 @@ namespace AgOpenGPS
             {
                 g.status = 3; g.value = "—";
                 g.desc = hr ? "Roll objašnjava premali dio reziduala." : "Roll explains too little of the residual.";
-                g.note = rollCond + (hr ? " · treba R² ≥ 0.25" : " · needs R² >= 0.25");
+                // Following a track that autosteer laid hides this one completely:
+                // autosteer already steered the height error into that track, so a
+                // pass retracing it carries the same wiggle with the opposite sign
+                // and the two cancel. Only free-hand passes can expose it.
+                bool ruts = autA.Count > 0 || autB.Count > 0;
+                g.note = rollCond + (ruts
+                    ? (hr ? " · prolazi su pratili autosteerom položen trag — visina se u njemu poništi; za ovaj nalaz vozi OBA prolaza slobodno preko nagiba"
+                          : " · passes followed an autosteer-laid track, which cancels the height signature; drive BOTH passes free-hand over a slope for this one")
+                    : (hr ? " · treba R² ≥ 0.25" : " · needs R2 >= 0.25"));
             }
             else if (Math.Abs(a) > 0.5)
             {
@@ -537,7 +694,8 @@ namespace AgOpenGPS
                            : MoneyPlotSvg(x, y, a, b, hr);
             r.subtitle = (hr ? "pravac · " : "straight · ")
                        + r.durationSec.ToString("0") + " s · roll RMS " + rollRms.ToString("0.0") + "°"
-                       + (paired ? (hr ? " · dvosmjerno" : " · two-way") : (hr ? " · jednosmjerno" : " · one-way"));
+                       + (paired ? (hr ? " · dvosmjerno" : " · two-way") : (hr ? " · jednosmjerno" : " · one-way"))
+                       + (hr ? " · koraci " : " · steps ") + StepsDriven() + "/" + steps.Count;
         }
 
         // One lap, fitted on its own. Hand-driven laps are never identical, so a
@@ -816,7 +974,8 @@ namespace AgOpenGPS
 
         // Findings that exist only because the same ground was driven both ways.
         private void AddTwoWayChecks(FormGPS mf, ITResult r, bool hr, bool paired,
-                                     double[] rA, double[] rB, double[] lA, double[] lB)
+                                     double[] rA, double[] rB,
+                                     List<int> manA, List<int> manB, List<int> autA, List<int> autB)
         {
             var bias = new ITCheck { name = hr ? "Roll zero-offset" : "Roll zero offset" };
             var off = new ITCheck { name = hr ? "Lateralni offset antene" : "Antenna lateral offset" };
@@ -865,16 +1024,27 @@ namespace AgOpenGPS
             }
             r.checks.Add(bias);
 
-            // Anything fixed in the machine frame shows up as a half-difference of
-            // the two passes. That includes the lateral part of the roll bias, so
-            // subtract what the measured bias already explains.
-            var diff = new double[n];
-            for (int k = 0; k < n; k++) diff[k] = (lA[k] - lB[k]) / 2.0;
-            double eVeh = Mean(diff);
-            // The driver does not retrace the exact same path, and that mismatch does
-            // not fully average out over a finite line — so the estimate carries a
-            // real uncertainty. Quote it instead of implying centimetre precision.
-            double eSe = Std(diff, eVeh) / Math.Sqrt(n);
+            // Anything fixed in the machine frame shows up as a half-difference of the
+            // two passes, whichever pair is used: with both passes free the ground
+            // cancels and the difference is 2e; with the first pass on autosteer the
+            // reported track is held at zero and the whole 2e lands in the manual
+            // return. Both give the same e — so a manual pair and a mixed pair are
+            // two independent readings of the same number.
+            double eVeh = 0, eSe = 0; int pairBins = 0;
+            bool bothManual = false, offMeasurable = false;
+            double crossCheck = double.NaN;
+
+            if (manA.Count > 0 && manB.Count > 0)
+            {
+                offMeasurable = bothManual = HalfDifference(manA, manB, out eVeh, out eSe, out pairBins);
+                double e2, se2; int nb2;
+                if (autA.Count > 0 && HalfDifference(autA, manB, out e2, out se2, out nb2)) crossCheck = e2;
+            }
+            else if (manB.Count > 0 && autA.Count > 0)
+                offMeasurable = HalfDifference(autA, manB, out eVeh, out eSe, out pairBins);
+            else if (manA.Count > 0 && autB.Count > 0)
+                offMeasurable = HalfDifference(manA, autB, out eVeh, out eSe, out pairBins);
+
             double antH = mf.vehicle.VehicleConfig.AntennaHeight;
             double fromBias = antH * Math.Sin(glm.toRadians(b));
             double estOffset = eVeh - fromBias;
@@ -885,17 +1055,22 @@ namespace AgOpenGPS
 
             off.note = (hr ? "polurazlika " : "half-difference ") + (eVeh * 100).ToString("0.0") + " cm · "
                      + (hr ? "od roll biasa " : "from roll bias ") + (fromBias * 100).ToString("0.0") + " cm · "
-                     + (hr ? "nesigurnost ± " : "uncertainty +/- ") + (eSe * 100).ToString("0.0") + " cm";
-            if (AutosteerWasUsed())
+                     + (hr ? "nesigurnost ± " : "uncertainty +/- ") + (eSe * 100).ToString("0.0") + " cm · "
+                     + pairBins + (hr ? " binova · par: " : " bins · pair: ")
+                     + (bothManual ? (hr ? "ručno+ručno" : "manual+manual") : (hr ? "autosteer+ručno" : "autosteer+manual"));
+            if (!double.IsNaN(crossCheck))
+                off.note += (hr ? " · kontrola " : " · cross-check ")
+                          + ((crossCheck - fromBias) * 100).ToString("0.0") + " cm";
+
+            if (!offMeasurable)
             {
-                // Autosteer regulates the reported cross-track error to zero, which
-                // is the very quantity this estimate reads — it cancels the offset
-                // instead of revealing it.
+                // both passes regulated: the loop drives the reported error to zero in
+                // each direction, so the offset never reaches the log
                 off.status = 3; off.value = "—";
-                off.desc = hr ? "Autosteer je bio uključen — regulacija poništava traženi pomak."
-                              : "Autosteer was engaged — the control loop cancels the offset being measured.";
-                off.note = hr ? "Ponovi ručno, gledaj u daleku točku, ne ispravljaj na liniju."
-                              : "Re-run manually, aim at a distant point, do not correct to the line.";
+                off.desc = hr ? "Oba prolaza su bila na autosteeru — regulacija poništava traženi pomak."
+                              : "Both passes ran on autosteer — the control loop cancels the offset being measured.";
+                off.note = hr ? "Treba barem jedan ručni prolaz: vozi po tragovima, ne ispravljaj na liniju."
+                              : "Needs at least one manual pass: follow the tracks, do not correct to the line.";
             }
             else if (Math.Abs(estOffset) < Math.Max(0.03, 2.0 * eSe))
             {
@@ -926,6 +1101,22 @@ namespace AgOpenGPS
                 : (hr ? "Roll se slabo ponavlja — provjeri fiksiranje IMU-a ili vozi mirnije."
                       : "Roll repeats poorly — check the IMU mounting or drive more steadily.");
             r.checks.Add(rep);
+        }
+
+        // Mean half-difference of two passes over the same ground, with the standard
+        // error of that mean — the driver never retraces exactly, and that mismatch
+        // does not fully average out over a finite line.
+        private bool HalfDifference(List<int> ia, List<int> ib, out double e, out double se, out int bins)
+        {
+            e = 0; se = 0; bins = 0;
+            double[] qrA, qrB, qlA, qlB;
+            if (!PairedBins(ia, ib, out qrA, out qrB, out qlA, out qlB)) return false;
+            bins = qlA.Length;
+            var diff = new double[bins];
+            for (int k = 0; k < bins; k++) diff[k] = (qlA[k] - qlB[k]) / 2.0;
+            e = Mean(diff);
+            se = Std(diff, e) / Math.Sqrt(bins);
+            return true;
         }
 
         private static double RollBias(double[] rA, double[] rB)
@@ -967,18 +1158,22 @@ namespace AgOpenGPS
         // Pair the two directions on the same ground. Binning by station IS the
         // low-pass: cab and suspension sway does not repeat between passes, terrain
         // does — averaging a few metres of ground drops the sway and keeps the slope.
-        private bool PairedProfile(List<int> idx, out double[] rollA, out double[] rollB,
-                                   out double[] latA, out double[] latB)
+        private bool PairedBins(List<int> ia, List<int> ib, out double[] rollA, out double[] rollB,
+                                out double[] latA, out double[] latB)
         {
             var sums = new Dictionary<int, double[]>();   // bin -> {rA,nA,lA, rB,nB,lB}
-            foreach (int i in idx)
+            for (int pass = 0; pass < 2; pass++)
             {
-                if (Math.Abs(s[i].lat) > latNearLine) continue;      // off the line — turning
-                int bin = (int)Math.Floor(s[i].station / passBinM);
-                double[] acc;
-                if (!sums.TryGetValue(bin, out acc)) { acc = new double[6]; sums[bin] = acc; }
-                if (s[i].sameWay) { acc[0] += s[i].rollDeg; acc[1] += 1; acc[2] += s[i].lat; }
-                else { acc[3] += s[i].rollDeg; acc[4] += 1; acc[5] += s[i].lat; }
+                List<int> src = pass == 0 ? ia : ib;
+                foreach (int i in src)
+                {
+                    if (double.IsNaN(s[i].lat) || Math.Abs(s[i].lat) > latNearLine) continue;
+                    int bin = (int)Math.Floor(s[i].station / passBinM);
+                    double[] acc;
+                    if (!sums.TryGetValue(bin, out acc)) { acc = new double[6]; sums[bin] = acc; }
+                    int o = pass * 3;
+                    acc[o] += s[i].rollDeg; acc[o + 1] += 1; acc[o + 2] += s[i].lat;
+                }
             }
 
             var keys = new List<int>();
@@ -996,10 +1191,21 @@ namespace AgOpenGPS
             return keys.Count >= minPairedBins;
         }
 
-        public bool AutosteerWasUsed()
+        // Split the usable samples four ways: direction x autosteer. Keyed off the
+        // recorded autosteer state rather than the planned step, so a driver who
+        // forgets to switch still gets a correct reading instead of a wrong one.
+        private void SplitByDirAndSteer(List<int> idx, out List<int> manA, out List<int> manB,
+                                        out List<int> autA, out List<int> autB)
         {
-            for (int i = 0; i < s.Count; i++) if (s[i].steerOn) return true;
-            return false;
+            manA = new List<int>(); manB = new List<int>();
+            autA = new List<int>(); autB = new List<int>();
+            foreach (int i in idx)
+            {
+                if (double.IsNaN(s[i].lat)) continue;
+                bool dirA = s[i].sameWay;
+                if (s[i].steerOn) { if (dirA) autA.Add(i); else autB.Add(i); }
+                else { if (dirA) manA.Add(i); else manB.Add(i); }
+            }
         }
 
         // metres of line covered in one direction, used for progress and for the

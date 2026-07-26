@@ -21,7 +21,8 @@ namespace AgOpenGPS
 
         private Label lblTitle, lblHintTop, lblHintBig, lblHintSub;
         private ProgressBar bar;
-        private Button btnStraight, btnCircle, btnFinish, btnClose;
+        private Panel panSteps;
+        private Button btnStraight, btnCircle, btnSkip, btnFinish, btnClose;
 
         public FormIntegrationTest(FormGPS callingForm)
         {
@@ -33,7 +34,7 @@ namespace AgOpenGPS
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;
             MaximizeBox = false; MinimizeBox = false;
-            ClientSize = new Size(440, 348);
+            ClientSize = new Size(440, 556);
             BackColor = Color.FromArgb(24, 33, 29);
             ForeColor = Color.Gainsboro;
             Font = new Font("Tahoma", 9.75f);
@@ -53,37 +54,49 @@ namespace AgOpenGPS
             btnCircle.Click += (s, e) => StartTest(ITMode.Circle);
 
             // 3-line driver hint: action / BIG value (target km/h) / progress — big + centered so it reads on the tablet while driving
+            // step checklist — filled in once a test starts
+            panSteps = new Panel
+            {
+                Location = new Point(16, 132), Size = new Size(408, 214),
+                BackColor = Color.FromArgb(20, 28, 25), Visible = false, AutoScroll = true
+            };
+
             lblHintTop = new Label
             {
                 Text = hr ? "Preporuka: prvo pravac (geometrija), pa kružnica (heading)."
                           : "Recommended: straight first (geometry), then circle (heading).",
-                AutoSize = false, Location = new Point(16, 126), Size = new Size(408, 26),
-                TextAlign = ContentAlignment.MiddleCenter, Font = new Font("Tahoma", 11.5f),
+                AutoSize = false, Location = new Point(16, 356), Size = new Size(408, 40),
+                TextAlign = ContentAlignment.MiddleCenter, Font = new Font("Tahoma", 10.5f),
                 ForeColor = Color.FromArgb(200, 214, 206)
             };
             lblHintBig = new Label
             {
-                Text = "", AutoSize = false, Location = new Point(16, 152), Size = new Size(408, 44),
+                Text = "", AutoSize = false, Location = new Point(16, 398), Size = new Size(408, 44),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Font = new Font("Tahoma", 26f, FontStyle.Bold), ForeColor = Color.FromArgb(90, 200, 220)
             };
             lblHintSub = new Label
             {
-                Text = "", AutoSize = false, Location = new Point(16, 198), Size = new Size(408, 20),
+                Text = "", AutoSize = false, Location = new Point(16, 444), Size = new Size(408, 20),
                 TextAlign = ContentAlignment.MiddleCenter, Font = new Font("Tahoma", 9.5f),
                 ForeColor = Color.FromArgb(140, 160, 150)
             };
 
-            bar = new ProgressBar { Location = new Point(16, 224), Size = new Size(408, 16), Minimum = 0, Maximum = 100, Visible = false };
+            bar = new ProgressBar { Location = new Point(16, 468), Size = new Size(408, 16), Minimum = 0, Maximum = 100, Visible = false };
 
-            btnFinish = MakeBtn(hr ? "Završi + report" : "Finish + report", new Point(16, 252), new Size(250, 46), Color.FromArgb(46, 139, 79));
+            btnSkip = MakeBtn(hr ? "Preskoči korak" : "Skip step", new Point(16, 496), new Size(150, 46), Color.FromArgb(120, 96, 24));
+            btnSkip.Visible = false;
+            btnSkip.Click += (s, e) => { test.SkipStep(); BuildStepList(); if (test.IsComplete()) Finish(); };
+
+            btnFinish = MakeBtn(hr ? "Završi + report" : "Finish + report", new Point(174, 496), new Size(160, 46), Color.FromArgb(46, 139, 79));
             btnFinish.Enabled = false;
             btnFinish.Click += (s, e) => Finish();
 
-            btnClose = MakeBtn(hr ? "Zatvori" : "Close", new Point(274, 252), new Size(150, 46), Color.FromArgb(60, 71, 64));
+            btnClose = MakeBtn(hr ? "Zatvori" : "Close", new Point(342, 496), new Size(82, 46), Color.FromArgb(60, 71, 64));
             btnClose.Click += (s, e) => Close();
 
-            Controls.AddRange(new Control[] { lblTitle, btnStraight, btnCircle, lblHintTop, lblHintBig, lblHintSub, bar, btnFinish, btnClose });
+            Controls.AddRange(new Control[] { lblTitle, btnStraight, btnCircle, panSteps,
+                                              lblHintTop, lblHintBig, lblHintSub, bar, btnSkip, btnFinish, btnClose });
 
             poll.Interval = 100;   // ~10 Hz
             poll.Tick += Poll_Tick;
@@ -114,20 +127,70 @@ namespace AgOpenGPS
                 return;
             }
 
-            test.Start(m);
+            test.Start(m, hr);
             btnStraight.Enabled = btnCircle.Enabled = false;
             btnFinish.Enabled = true;
+            btnSkip.Visible = true;
             bar.Visible = true; bar.Value = 0;
+            panSteps.Visible = true;
             lblHintBig.Text = ""; lblHintSub.Text = "";
             lblTitle.Text = m == ITMode.Straight
-                ? (hr ? "Test pravac — vozi" : "Straight test — drive")
-                : (hr ? "Test kružnica — vozi" : "Circle test — drive");
+                ? (hr ? "Test pravac — 3 koraka" : "Straight test — 3 steps")
+                : (hr ? "Test kružnica — 2 kruga" : "Circle test — 2 laps");
+            BuildStepList();
             poll.Start();
+        }
+
+        // Redraw the checklist: done steps go green with a tick, the current one is
+        // highlighted, the rest stay dim. Cheap enough to rebuild on each change.
+        private void BuildStepList()
+        {
+            panSteps.SuspendLayout();
+            panSteps.Controls.Clear();
+            int y = 4;
+            var steps = test.Steps;
+            for (int i = 0; i < steps.Count; i++)
+            {
+                ITStep st = steps[i];
+                if (!string.IsNullOrEmpty(st.head))
+                {
+                    panSteps.Controls.Add(new Label
+                    {
+                        Text = st.head, AutoSize = false, Location = new Point(6, y), Size = new Size(390, 20),
+                        Font = new Font("Tahoma", 9.75f, FontStyle.Bold),
+                        ForeColor = Color.FromArgb(150, 168, 158)
+                    });
+                    y += 21;
+                }
+
+                bool current = i == test.CurrentStep;
+                string mark = st.done ? "✓" : (st.skipped ? "–" : (current ? "▶" : "○"));
+                Color col = st.done ? Color.FromArgb(96, 200, 130)
+                          : st.skipped ? Color.FromArgb(120, 132, 124)
+                          : current ? Color.White
+                          : Color.FromArgb(118, 132, 124);
+
+                string text = "   " + mark + "  " + st.label;
+                if (st.optional) text += hr ? "   ⓘ opc. — kontrola offseta" : "   (i) optional — offset cross-check";
+                if (st.skipped) text += hr ? "   — preskočeno" : "   — skipped";
+
+                panSteps.Controls.Add(new Label
+                {
+                    Text = text, AutoSize = false, Location = new Point(6, y), Size = new Size(390, 19),
+                    Font = new Font("Tahoma", 9.5f, current ? FontStyle.Bold : FontStyle.Regular),
+                    ForeColor = col
+                });
+                y += 20;
+            }
+            panSteps.ResumeLayout();
         }
 
         private void Poll_Tick(object sender, EventArgs e)
         {
+            int before = test.CurrentStep;
             test.RecordFrom(mf);
+            if (test.CurrentStep != before) BuildStepList();
+
             string action, big;
             double p = test.Progress(mf, out action, out big, hr);
             bar.Value = (int)(p * 100);
@@ -142,6 +205,8 @@ namespace AgOpenGPS
             poll.Stop();
             test.Stop();
             btnFinish.Enabled = false;
+            btnSkip.Visible = false;
+            BuildStepList();
 
             ITResult r = test.Analyze(mf, hr);
             if (!r.ok)
