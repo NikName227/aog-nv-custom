@@ -37,6 +37,7 @@ namespace AgOpenGPS
         public double station;  // distance along the line from point A, m
         public double lat;      // signed perpendicular offset in the LINE frame, m
         public bool sameWay;    // driving A->B (true) or B->A (false)
+        public bool steerOn;    // autosteer engaged — it regulates the very signal we measure
     }
 
     public sealed class ITCheck
@@ -84,6 +85,12 @@ namespace AgOpenGPS
         private const double circleMinR = 8.0;          // below this: reduced confidence
         private const double lapFitTol = 0.08;          // reject a lap when fitRms/R exceeds this
         private const double refNoiseK = 3.0;           // threshold = k * reference noise floor
+
+        // straight test: the same ground is driven both ways and compared per bin
+        private const double passBinM = 3.0;            // station bin width, m
+        private const double passTargetM = 100.0;       // wanted length per direction, m
+        private const double latNearLine = 3.0;         // further off the line = turning, drop it
+        private const int minPairedBins = 15;           // bins covered in both directions
 
         public int SampleCount { get { return s.Count; } }
 
@@ -185,6 +192,7 @@ namespace AgOpenGPS
                 station = station,
                 lat = lat,
                 sameWay = sameWay,
+                steerOn = mf.isBtnAutoSteerOn,
             };
             s.Add(smp);
 
@@ -212,17 +220,30 @@ namespace AgOpenGPS
                     : (hr ? "zakreni" : "turn in");
                 return p;
             }
-            // straight: seconds accumulated in each band (monotonic — samples only add)
-            double[] sec = BandSeconds();
-            double filled = 0;
-            for (int i = 0; i < 3; i++) filled += Math.Min(sec[i], targetPerBandSec);
-            // guide sequentially: the first band (low -> high) that isn't full yet.
-            // Stable order 3 -> 7 -> 10, no flicker (a band only advances once complete).
-            int next = 2;
-            for (int i = 0; i < 3; i++) { if (sec[i] < targetPerBandSec) { next = i; break; } }
-            action = hr ? "Vozi ravno na" : "Drive straight at";
-            big = bandCenter[next].ToString("0", CultureInfo.InvariantCulture) + " km/h";
-            return Clamp01(filled / (3 * targetPerBandSec));
+            // straight: one pass each way over the same line. Direction-agnostic —
+            // the driver may start from either end.
+            double lenA = PassLength(true), lenB = PassLength(false);
+            double first = Math.Max(lenA, lenB), second = Math.Min(lenA, lenB);
+            double done = Math.Min(first, passTargetM) + Math.Min(second, passTargetM);
+            var ci = CultureInfo.InvariantCulture;
+
+            if (first < passTargetM)
+            {
+                action = hr ? "Prolaz 1/2 — vozi uz liniju, autosteer ISKLJUČEN, gledaj u daleku točku"
+                            : "Pass 1/2 — drive along the line, autosteer OFF, aim at a distant point";
+                big = first.ToString("0", ci) + " / " + passTargetM.ToString("0", ci) + " m";
+            }
+            else if (second < 1.0)
+            {
+                action = hr ? "Okreni se i vrati po ISTOJ liniji" : "Turn around and come back along the SAME line";
+                big = hr ? "okreni" : "turn around";
+            }
+            else
+            {
+                action = hr ? "Prolaz 2/2 — povratak istom linijom" : "Pass 2/2 — return along the same line";
+                big = second.ToString("0", ci) + " / " + passTargetM.ToString("0", ci) + " m";
+            }
+            return Clamp01(done / (2 * passTargetM));
         }
 
         // Suggested circle for this machine: R = wheelbase / tan(steer). Aim for the
@@ -242,8 +263,7 @@ namespace AgOpenGPS
         public bool IsComplete()
         {
             if (mode == ITMode.Circle) return cumHeadingRad >= circleTargetRad;
-            double[] sec = BandSeconds();
-            return sec[0] >= targetPerBandSec && sec[1] >= targetPerBandSec && sec[2] >= targetPerBandSec;
+            return PassLength(true) >= passTargetM && PassLength(false) >= passTargetM;
         }
 
         private double[] BandSeconds()
@@ -320,12 +340,39 @@ namespace AgOpenGPS
             // Lateral in the VEHICLE frame: roll is measured in the machine's own
             // frame, so the residual has to be flipped for the return pass or the
             // two directions cancel each other in the fit.
-            double[] y = new double[idx.Count];
-            for (int k = 0; k < idx.Count; k++) y[k] = s[idx[k]].lat * (s[idx[k]].sameWay ? 1.0 : -1.0);
-            RemovePerDirectionMean(idx, y);
+            double[] yRaw = new double[idx.Count];
+            for (int k = 0; k < idx.Count; k++) yRaw[k] = s[idx[k]].lat * (s[idx[k]].sameWay ? 1.0 : -1.0);
+            RemovePerDirectionMean(idx, yRaw);
 
-            double[] x = new double[idx.Count];
-            for (int k = 0; k < idx.Count; k++) x[k] = Math.Sin(glm.toRadians(s[idx[k]].rollDeg));
+            // Two-way pairing on the same ground. This is what makes the roll zero
+            // offset observable at all: from one pass a constant bias is
+            // indistinguishable from the mean cross slope of the terrain.
+            double[] rA = new double[0], rB = new double[0], lA = new double[0], lB = new double[0];
+            bool paired = false;
+            if (HasBothDirections()) paired = PairedProfile(idx, out rA, out rB, out lA, out lB);
+            if (!paired) { rA = rB = lA = lB = new double[0]; }
+
+            // fit set: binned two-way data when available (the pairing doubles the
+            // span of sin(roll) and makes it cross zero), raw samples otherwise
+            double[] x, y;
+            if (paired)
+            {
+                int nb = rA.Length;
+                x = new double[nb * 2]; y = new double[nb * 2];
+                double mLatA = Mean(lA), mLatB = Mean(lB);
+                for (int k = 0; k < nb; k++)
+                {
+                    x[k] = Math.Sin(glm.toRadians(rA[k]));
+                    y[k] = lA[k] - mLatA;
+                    x[nb + k] = Math.Sin(glm.toRadians(rB[k]));
+                    y[nb + k] = -(lB[k] - mLatB);
+                }
+            }
+            else
+            {
+                x = new double[idx.Count]; y = yRaw;
+                for (int k = 0; k < idx.Count; k++) x[k] = Math.Sin(glm.toRadians(s[idx[k]].rollDeg));
+            }
 
             // roll excitation: RMS alone is not enough — a one-sided roll (never
             // crossing zero) leaves the slope badly conditioned, because the fit
@@ -343,7 +390,11 @@ namespace AgOpenGPS
 
             string rollCond = "roll RMS " + rollRms.ToString("0.0") + "° · "
                             + (hr ? "raspon sin " : "sin span ") + sinSpan.ToString("0.00")
-                            + " · R² " + r2.ToString("0.00");
+                            + " · R² " + r2.ToString("0.00")
+                            + (paired ? (hr ? " · dvosmjerno, " : " · two-way, ") + rA.Length + (hr ? " binova" : " bins")
+                                      : (hr ? " · jednosmjerno" : " · one-way"));
+
+            AddTwoWayChecks(mf, r, hr, paired, rA, rB, lA, lB);
 
             var g = new ITCheck { name = hr ? "Geometrija / visina antene" : "Geometry / antenna height", note = rollCond };
             if (rollRms < 0.6)
@@ -396,9 +447,10 @@ namespace AgOpenGPS
             // figure would imply a precision this method does not have.
             const int maxLag = 12;
             double resMs = MeanDt() * 1000.0;
+            // cross-correlation needs the raw time-ordered residual, not the binned one
             double[] rollSeq = new double[idx.Count];
             for (int k = 0; k < idx.Count; k++) rollSeq[k] = s[idx[k]].rollDeg;
-            int lagN; double peak; CrossCorrLag(rollSeq, y, maxLag, out lagN, out peak);
+            int lagN; double peak; CrossCorrLag(rollSeq, yRaw, maxLag, out lagN, out peak);
             double lagMs = Math.Abs(lagN) * resMs;
 
             var lc = new ITCheck { name = "IMU timing" };
@@ -467,7 +519,13 @@ namespace AgOpenGPS
             // holds up — otherwise the "unexplained" part is just the bad fit.
             double unexpl = UnexplainedRms(y, x, a, b);
             var mc = new ITCheck { name = hr ? "Mount / šum" : "Mount / noise" };
-            if (g.status == 3)
+            if (paired)
+            {
+                // superseded by pass repeatability, which separates real noise from
+                // a merely bad fit
+                mc = null;
+            }
+            else if (g.status == 3)
             {
                 mc.status = 3; mc.value = "—";
                 mc.desc = hr ? "Bez upotrebljivog roll fita nema smisla odvajati šum."
@@ -480,13 +538,14 @@ namespace AgOpenGPS
                 else { mc.status = 1; mc.desc = hr ? "Povišen nekorelirani rezidual — provjeri fiksiranje IMU-a." : "Elevated uncorrelated residual — check IMU mounting."; }
                 mc.value = "RMS " + (unexpl * 100).ToString("0.0") + " cm";
             }
-            r.checks.Add(mc);
+            if (mc != null) r.checks.Add(mc);
 
             // summary + chart
             r.summary = BuildStraightSummary(hr, g, lc, a, antNow, antNew, firstOk);
             r.svg = MoneyPlotSvg(x, y, a, b);
             r.subtitle = (hr ? "pravac · " : "straight · ")
-                       + r.durationSec.ToString("0") + " s · roll RMS " + rollRms.ToString("0.0") + "°";
+                       + r.durationSec.ToString("0") + " s · roll RMS " + rollRms.ToString("0.0") + "°"
+                       + (paired ? (hr ? " · dvosmjerno" : " · two-way") : (hr ? " · jednosmjerno" : " · one-way"));
         }
 
         // One lap, fitted on its own. Hand-driven laps are never identical, so a
@@ -763,6 +822,134 @@ namespace AgOpenGPS
         private double[] SteerAbs() { var a = new double[s.Count]; for (int i = 0; i < s.Count; i++) a[i] = Math.Abs(s[i].steer); return a; }
         private bool HasImuHeading() { for (int i = 0; i < s.Count; i++) if (!double.IsNaN(s[i].imuRad)) return true; return false; }
 
+        // Findings that exist only because the same ground was driven both ways.
+        private void AddTwoWayChecks(FormGPS mf, ITResult r, bool hr, bool paired,
+                                     double[] rA, double[] rB, double[] lA, double[] lB)
+        {
+            var bias = new ITCheck { name = hr ? "Roll zero-offset" : "Roll zero offset" };
+            var off = new ITCheck { name = hr ? "Lateralni offset antene" : "Antenna lateral offset" };
+
+            if (!paired)
+            {
+                string need = hr ? "Treba i povratni prolaz po istoj liniji (vozi do kraja, okreni se, vrati se)."
+                                 : "Needs the return pass along the same line (drive it, turn around, come back).";
+                bias.status = 3; bias.value = "—"; bias.note = need;
+                bias.desc = hr ? "Iz jednog smjera se bias ne razlikuje od nagiba terena."
+                               : "From one direction a bias is indistinguishable from the terrain slope.";
+                off.status = 3; off.value = "—"; off.note = need;
+                off.desc = hr ? "Mjerljivo samo usporedbom oba smjera." : "Only measurable by comparing both directions.";
+                r.checks.Add(bias); r.checks.Add(off);
+                return;
+            }
+
+            int n = rA.Length;
+            // terrain roll flips sign with direction, a sensor bias does not:
+            // the half-sum of the two passes over the same ground is the bias.
+            var half = new double[n];
+            for (int k = 0; k < n; k++) half[k] = (rA[k] + rB[k]) / 2.0;
+            double b = Mean(half);
+            double scatter = Std(half, b);
+
+            bias.value = (b >= 0 ? "+" : "") + b.ToString("0.00") + "°";
+            bias.note = (hr ? "rasap po binu ± " : "per-bin scatter +/- ") + scatter.ToString("0.00") + "° · "
+                      + n + (hr ? " binova" : " bins");
+            if (scatter > 1.5)
+            {
+                bias.status = 3; bias.value = "—";
+                bias.desc = hr ? "Prolazi se ne poklapaju dovoljno po terenu — bias nije pouzdan."
+                               : "The passes do not line up on the terrain well enough for a reliable bias.";
+            }
+            else if (Math.Abs(b) < 0.2)
+            {
+                bias.status = 0;
+                bias.desc = hr ? "Roll nula je dobra — oba smjera daju simetričan nagib."
+                               : "Roll zero is good — both directions give a symmetric slope.";
+            }
+            else
+            {
+                bias.status = Math.Abs(b) < 0.6 ? 1 : 2;
+                bias.desc = hr ? "Roll ima konstantni pomak — ponovi roll kalibraciju (nula) na ravnom."
+                               : "Roll carries a constant offset — redo the roll zero calibration on level ground.";
+            }
+            r.checks.Add(bias);
+
+            // Anything fixed in the machine frame shows up as a half-difference of
+            // the two passes. That includes the lateral part of the roll bias, so
+            // subtract what the measured bias already explains.
+            var diff = new double[n];
+            for (int k = 0; k < n; k++) diff[k] = (lA[k] - lB[k]) / 2.0;
+            double eVeh = Mean(diff);
+            // The driver does not retrace the exact same path, and that mismatch does
+            // not fully average out over a finite line — so the estimate carries a
+            // real uncertainty. Quote it instead of implying centimetre precision.
+            double eSe = Std(diff, eVeh) / Math.Sqrt(n);
+            double antH = mf.vehicle.VehicleConfig.AntennaHeight;
+            double fromBias = antH * Math.Sin(glm.toRadians(b));
+            double estOffset = eVeh - fromBias;
+            double offNow = mf.vehicle.VehicleConfig.AntennaOffset;
+            // AOG shifts the fix to the right of travel for a positive offset, so a
+            // reported position sitting right of true needs the setting reduced.
+            double offNew = offNow - estOffset;
+
+            off.note = (hr ? "polurazlika " : "half-difference ") + (eVeh * 100).ToString("0.0") + " cm · "
+                     + (hr ? "od roll biasa " : "from roll bias ") + (fromBias * 100).ToString("0.0") + " cm · "
+                     + (hr ? "nesigurnost ± " : "uncertainty +/- ") + (eSe * 100).ToString("0.0") + " cm";
+            if (AutosteerWasUsed())
+            {
+                // Autosteer regulates the reported cross-track error to zero, which
+                // is the very quantity this estimate reads — it cancels the offset
+                // instead of revealing it.
+                off.status = 3; off.value = "—";
+                off.desc = hr ? "Autosteer je bio uključen — regulacija poništava traženi pomak."
+                              : "Autosteer was engaged — the control loop cancels the offset being measured.";
+                off.note = hr ? "Ponovi ručno, gledaj u daleku točku, ne ispravljaj na liniju."
+                              : "Re-run manually, aim at a distant point, do not correct to the line.";
+            }
+            else if (Math.Abs(estOffset) < Math.Max(0.03, 2.0 * eSe))
+            {
+                // not distinguishable from the pass-to-pass mismatch
+                off.status = 0;
+                off.value = (estOffset * 100).ToString("0.0") + " ± " + (eSe * 100).ToString("0.0") + " cm";
+                off.desc = hr ? "Antena je na sredini — prolazi se poklapaju u oba smjera."
+                              : "Antenna is centred — the passes line up in both directions.";
+            }
+            else
+            {
+                off.status = Math.Abs(estOffset) < 0.08 ? 1 : 2;
+                off.value = "off: " + offNow.ToString("0.00") + " → " + offNew.ToString("0.00") + " m";
+                off.desc = hr ? "Prolazi se razilaze u suprotnim smjerovima — antena nije na sredini."
+                              : "The passes separate in opposite directions — the antenna is off centre.";
+            }
+            r.checks.Add(off);
+
+            // What does not repeat between two passes over the same ground is noise,
+            // not geometry — a far better mount check than unexplained variance.
+            var rep = new ITCheck { name = hr ? "Ponovljivost prolaza" : "Pass repeatability" };
+            rep.value = "± " + scatter.ToString("0.00") + "°";
+            rep.note = (hr ? "neponovljivi dio rolla preko " : "non-repeating roll over ") + n + (hr ? " binova" : " bins");
+            rep.status = scatter < 0.4 ? 0 : (scatter < 1.0 ? 1 : 2);
+            rep.desc = scatter < 0.4
+                ? (hr ? "Roll se dobro ponavlja preko istog terena — mount je čvrst."
+                      : "Roll repeats well over the same ground — the mount is solid.")
+                : (hr ? "Roll se slabo ponavlja — provjeri fiksiranje IMU-a ili vozi mirnije."
+                      : "Roll repeats poorly — check the IMU mounting or drive more steadily.");
+            r.checks.Add(rep);
+        }
+
+        private static double Mean(double[] a)
+        {
+            if (a.Length == 0) return 0;
+            double m = 0; for (int i = 0; i < a.Length; i++) m += a[i];
+            return m / a.Length;
+        }
+
+        private static double Std(double[] a, double mean)
+        {
+            if (a.Length < 2) return 0;
+            double v = 0; for (int i = 0; i < a.Length; i++) v += (a[i] - mean) * (a[i] - mean);
+            return Math.Sqrt(v / (a.Length - 1));
+        }
+
         // Each direction sits at its own offset from the line (line placement, plus
         // anything fixed in the machine frame). Centring per direction leaves only
         // the part that varies with roll, which is what the slope fit is after.
@@ -776,6 +963,59 @@ namespace AgOpenGPS
             }
             double mA = nA > 0 ? sumA / nA : 0, mB = nB > 0 ? sumB / nB : 0;
             for (int k = 0; k < idx.Count; k++) y[k] -= s[idx[k]].sameWay ? mA : mB;
+        }
+
+        // Pair the two directions on the same ground. Binning by station IS the
+        // low-pass: cab and suspension sway does not repeat between passes, terrain
+        // does — averaging a few metres of ground drops the sway and keeps the slope.
+        private bool PairedProfile(List<int> idx, out double[] rollA, out double[] rollB,
+                                   out double[] latA, out double[] latB)
+        {
+            var sums = new Dictionary<int, double[]>();   // bin -> {rA,nA,lA, rB,nB,lB}
+            foreach (int i in idx)
+            {
+                if (Math.Abs(s[i].lat) > latNearLine) continue;      // off the line — turning
+                int bin = (int)Math.Floor(s[i].station / passBinM);
+                double[] acc;
+                if (!sums.TryGetValue(bin, out acc)) { acc = new double[6]; sums[bin] = acc; }
+                if (s[i].sameWay) { acc[0] += s[i].rollDeg; acc[1] += 1; acc[2] += s[i].lat; }
+                else { acc[3] += s[i].rollDeg; acc[4] += 1; acc[5] += s[i].lat; }
+            }
+
+            var keys = new List<int>();
+            foreach (var kv in sums) if (kv.Value[1] > 0 && kv.Value[4] > 0) keys.Add(kv.Key);
+            keys.Sort();
+
+            rollA = new double[keys.Count]; rollB = new double[keys.Count];
+            latA = new double[keys.Count]; latB = new double[keys.Count];
+            for (int k = 0; k < keys.Count; k++)
+            {
+                double[] acc = sums[keys[k]];
+                rollA[k] = acc[0] / acc[1]; latA[k] = acc[2] / acc[1];
+                rollB[k] = acc[3] / acc[4]; latB[k] = acc[5] / acc[4];
+            }
+            return keys.Count >= minPairedBins;
+        }
+
+        public bool AutosteerWasUsed()
+        {
+            for (int i = 0; i < s.Count; i++) if (s[i].steerOn) return true;
+            return false;
+        }
+
+        // metres of line covered in one direction, used for progress and for the
+        // "did we actually drive a full pass" gate
+        public double PassLength(bool sameWay)
+        {
+            double mn = double.MaxValue, mx = double.MinValue;
+            for (int i = 0; i < s.Count; i++)
+            {
+                if (double.IsNaN(s[i].station) || s[i].sameWay != sameWay) continue;
+                if (Math.Abs(s[i].lat) > latNearLine) continue;
+                if (s[i].station < mn) mn = s[i].station;
+                if (s[i].station > mx) mx = s[i].station;
+            }
+            return mx > mn ? mx - mn : 0;
         }
 
         public bool HasBothDirections()
