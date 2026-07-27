@@ -1881,6 +1881,9 @@ USE AT OWN RISK.</value>
   <data name="gsTurnLinesUnsaved" xml:space="preserve">
     <value>The turn lines have changed. Save them?</value>
   </data>
+  <data name="gsZoneOrderRead" xml:space="preserve">
+    <value>Read:</value>
+  </data>
   <data name="gsTriggerTolerance" xml:space="preserve">
     <value>Trigger tolerance (m)</value>
   </data>

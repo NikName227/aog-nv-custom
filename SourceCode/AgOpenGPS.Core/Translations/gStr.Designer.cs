@@ -4921,6 +4921,12 @@ namespace AgOpenGPS.Core.Translations {
             }
         }
 
+        public static string gsZoneOrderRead {
+            get {
+                return ResourceManager.GetString("gsZoneOrderRead", resourceCulture);
+            }
+        }
+
         public static string gsTriggerTolerance {
             get {
                 return ResourceManager.GetString("gsTriggerTolerance", resourceCulture);

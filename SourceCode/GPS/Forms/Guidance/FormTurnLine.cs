@@ -1,4 +1,5 @@
-﻿using AgOpenGPS.Core.Models;
+﻿using AgOpenGPS.Controls;
+using AgOpenGPS.Core.Models;
 using AgOpenGPS.Core.Translations;
 using AgOpenGPS.Forms;
 using GMap.NET;
@@ -218,6 +219,9 @@ namespace AgOpenGPS
             btnMode3.Checked = mf.plan.mode == CTurnPlan.ModeZones;
             if (mf.plan.zoneCount >= (int)nudZones.Minimum && mf.plan.zoneCount <= (int)nudZones.Maximum)
                 nudZones.Value = mf.plan.zoneCount;
+            //saved processing order, if the field has one; blank falls back to the default
+            txtZoneOrder.Text = mf.plan.zoneOrder ?? "";
+            if (txtZoneOrder.Text.Length == 0) ResetZoneOrderText();
 
             // mode buttons carry the confirmed pictograms (drawn at runtime)
             btnMode1.Image = TurnModeIcons.Make(1, 88, 82);
@@ -1400,6 +1404,7 @@ namespace AgOpenGPS
             chkHeadlandClip.Visible = false;
             lblZones.Visible = nudZones.Visible = false;
             SetZoneStepperVisible(false);
+            SetZoneOrderVisible(false);
             lblPlanInfo.Visible = false;
             btnGeneratePlan.Visible = false;
             btnAddPath.Visible = btnDeletePath.Visible = false;
@@ -1450,6 +1455,7 @@ namespace AgOpenGPS
                     chkHeadlandClip.Visible = true;
                     lblZones.Visible = nudZones.Visible = true;
                     SetZoneStepperVisible(true);
+                    SetZoneOrderVisible(true);
                     lblPlanInfo.Visible = true;
                     btnWizBack.Visible = btnWizNext.Visible = btnWizCancel.Visible = true;
                     btnWizNext.Enabled = true;
@@ -1480,11 +1486,76 @@ namespace AgOpenGPS
             chkHeadlandClip.Visible = false;
             lblZones.Visible = nudZones.Visible = false;
             SetZoneStepperVisible(false);
+            SetZoneOrderVisible(false);
             btnAddPath.Visible = btnDeletePath.Visible = false;
             btnWizBack.Visible = btnWizNext.Visible = btnWizCancel.Visible = false;
             lblWizTitle.Text = "Orchard";
             lblPlanInfo.Visible = true;
             btnGeneratePlan.Visible = true;
+        }
+
+        // ── zone processing order (field feedback 2026-07-27) ────────────────
+        // The box lays the zones out the way they sit in the field, leftmost first, with
+        // "||" marking the reference line: "3 | 2 | 1 || 4 | 5". The NUMBERS are the
+        // processing order, the separators are decoration - parsing keeps digit runs only,
+        // so "3 2 1 4 5" is the same thing. Which zone is left or right comes from the
+        // geometry, never from this text.
+        private string zoneOrderError = "";
+
+        private void SetZoneOrderVisible(bool vis)
+        {
+            txtZoneOrder.Visible = vis;
+            lblZoneOrderRead.Visible = vis;
+            if (vis && txtZoneOrder.Text.Length == 0) ResetZoneOrderText();
+        }
+
+        private void ResetZoneOrderText()
+        {
+            string def = mf.plan.DefaultZoneOrderText((int)nudZones.Value);
+            txtZoneOrder.Text = def;      // TextChanged refreshes the read-back
+            if (def.Length == 0) ValidateZoneOrder();
+        }
+
+        private void txtZoneOrder_TextChanged(object sender, EventArgs e)
+        {
+            ValidateZoneOrder();
+        }
+
+        //touchscreen: same on-screen keyboard the rest of AOG uses
+        private void txtZoneOrder_Click(object sender, EventArgs e)
+        {
+            txtZoneOrder.ShowKeyboard(this);
+        }
+
+        private bool IsZoneOrderValid()
+        {
+            ValidateZoneOrder();
+            return zoneOrderError.Length == 0;
+        }
+
+        /// <summary>Echo what was parsed under the box so a typo is obvious immediately.</summary>
+        private void ValidateZoneOrder()
+        {
+            zoneOrderError = "";
+            if (!mf.plan.TryZoneLayout((int)nudZones.Value, out List<int> zonePasses, out int leftZones))
+            {
+                lblZoneOrderRead.Text = "";
+                return;
+            }
+
+            if (CTurnPlan.TryParseZoneOrder(txtZoneOrder.Text, zonePasses.Count,
+                    out int[] order, out string error))
+            {
+                lblZoneOrderRead.ForeColor = Color.DimGray;
+                lblZoneOrderRead.Text = gStr.gsZoneOrderRead + " "
+                    + CTurnPlan.FormatZoneOrder(order, leftZones);
+            }
+            else
+            {
+                zoneOrderError = error;
+                lblZoneOrderRead.ForeColor = Color.Firebrick;
+                lblZoneOrderRead.Text = error;
+            }
         }
 
         // the -/+ stepper buttons MakeKeypadField adds beside nudZones
@@ -1548,6 +1619,9 @@ namespace AgOpenGPS
                          : btnMode2.Checked ? CTurnPlan.ModeContour
                          : CTurnPlan.ModeZones;
             mf.plan.zoneCount = (int)nudZones.Value;
+            //a half-typed order must not quietly build a plan the driver did not ask for
+            if (!IsZoneOrderValid()) { lblPlanStatus.Text = zoneOrderError; return; }
+            mf.plan.zoneOrder = txtZoneOrder.Text;
             mf.plan.trackName = cboTrack.SelectedItem?.ToString() ?? "";
             mf.plan.clipToHeadland = chkHeadlandClip.Enabled && chkHeadlandClip.Checked;
 
@@ -1613,6 +1687,8 @@ namespace AgOpenGPS
 
         private void nudZones_ValueChanged(object sender, EventArgs e)
         {
+            //a hand-edited order cannot survive a different zone count - back to default
+            ResetZoneOrderText();
             //step 2 is interactive: the zone split redraws on every change
             if (wizStep == 2) GenerateFromWizard();
             UpdatePlanInfo();
@@ -1667,8 +1743,7 @@ namespace AgOpenGPS
                 if (string.IsNullOrEmpty(abName) && mf.trk.idx >= 0 && mf.trk.idx < mf.trk.gArr.Count)
                     abName = mf.trk.gArr[mf.trk.idx].name;
                 lblPlanInfo.Text = gStr.gsABline + ": " + abName + "\n\n"
-                    + gStr.gsZoneWidth + ": " + zoneWidth.ToString("N1") + " m\n"
-                    + passesPerZone + " " + gStr.gsPassesPerZone;
+                    + ZoneWidthText(zoneWidth, passesPerZone);
             }
             else
             {
@@ -1681,6 +1756,33 @@ namespace AgOpenGPS
                 : "";
         }
 
+        /// <summary>
+        /// Zone widths for the PATH tab. With the plan split at the reference line the two
+        /// sides can hold a different number of zones of a different width, so one number
+        /// no longer describes the field - report per side then (field feedback 2026-07-27).
+        /// </summary>
+        private string ZoneWidthText(double zoneWidth, int passesPerZone)
+        {
+            double w = mf.plan.WorkWidth();
+            if (w >= 0.1
+                && mf.plan.TryZoneLayout((int)nudZones.Value, out List<int> zonePasses, out int leftZones)
+                && leftZones > 0 && leftZones < zonePasses.Count)
+            {
+                int leftPasses = 0, rightPasses = 0;
+                for (int i = 0; i < zonePasses.Count; i++)
+                {
+                    if (i < leftZones) leftPasses += zonePasses[i];
+                    else rightPasses += zonePasses[i];
+                }
+                int rightZones = zonePasses.Count - leftZones;
+                return "L: " + leftZones + " x " + (leftPasses * w / leftZones).ToString("N1") + " m\n"
+                     + "R: " + rightZones + " x " + (rightPasses * w / rightZones).ToString("N1") + " m";
+            }
+
+            return gStr.gsZoneWidth + ": " + zoneWidth.ToString("N1") + " m\n"
+                 + passesPerZone + " " + gStr.gsPassesPerZone;
+        }
+
         // ── Orchard mode (F50 phase 3): the PATH tab plans from rows + tool ──
         // Field controls (mode/zones/line/headland/manual passes) make no sense in
         // an orchard - the plan is the ordered pass sequence from the implement
@@ -1689,6 +1791,7 @@ namespace AgOpenGPS
         {
             btnMode1.Visible = btnMode2.Visible = btnMode3.Visible = false;
             lblZones.Visible = nudZones.Visible = false;
+            SetZoneOrderVisible(false);
             chkHeadlandClip.Visible = false;
             lblTrack.Visible = cboTrack.Visible = false;
             btnAddPath.Visible = btnDeletePath.Visible = false;

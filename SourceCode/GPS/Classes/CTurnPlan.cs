@@ -1,4 +1,4 @@
-using AgLibrary.Logging;
+﻿using AgLibrary.Logging;
 using OpenTK.Graphics.OpenGL;
 using System;
 using System.Collections.Generic;
@@ -52,6 +52,10 @@ namespace AgOpenGPS
         public bool isFollowPlan;        // master switch (runtime hookup = phase 3.2)
         public int mode = ModeZones;
         public int zoneCount = 2;
+        // processing order of the zones, laid out spatially ("3 | 2 | 1 || 4 | 5").
+        // Empty = use the default order. Kept as text because that is what the driver
+        // edits in the PATH tab; parsing ignores everything that is not a digit.
+        public string zoneOrder = "";
         public string trackName = "";    // "" = the active track
         public bool clipToHeadland = true;   // passes stop at the headland (when defined)
         public List<CPlanEntry> entries = new List<CPlanEntry>();
@@ -69,6 +73,7 @@ namespace AgOpenGPS
             isFollowPlan = false;
             mode = ModeZones;
             zoneCount = 2;
+            zoneOrder = "";
             trackName = "";
             clipToHeadland = true;
             runEntry = null;
@@ -83,9 +88,214 @@ namespace AgOpenGPS
             isFollowPlan = data.followPlan;
             mode = data.mode;
             zoneCount = data.zoneCount;
+            zoneOrder = data.zoneOrder ?? "";
             trackName = data.trackName ?? "";
             clipToHeadland = data.clipHeadland;
             entries.AddRange(data.entries);
+        }
+
+        // ── zones: left and right of the reference line stay apart ───────────
+        // Field feedback 2026-07-27: the plan used to cut ONE list running from minIdx to
+        // maxIdx into equal contiguous zones, so a zone could straddle the AB line and the
+        // passes of the two sides got mixed. With work on both sides the sides are now
+        // planned as separate zones. offsetIdx < 0 is left of the reference heading,
+        // >= 0 is right (pass k is centred at (k + 0.5) * width), so the cut lands exactly
+        // on the line.
+
+        // a side has to carry at least this many passes to count as a side of its own
+        private const int minSidePasses = 2;
+
+        /// <summary>
+        /// Zones in SPATIAL order, leftmost first. leftZones tells how many of them are
+        /// left of the reference line (0 = no side split, i.e. the old behaviour).
+        /// Passes must arrive sorted by offsetIdx ascending.
+        /// </summary>
+        private List<List<CPlanEntry>> BuildSpatialZones(List<CPlanEntry> passes, int zones,
+            out int leftZones)
+        {
+            leftZones = 0;
+            var left = new List<CPlanEntry>();
+            var right = new List<CPlanEntry>();
+            foreach (var p in passes)
+            {
+                if (p.offsetIdx < 0) left.Add(p); else right.Add(p);
+            }
+
+            // zoneCount 1, or the reference line sits at/near the field edge => unchanged:
+            // one list, and zone 1 is the end that lies NEXT TO the reference line
+            if (zones < 2 || left.Count < minSidePasses || right.Count < minSidePasses)
+            {
+                var single = new List<CPlanEntry>(passes);
+                double firstDist = Math.Abs(single[0].offsetIdx + 0.5);
+                double lastDist = Math.Abs(single[single.Count - 1].offsetIdx + 0.5);
+                if (lastDist < firstDist) single.Reverse();
+                return BuildContiguousZones(single, zones);
+            }
+
+            // Hand out the zones one at a time, always to the side whose zones are
+            // currently the widest. Sides of 60 m and 50 m over 4 zones give 2x30 and
+            // 2x25 rather than 1x50 against 3x20 - "no zone much smaller than the rest"
+            // falls out of this on its own, it does not need a rule of its own.
+            int nL = 1, nR = 1;
+            for (int z = 3; z <= zones; z++)
+            {
+                if (nL >= left.Count && nR >= right.Count) break;   // one pass per zone already
+                double wl = nL >= left.Count ? -1 : (double)left.Count / nL;
+                double wr = nR >= right.Count ? -1 : (double)right.Count / nR;
+                if (wl >= wr) nL++; else nR++;
+            }
+
+            // cut each side starting AT the reference line and working outwards
+            var leftFromLine = new List<CPlanEntry>(left);
+            leftFromLine.Reverse();                                  // -1, -2, -3 ...
+            var leftCut = BuildContiguousZones(leftFromLine, nL);    // [0] touches the line
+            var rightCut = BuildContiguousZones(right, nR);          // 0, 1, 2 ...
+
+            // spatial order = outermost left ... innermost left | innermost right ... outermost right
+            var spatial = new List<List<CPlanEntry>>();
+            for (int i = leftCut.Count - 1; i >= 0; i--) spatial.Add(leftCut[i]);
+            spatial.AddRange(rightCut);
+            leftZones = leftCut.Count;
+            return spatial;
+        }
+
+        /// <summary>The original split: one list into contiguous zones of near-equal size.</summary>
+        private static List<List<CPlanEntry>> BuildContiguousZones(List<CPlanEntry> passes, int zones)
+        {
+            int n = Math.Max(1, Math.Min(zones, passes.Count));
+            int baseCount = passes.Count / n, rem = passes.Count % n;
+            int at = 0;
+            var lists = new List<List<CPlanEntry>>();
+            for (int z = 0; z < n; z++)
+            {
+                int take = baseCount + (z < rem ? 1 : 0);
+                var lst = new List<CPlanEntry>();
+                for (int i = 0; i < take; i++) lst.Add(passes[at++]);
+                lists.Add(lst);
+            }
+            return lists;
+        }
+
+        /// <summary>
+        /// Processing order per spatial zone. The WIDER side is worked first (deterministic -
+        /// it does not depend on where the vehicle happens to stand); on a tie the left side
+        /// goes first. Inside a side the zone touching the reference line is worked first.
+        /// Without a side split it is simply left to right, as before.
+        /// </summary>
+        private static int[] DefaultZoneOrder(int count, int leftZones)
+        {
+            var order = new int[count];
+            if (leftZones <= 0 || leftZones >= count)
+            {
+                for (int i = 0; i < count; i++) order[i] = i + 1;
+                return order;
+            }
+
+            int rightZones = count - leftZones;
+            int o = 1;
+            if (leftZones >= rightZones)
+            {
+                for (int i = leftZones - 1; i >= 0; i--) order[i] = o++;         // left, line outwards
+                for (int i = leftZones; i < count; i++) order[i] = o++;          // then right
+            }
+            else
+            {
+                for (int i = leftZones; i < count; i++) order[i] = o++;          // right, line outwards
+                for (int i = leftZones - 1; i >= 0; i--) order[i] = o++;         // then left
+            }
+            return order;
+        }
+
+        /// <summary>
+        /// Human readable order, spatially laid out: "3 | 2 | 1 || 4 | 5". The "||" marks
+        /// the reference line and is decoration only - parsing ignores it.
+        /// </summary>
+        public static string FormatZoneOrder(int[] order, int leftZones)
+        {
+            if (order == null || order.Length == 0) return "";
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < order.Length; i++)
+            {
+                if (i > 0) sb.Append(i == leftZones && leftZones > 0 ? " || " : " | ");
+                sb.Append(order[i]);
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Read a processing order out of free text: every run of digits is a number, any
+        /// other character is a separator, so "3 | 2 | 1 || 4 | 5" and "3 2 1 4 5" are the
+        /// same thing. Valid only as a complete permutation of 1..count.
+        /// </summary>
+        public static bool TryParseZoneOrder(string text, int count, out int[] order, out string error)
+        {
+            order = null;
+            error = null;
+            if (count <= 0) { error = "no zones"; return false; }
+
+            var found = new List<int>();
+            int i = 0;
+            while (text != null && i < text.Length)
+            {
+                if (!char.IsDigit(text[i])) { i++; continue; }
+                int v = 0;
+                while (i < text.Length && char.IsDigit(text[i]))
+                {
+                    v = v * 10 + (text[i] - '0');
+                    if (v > 9999) v = 9999;      // stop silly input from overflowing
+                    i++;
+                }
+                found.Add(v);
+            }
+
+            if (found.Count != count)
+            {
+                error = found.Count + " of " + count + " zones";
+                return false;
+            }
+
+            var seen = new bool[count + 1];
+            foreach (int v in found)
+            {
+                if (v < 1 || v > count) { error = "zone " + v + " is out of range"; return false; }
+                if (seen[v]) { error = "zone " + v + " twice"; return false; }
+                seen[v] = true;
+            }
+            for (int z = 1; z <= count; z++)
+                if (!seen[z]) { error = "zone " + z + " missing"; return false; }
+
+            order = found.ToArray();
+            return true;
+        }
+
+        /// <summary>
+        /// Zone layout for the PATH tab preview, without building a plan: pass count per
+        /// spatial zone plus how many of those zones are left of the line.
+        /// </summary>
+        public bool TryZoneLayout(int zones, out List<int> zonePasses, out int leftZones)
+        {
+            zonePasses = null;
+            leftZones = 0;
+            double w = WorkWidth();
+            if (w < 0.1 || zones < 1) return false;
+            if (!TryOffsetRange(out int minIdx, out int maxIdx)) return false;
+
+            // the preview cannot know which passes survive the boundary clip, so it works
+            // off the raw offset range - same as TryZoneInfo has always done
+            var stand = new List<CPlanEntry>();
+            for (int k = minIdx; k <= maxIdx; k++) stand.Add(new CPlanEntry { offsetIdx = k });
+
+            var lists = BuildSpatialZones(stand, zones, out leftZones);
+            zonePasses = new List<int>();
+            foreach (var l in lists) zonePasses.Add(l.Count);
+            return true;
+        }
+
+        /// <summary>Default order text for the current field and zone count ("" if unknown).</summary>
+        public string DefaultZoneOrderText(int zones)
+        {
+            if (!TryZoneLayout(zones, out List<int> zonePasses, out int leftZones)) return "";
+            return FormatZoneOrder(DefaultZoneOrder(zonePasses.Count, leftZones), leftZones);
         }
 
         // ── info for the PATH tab: zone width + passes per zone ──────────────
@@ -156,32 +366,25 @@ namespace AgOpenGPS
                 return false;
             }
 
-            // pass 1 / zone 1 sits NEXT TO the reference line: orient the spatial
-            // sequence so it starts at the end closest to the track
-            double firstDist = Math.Abs((passes[0].offsetIdx + 0.5) * w);
-            double lastDist = Math.Abs((passes[passes.Count - 1].offsetIdx + 0.5) * w);
-            if (lastDist < firstDist) passes.Reverse();
+            // zones, left and right of the reference line kept apart (see BuildSpatialZones)
+            var zoneLists = BuildSpatialZones(passes, zoneCount, out int leftZones);
 
-            // split into contiguous zones of near-equal size
-            int zones = Math.Max(1, Math.Min(zoneCount, passes.Count));
-            int baseCount = passes.Count / zones, rem = passes.Count % zones;
-            int at = 0;
-            var zoneLists = new List<List<CPlanEntry>>();
-            for (int z = 0; z < zones; z++)
-            {
-                int take = baseCount + (z < rem ? 1 : 0);
-                var lst = new List<CPlanEntry>();
-                for (int i = 0; i < take; i++) lst.Add(passes[at++]);
-                zoneLists.Add(lst);
-            }
+            // processing order per SPATIAL zone; the user may have reordered it
+            int[] zoneOrderById = DefaultZoneOrder(zoneLists.Count, leftZones);
+            if (TryParseZoneOrder(zoneOrder, zoneLists.Count, out int[] wanted, out _))
+                zoneOrderById = wanted;
+            zoneOrder = FormatZoneOrder(zoneOrderById, leftZones);
 
-            // order the passes: zone after zone; inside a zone by mode
+            // order the passes: zone after zone in the requested sequence, inside a zone by mode
             int order = 0;
-            for (int z = 0; z < zoneLists.Count; z++)
+            for (int step = 1; step <= zoneLists.Count; step++)
             {
-                var lst = zoneLists[z];
-                foreach (var p in OrderWithinZoneByMode(lst))
+                int z = Array.IndexOf(zoneOrderById, step);
+                if (z < 0) continue;
+                foreach (var p in OrderWithinZoneByMode(zoneLists[z]))
                 {
+                    // zone number = SPATIAL position, so the map colours stay put no
+                    // matter how the driver reorders the processing sequence
                     p.zone = z + 1;
                     p.order = ++order;
                     p.isSameWay = (order % 2) == 1;   // alternates with every turn
@@ -913,7 +1116,7 @@ namespace AgOpenGPS
 
         // ── geometry ──────────────────────────────────────────────────────────
 
-        private double WorkWidth()
+        public double WorkWidth()
         {
             return mf.tool.width - mf.tool.overlap;
         }

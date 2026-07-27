@@ -52,6 +52,8 @@
             this.btnMode2 = new System.Windows.Forms.CheckBox();
             this.btnMode3 = new System.Windows.Forms.CheckBox();
             this.lblZones = new System.Windows.Forms.Label();
+            this.txtZoneOrder = new System.Windows.Forms.TextBox();
+            this.lblZoneOrderRead = new System.Windows.Forms.Label();
             this.nudZones = new System.Windows.Forms.NumericUpDown();
             this.chkHeadlandClip = new System.Windows.Forms.CheckBox();
             this.lblPlanInfo = new System.Windows.Forms.Label();
@@ -455,6 +457,8 @@
             this.pnlPath.Controls.Add(this.btnMode2);
             this.pnlPath.Controls.Add(this.lblZones);
             this.pnlPath.Controls.Add(this.nudZones);
+            this.pnlPath.Controls.Add(this.txtZoneOrder);
+            this.pnlPath.Controls.Add(this.lblZoneOrderRead);
             this.pnlPath.Controls.Add(this.chkHeadlandClip);
             this.pnlPath.Controls.Add(this.lblPlanInfo);
             this.pnlPath.Controls.Add(this.btnGeneratePlan);
@@ -571,6 +575,25 @@
             this.nudZones.TabIndex = 9;
             this.nudZones.Value = new decimal(new int[] { 2, 0, 0, 0 });
             this.nudZones.ValueChanged += new System.EventHandler(this.nudZones_ValueChanged);
+            //
+            // zone processing order (field feedback 2026-07-27): spatial layout of the
+            // zones with the AB line marked "||"; the numbers are the processing order
+            //
+            this.txtZoneOrder.Font = new System.Drawing.Font("Tahoma", 12F);
+            this.txtZoneOrder.Location = new System.Drawing.Point(10, 178);
+            this.txtZoneOrder.Name = "txtZoneOrder";
+            this.txtZoneOrder.Size = new System.Drawing.Size(300, 34);
+            this.txtZoneOrder.TabIndex = 10;
+            this.txtZoneOrder.TextChanged += new System.EventHandler(this.txtZoneOrder_TextChanged);
+            this.txtZoneOrder.Click += new System.EventHandler(this.txtZoneOrder_Click);
+            //
+            this.lblZoneOrderRead.Font = new System.Drawing.Font("Tahoma", 9.75F);
+            this.lblZoneOrderRead.ForeColor = System.Drawing.Color.DimGray;
+            this.lblZoneOrderRead.Location = new System.Drawing.Point(10, 216);
+            this.lblZoneOrderRead.Name = "lblZoneOrderRead";
+            this.lblZoneOrderRead.Size = new System.Drawing.Size(300, 26);
+            this.lblZoneOrderRead.TabIndex = 11;
+            this.lblZoneOrderRead.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
             //
             this.lblPlanInfo.Font = new System.Drawing.Font("Tahoma", 9.75F);
             this.lblPlanInfo.ForeColor = System.Drawing.Color.DimGray;
@@ -1014,6 +1037,8 @@
         private System.Windows.Forms.CheckBox btnMode3;
         private System.Windows.Forms.Label lblZones;
         private System.Windows.Forms.NumericUpDown nudZones;
+        private System.Windows.Forms.TextBox txtZoneOrder;
+        private System.Windows.Forms.Label lblZoneOrderRead;
         private System.Windows.Forms.CheckBox chkHeadlandClip;
         private System.Windows.Forms.Label lblPlanInfo;
         private System.Windows.Forms.Button btnGeneratePlan;
