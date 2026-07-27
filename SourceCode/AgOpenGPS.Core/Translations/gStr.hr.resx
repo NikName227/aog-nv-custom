@@ -1508,6 +1508,12 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsMinTurnRadius" xml:space="preserve">
     <value>Min. radijus</value>
   </data>
+  <data name="gsBorderLineSecondPoint" xml:space="preserve">
+    <value>Klikni drugu tocku</value>
+  </data>
+  <data name="gsTurnLinesUnsaved" xml:space="preserve">
+    <value>Turn linije su promijenjene. Spremiti?</value>
+  </data>
   <data name="gsTriggerTolerance" xml:space="preserve">
     <value>Tolerancija okidanja (m)</value>
   </data>

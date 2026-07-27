@@ -34,7 +34,9 @@
             this.btnWinFull = new System.Windows.Forms.Button();
             this.btnWinClose = new System.Windows.Forms.Button();
             this.pnlMapTools = new System.Windows.Forms.Panel();
+            this.btnSaveLines = new System.Windows.Forms.Button();
             this.btnAddLine = new System.Windows.Forms.Button();
+            this.btnBorderLine = new System.Windows.Forms.CheckBox();
             this.btnAddPoint = new System.Windows.Forms.CheckBox();
             this.btnDeletePoint = new System.Windows.Forms.CheckBox();
             this.btnDeleteLine = new System.Windows.Forms.CheckBox();
@@ -296,7 +298,9 @@
             this.pnlMapTools.Size = new System.Drawing.Size(192, 556);
             this.pnlMapTools.TabIndex = 14;
             this.pnlMapTools.Visible = false;
+            this.pnlMapTools.Controls.Add(this.btnSaveLines);
             this.pnlMapTools.Controls.Add(this.btnAddLine);
+            this.pnlMapTools.Controls.Add(this.btnBorderLine);
             this.pnlMapTools.Controls.Add(this.btnAddPoint);
             this.pnlMapTools.Controls.Add(this.btnDeletePoint);
             this.pnlMapTools.Controls.Add(this.btnDeleteLine);
@@ -305,10 +309,21 @@
             this.pnlMapTools.Controls.Add(this.lblMeasure);
             this.pnlMapTools.Controls.Add(this.btnMeasure);
             //
+            this.btnSaveLines.BackColor = System.Drawing.Color.Honeydew;
+            this.btnSaveLines.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnSaveLines.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.btnSaveLines.Location = new System.Drawing.Point(10, 10);
+            this.btnSaveLines.Name = "btnSaveLines";
+            this.btnSaveLines.Size = new System.Drawing.Size(170, 46);
+            this.btnSaveLines.TabIndex = 0;
+            this.btnSaveLines.Text = "Save";
+            this.btnSaveLines.UseVisualStyleBackColor = false;
+            this.btnSaveLines.Click += new System.EventHandler(this.btnSaveLines_Click);
+            //
             this.btnAddLine.BackColor = System.Drawing.Color.PapayaWhip;
             this.btnAddLine.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnAddLine.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
-            this.btnAddLine.Location = new System.Drawing.Point(10, 10);
+            this.btnAddLine.Location = new System.Drawing.Point(10, 62);
             this.btnAddLine.Name = "btnAddLine";
             this.btnAddLine.Size = new System.Drawing.Size(170, 46);
             this.btnAddLine.TabIndex = 0;
@@ -316,12 +331,26 @@
             this.btnAddLine.UseVisualStyleBackColor = false;
             this.btnAddLine.Click += new System.EventHandler(this.btnAddLine_Click);
             //
+            this.btnBorderLine.Appearance = System.Windows.Forms.Appearance.Button;
+            this.btnBorderLine.BackColor = System.Drawing.Color.PapayaWhip;
+            this.btnBorderLine.FlatAppearance.CheckedBackColor = System.Drawing.Color.Gold;
+            this.btnBorderLine.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnBorderLine.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Bold);
+            this.btnBorderLine.Location = new System.Drawing.Point(10, 114);
+            this.btnBorderLine.Name = "btnBorderLine";
+            this.btnBorderLine.Size = new System.Drawing.Size(170, 46);
+            this.btnBorderLine.TabIndex = 2;
+            this.btnBorderLine.Text = "Add line on border";
+            this.btnBorderLine.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.btnBorderLine.UseVisualStyleBackColor = false;
+            this.btnBorderLine.CheckedChanged += new System.EventHandler(this.btnBorderLine_CheckedChanged);
+            //
             this.btnAddPoint.Appearance = System.Windows.Forms.Appearance.Button;
             this.btnAddPoint.BackColor = System.Drawing.Color.AliceBlue;
             this.btnAddPoint.FlatAppearance.CheckedBackColor = System.Drawing.Color.Gold;
             this.btnAddPoint.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnAddPoint.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Bold);
-            this.btnAddPoint.Location = new System.Drawing.Point(10, 82);
+            this.btnAddPoint.Location = new System.Drawing.Point(10, 176);
             this.btnAddPoint.Name = "btnAddPoint";
             this.btnAddPoint.Size = new System.Drawing.Size(170, 46);
             this.btnAddPoint.TabIndex = 1;
@@ -335,7 +364,7 @@
             this.btnDeletePoint.FlatAppearance.CheckedBackColor = System.Drawing.Color.IndianRed;
             this.btnDeletePoint.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnDeletePoint.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Bold);
-            this.btnDeletePoint.Location = new System.Drawing.Point(10, 134);
+            this.btnDeletePoint.Location = new System.Drawing.Point(10, 228);
             this.btnDeletePoint.Name = "btnDeletePoint";
             this.btnDeletePoint.Size = new System.Drawing.Size(170, 46);
             this.btnDeletePoint.TabIndex = 2;
@@ -349,7 +378,7 @@
             this.btnDeleteLine.FlatAppearance.CheckedBackColor = System.Drawing.Color.IndianRed;
             this.btnDeleteLine.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnDeleteLine.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Bold);
-            this.btnDeleteLine.Location = new System.Drawing.Point(10, 186);
+            this.btnDeleteLine.Location = new System.Drawing.Point(10, 280);
             this.btnDeleteLine.Name = "btnDeleteLine";
             this.btnDeleteLine.Size = new System.Drawing.Size(170, 46);
             this.btnDeleteLine.TabIndex = 3;
@@ -365,7 +394,7 @@
             this.chkParcels.FlatAppearance.CheckedBackColor = System.Drawing.Color.MediumAquamarine;
             this.chkParcels.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.chkParcels.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Bold);
-            this.chkParcels.Location = new System.Drawing.Point(10, 258);
+            this.chkParcels.Location = new System.Drawing.Point(10, 342);
             this.chkParcels.Name = "chkParcels";
             this.chkParcels.Size = new System.Drawing.Size(170, 46);
             this.chkParcels.TabIndex = 4;
@@ -375,7 +404,7 @@
             this.chkParcels.CheckedChanged += new System.EventHandler(this.chkParcels_CheckedChanged);
             //
             this.btnGoToField.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Bold);
-            this.btnGoToField.Location = new System.Drawing.Point(10, 310);
+            this.btnGoToField.Location = new System.Drawing.Point(10, 394);
             this.btnGoToField.Name = "btnGoToField";
             this.btnGoToField.Size = new System.Drawing.Size(170, 46);
             this.btnGoToField.TabIndex = 5;
@@ -966,7 +995,9 @@
         private System.Windows.Forms.Button btnWinFull;
         private System.Windows.Forms.Button btnWinClose;
         private System.Windows.Forms.Panel pnlMapTools;
+        private System.Windows.Forms.Button btnSaveLines;
         private System.Windows.Forms.Button btnAddLine;
+        private System.Windows.Forms.CheckBox btnBorderLine;
         private System.Windows.Forms.CheckBox btnAddPoint;
         private System.Windows.Forms.CheckBox btnDeletePoint;
         private System.Windows.Forms.CheckBox btnDeleteLine;
