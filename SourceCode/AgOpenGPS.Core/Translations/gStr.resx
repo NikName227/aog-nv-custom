@@ -1878,6 +1878,12 @@ USE AT OWN RISK.</value>
   <data name="gsTriggerTolerance" xml:space="preserve">
     <value>Trigger tolerance (m)</value>
   </data>
+  <data name="gsTriggerTolBefore" xml:space="preserve">
+    <value>Trigger tol. before (m)</value>
+  </data>
+  <data name="gsTriggerTolAfter" xml:space="preserve">
+    <value>Trigger tol. after (m)</value>
+  </data>
   <data name="gsOvershootDist" xml:space="preserve">
     <value>Overshoot distance (m)</value>
   </data>

@@ -4915,6 +4915,18 @@ namespace AgOpenGPS.Core.Translations {
             }
         }
 
+        public static string gsTriggerTolBefore {
+            get {
+                return ResourceManager.GetString("gsTriggerTolBefore", resourceCulture);
+            }
+        }
+
+        public static string gsTriggerTolAfter {
+            get {
+                return ResourceManager.GetString("gsTriggerTolAfter", resourceCulture);
+            }
+        }
+
         public static string gsOvershootDist {
             get {
                 return ResourceManager.GetString("gsOvershootDist", resourceCulture);

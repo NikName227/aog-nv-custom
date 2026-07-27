@@ -132,7 +132,8 @@ namespace AgOpenGPS
             lblOutU.Text = gStr.gsExitRadius;
             lblInU.Text = gStr.gsEntryRadius;
             lblMinRS.Text = gStr.gsMinTurnRadius;
-            lblTolerance.Text = gStr.gsTriggerTolerance;
+            lblTolerance.Text = gStr.gsTriggerTolBefore;
+            lblToleranceAfter.Text = gStr.gsTriggerTolAfter;
             lblOvershootU.Text = gStr.gsOvershootDist;
         }
 
@@ -1688,6 +1689,7 @@ namespace AgOpenGPS
             SetNud(nudOutU, s.set_turnU_exitRadius);
             SetNud(nudInU, s.set_turnU_entryRadius);
             SetNud(nudTolerance, s.set_turnTriggerTolerance);
+            SetNud(nudToleranceAfter, s.set_turnTriggerToleranceAfter);
             SetNud(nudOvershootU, s.set_turnU_overshootDist);
 
             btnStyleK.Checked = true;
@@ -1704,6 +1706,7 @@ namespace AgOpenGPS
             s.set_turnU_exitRadius = (double)nudOutU.Value;
             s.set_turnU_entryRadius = (double)nudInU.Value;
             s.set_turnTriggerTolerance = (double)nudTolerance.Value;
+            s.set_turnTriggerToleranceAfter = (double)nudToleranceAfter.Value;
             s.set_turnU_overshootDist = (double)nudOvershootU.Value;
             s.Save();
         }
@@ -1718,13 +1721,16 @@ namespace AgOpenGPS
         // -/+ stepper buttons (SmartAB style) and open the AOG numeric keypad on tap.
         private void SetupKeypadFields()
         {
-            MakeKeypadField(nudExitK, 0.5);
+            //field feedback 2026-07-27: metre values that need fine adjustment (the turn
+            //radii and the trigger tolerances) step by 0.2; the rest keeps its old step
+            MakeKeypadField(nudExitK, 0.2);
             MakeKeypadField(nudDistK, 0.5);
             MakeKeypadField(nudAngleK, 5);
-            MakeKeypadField(nudOutU, 0.5);
-            MakeKeypadField(nudInU, 0.5);
+            MakeKeypadField(nudOutU, 0.2);
+            MakeKeypadField(nudInU, 0.2);
             MakeKeypadField(nudOvershootU, 0.5);
-            MakeKeypadField(nudTolerance, 0.5);
+            MakeKeypadField(nudTolerance, 0.2);
+            MakeKeypadField(nudToleranceAfter, 0.2);
             MakeKeypadField(nudZones, 1, zoneSteppers);   //wizard step 2 shows/hides these
         }
 

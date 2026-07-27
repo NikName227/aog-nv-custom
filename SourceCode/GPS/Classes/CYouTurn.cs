@@ -72,9 +72,39 @@ namespace AgOpenGPS
         public bool turnOvershot = false;
 
         // turn limit lines: true when the pivot is inside the trigger window, so the turn is
-        // the NEXT thing that will happen (even while stopped) — drawn orange so the driver
-        // knows the AB line is no longer what gets followed next.
+        // the NEXT thing that will happen (even while stopped) — drawn green so the driver
+        // knows this is the moment to stop or to shuttle forward.
         public bool turnArmed = false;
+
+        // turn-after-stop, field feedback 2026-07-27: reverse -> forward edge detector.
+        // On some setups isReverse comes from an IMU/heading delta and chatters, so a
+        // reverse only counts once it has been held for reverseDebounceSeconds.
+        private bool reverseHeld;
+        private DateTime reverseRawSince = DateTime.MaxValue;
+        private const double reverseDebounceSeconds = 0.5;
+
+        /// <summary>
+        /// Feed the raw reverse flag once per position update. Returns true on the single
+        /// update where a DEBOUNCED reverse has just been released into forward travel.
+        /// Must be called every cycle (also when turn-after-stop is off) so the detector
+        /// never sees a stale gap and reports a phantom edge.
+        /// </summary>
+        public bool UpdateReverseEdge(bool isReverseRaw)
+        {
+            if (isReverseRaw)
+            {
+                if (reverseRawSince == DateTime.MaxValue) reverseRawSince = DateTime.UtcNow;
+                if (!reverseHeld
+                    && (DateTime.UtcNow - reverseRawSince).TotalSeconds >= reverseDebounceSeconds)
+                    reverseHeld = true;
+                return false;
+            }
+
+            reverseRawSince = DateTime.MaxValue;
+            if (!reverseHeld) return false;
+            reverseHeld = false;
+            return true;      // held reverse -> forward = the driver shuttled
+        }
 
         //sequence of operations of finding the next turn 0 to 3
         public int youTurnPhase;
@@ -3234,6 +3264,9 @@ namespace AgOpenGPS
             afterStopStopped = false;
             turnOvershot = false;
             turnArmed = false;
+            //drop any half-seen reverse so the next turn cannot be armed by a stale edge
+            reverseHeld = false;
+            reverseRawSince = DateTime.MaxValue;
             kPart2List?.Clear();
             kTurnStage = 0;
             kRevReached = false;
@@ -3871,14 +3904,18 @@ namespace AgOpenGPS
 
             GL.PointSize(mf.ABLine.lineWidth + 2);
 
+            //field feedback 2026-07-27: green is an ACTION cue, not a status. Blue while the
+            //maneuver is ready but still far away, green only inside the trigger tolerance
+            //(= stop now / shuttle forward now). Same scheme as the HUD text and arrow.
+            //With the turn limit lines off, turnArmed is never fed - keep the stock green.
             if (isYouTurnTriggered)
                 GL.Color3(0.95f, 0.5f, 0.95f);            //maneuver running
             else if (isOutOfBounds || turnOvershot)
                 GL.Color3(0.9495f, 0.395f, 0.325f);      //red: overshot (reverse) or out of bounds
-            else if (turnArmed)
-                GL.Color3(1.0f, 0.55f, 0.0f);            //orange: in the trigger window - turn is next (even stopped)
+            else if (!mf.tnl.IsFeatureOn || turnArmed)
+                GL.Color3(0.395f, 0.925f, 0.30f);        //green: inside the tolerance - act now
             else
-                GL.Color3(0.395f, 0.925f, 0.30f);        //green: approaching, turn will arm
+                GL.Color3(0.35f, 0.65f, 0.95f);          //light blue: ready, still approaching
 
             GL.Begin(PrimitiveType.Points);
             for (int i = 0; i < ytList.Count; i++)

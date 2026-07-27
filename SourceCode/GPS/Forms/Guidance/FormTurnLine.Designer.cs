@@ -1,4 +1,4 @@
-namespace AgOpenGPS
+﻿namespace AgOpenGPS
 {
     partial class FormTurnLine
     {
@@ -85,6 +85,8 @@ namespace AgOpenGPS
             this.nudMinRS = new System.Windows.Forms.NumericUpDown();
             this.lblTolerance = new System.Windows.Forms.Label();
             this.nudTolerance = new System.Windows.Forms.NumericUpDown();
+            this.lblToleranceAfter = new System.Windows.Forms.Label();
+            this.nudToleranceAfter = new System.Windows.Forms.NumericUpDown();
             this.lblOvershootU = new System.Windows.Forms.Label();
             this.nudOvershootU = new System.Windows.Forms.NumericUpDown();
             this.SuspendLayout();
@@ -398,6 +400,8 @@ namespace AgOpenGPS
             this.pnlParams.Controls.Add(this.btnStyleRS);
             this.pnlParams.Controls.Add(this.lblTolerance);
             this.pnlParams.Controls.Add(this.nudTolerance);
+            this.pnlParams.Controls.Add(this.lblToleranceAfter);
+            this.pnlParams.Controls.Add(this.nudToleranceAfter);
             this.pnlParams.Controls.Add(this.pnlK);
             this.pnlParams.Controls.Add(this.pnlU);
             this.pnlParams.Controls.Add(this.pnlRS);
@@ -663,9 +667,9 @@ namespace AgOpenGPS
             this.btnStyleRS.UseVisualStyleBackColor = false;
             this.btnStyleRS.CheckedChanged += new System.EventHandler(this.btnStyleRS_CheckedChanged);
             //
-            this.pnlK.Location = new System.Drawing.Point(16, 72);
+            this.pnlK.Location = new System.Drawing.Point(16, 110);
             this.pnlK.Name = "pnlK";
-            this.pnlK.Size = new System.Drawing.Size(984, 470);
+            this.pnlK.Size = new System.Drawing.Size(984, 432);
             this.pnlK.TabIndex = 3;
             this.pnlK.Controls.Add(this.lblExitK);
             this.pnlK.Controls.Add(this.nudExitK);
@@ -677,9 +681,9 @@ namespace AgOpenGPS
             this.pnlK.Controls.Add(this.nudTransK);
             this.pnlK.Controls.Add(this.lblHintK);
             //
-            this.pnlU.Location = new System.Drawing.Point(16, 72);
+            this.pnlU.Location = new System.Drawing.Point(16, 110);
             this.pnlU.Name = "pnlU";
-            this.pnlU.Size = new System.Drawing.Size(984, 470);
+            this.pnlU.Size = new System.Drawing.Size(984, 432);
             this.pnlU.TabIndex = 4;
             this.pnlU.Visible = false;
             this.pnlU.Controls.Add(this.lblOutU);
@@ -690,9 +694,9 @@ namespace AgOpenGPS
             this.pnlU.Controls.Add(this.nudOvershootU);
             this.pnlU.Controls.Add(this.lblHintU);
             //
-            this.pnlRS.Location = new System.Drawing.Point(16, 72);
+            this.pnlRS.Location = new System.Drawing.Point(16, 110);
             this.pnlRS.Name = "pnlRS";
-            this.pnlRS.Size = new System.Drawing.Size(984, 470);
+            this.pnlRS.Size = new System.Drawing.Size(984, 432);
             this.pnlRS.TabIndex = 5;
             this.pnlRS.Visible = false;
             this.pnlRS.Controls.Add(this.lblMinRS);
@@ -834,24 +838,41 @@ namespace AgOpenGPS
             this.nudMinRS.Size = new System.Drawing.Size(130, 34);
             this.nudMinRS.TabIndex = 2;
             //
-            // trigger tolerance (common)
+            // trigger tolerance (common) - split before/after the turn start
             //
             this.lblTolerance.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
-            this.lblTolerance.Location = new System.Drawing.Point(512, 22);
+            this.lblTolerance.Location = new System.Drawing.Point(496, 22);
             this.lblTolerance.Name = "lblTolerance";
-            this.lblTolerance.Size = new System.Drawing.Size(190, 30);
+            this.lblTolerance.Size = new System.Drawing.Size(206, 30);
             this.lblTolerance.TabIndex = 6;
-            this.lblTolerance.Text = "Trigger tolerance (m)";
+            this.lblTolerance.Text = "Trigger tol. before (m)";
             this.lblTolerance.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             this.nudTolerance.DecimalPlaces = 1;
             this.nudTolerance.Font = new System.Drawing.Font("Tahoma", 12F);
-            this.nudTolerance.Increment = new decimal(new int[] { 5, 0, 0, 65536 });
+            this.nudTolerance.Increment = new decimal(new int[] { 2, 0, 0, 65536 });
             this.nudTolerance.Location = new System.Drawing.Point(712, 18);
             this.nudTolerance.Maximum = new decimal(new int[] { 10, 0, 0, 0 });
             this.nudTolerance.Minimum = new decimal(new int[] { 2, 0, 0, 65536 });
             this.nudTolerance.Name = "nudTolerance";
             this.nudTolerance.Size = new System.Drawing.Size(110, 34);
             this.nudTolerance.TabIndex = 7;
+            //
+            this.lblToleranceAfter.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.lblToleranceAfter.Location = new System.Drawing.Point(496, 64);
+            this.lblToleranceAfter.Name = "lblToleranceAfter";
+            this.lblToleranceAfter.Size = new System.Drawing.Size(206, 30);
+            this.lblToleranceAfter.TabIndex = 8;
+            this.lblToleranceAfter.Text = "Trigger tol. after (m)";
+            this.lblToleranceAfter.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
+            this.nudToleranceAfter.DecimalPlaces = 1;
+            this.nudToleranceAfter.Font = new System.Drawing.Font("Tahoma", 12F);
+            this.nudToleranceAfter.Increment = new decimal(new int[] { 2, 0, 0, 65536 });
+            this.nudToleranceAfter.Location = new System.Drawing.Point(712, 60);
+            this.nudToleranceAfter.Maximum = new decimal(new int[] { 10, 0, 0, 0 });
+            this.nudToleranceAfter.Minimum = new decimal(new int[] { 2, 0, 0, 65536 });
+            this.nudToleranceAfter.Name = "nudToleranceAfter";
+            this.nudToleranceAfter.Size = new System.Drawing.Size(110, 34);
+            this.nudToleranceAfter.TabIndex = 9;
             //
             this.lblOvershootU.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
             this.lblOvershootU.Location = new System.Drawing.Point(4, 124);
@@ -876,6 +897,7 @@ namespace AgOpenGPS
             ((System.ComponentModel.ISupportInitialize)(this.nudInU)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudMinRS)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudTolerance)).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)(this.nudToleranceAfter)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudOvershootU)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudZones)).BeginInit();
             //
@@ -919,6 +941,7 @@ namespace AgOpenGPS
             ((System.ComponentModel.ISupportInitialize)(this.nudInU)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudMinRS)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudTolerance)).EndInit();
+            ((System.ComponentModel.ISupportInitialize)(this.nudToleranceAfter)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudOvershootU)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudZones)).EndInit();
             this.ResumeLayout(false);
@@ -994,6 +1017,8 @@ namespace AgOpenGPS
         private System.Windows.Forms.NumericUpDown nudMinRS;
         private System.Windows.Forms.Label lblTolerance;
         private System.Windows.Forms.NumericUpDown nudTolerance;
+        private System.Windows.Forms.Label lblToleranceAfter;
+        private System.Windows.Forms.NumericUpDown nudToleranceAfter;
         private System.Windows.Forms.Label lblOvershootU;
         private System.Windows.Forms.NumericUpDown nudOvershootU;
     }

@@ -155,7 +155,15 @@ namespace AgOpenGPS.Properties
         public double set_turnU_exitRadius = 8;         // U: exit (outer) radius R_out
         public double set_turnU_entryRadius = 8;        // U: entry (inner) radius R_in
         public double set_turnU_overshootDist = 0.5;    // U: virtual line offset beyond AB (overshoot)
-        public double set_turnTriggerTolerance = 2.0;   // trigger window half-width (m)
+        // Trigger window, split in two halves (field feedback 2026-07-27). The window is
+        // measured along travel from the turn start: "before" covers the approach (the
+        // pivot has not reached the start yet), "after" covers having driven past it.
+        // Firing early is harmless - the turn path is already built and begins straight
+        // along the current line, so pure pursuit just tracks that lead-in. Firing late
+        // shifts the whole maneuver toward the turn limit line, so "after" stays tight.
+        // The old symmetric field keeps its name so stored user values survive.
+        public double set_turnTriggerTolerance = 3.0;        // window before the start (m)
+        public double set_turnTriggerToleranceAfter = 1.0;   // window past the start (m)
         public double setAS_uTurnSmoothing = 14;
         public double setAS_uTurnCompensation = 1;
         public int setAS_numGuideLines = 10;

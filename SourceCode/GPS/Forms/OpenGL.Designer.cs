@@ -1786,13 +1786,34 @@ namespace AgOpenGPS
             }
         }
 
+        /// <summary>
+        /// Field feedback 2026-07-27: "the driver has to act NOW" - the pivot is inside the
+        /// trigger tolerance of a turn that is built and waiting, so this is the moment to
+        /// stop or to shuttle forward. Drives the green/blue split on the READY text and the
+        /// turn arrow. turnArmed is only fed while the turn limit lines are on AND a turn is
+        /// built (Position.designer.cs), and it holds its last value until ResetCreatedYouTurn,
+        /// so it has to be gated on both or it sticks green. Feature off = stock, always green.
+        /// </summary>
+        private bool IsTurnActionDue()
+        {
+            if (!tnl.IsFeatureOn) return true;
+            return yt.youTurnPhase == 10 && yt.turnArmed;
+        }
+
         private void DrawUTurnBtn()
         {
             GL.Enable(EnableCap.Texture2D);
 
             if (!yt.isYouTurnTriggered)
             {
-                if (distancePivotToTurnLine > 0 && !yt.isOutOfBounds && yt.youTurnPhase == 10) GL.Color3(0.3f, 0.95f, 0.3f);
+                if (distancePivotToTurnLine > 0 && !yt.isOutOfBounds && yt.youTurnPhase == 10)
+                {
+                    //field feedback 2026-07-27: green only inside the trigger tolerance (act
+                    //now); light blue while the turn is ready but still far off. Turn limit
+                    //lines off => turnArmed is never fed, so keep the stock green.
+                    if (IsTurnActionDue()) GL.Color3(0.3f, 0.95f, 0.3f);
+                    else GL.Color3(0.35f, 0.65f, 0.95f);
+                }
                 else GL.Color3(0.97f, 0.635f, 0.4f);
                 //mc.autoSteerData[mc.sdX] = 0;
                 p_239.pgn[p_239.uturn] = 0;
@@ -1852,8 +1873,11 @@ namespace AgOpenGPS
                     }
                     else
                     {
-                        //maneuver planned and armed, waiting for the trigger distance
-                        GL.Color3(0.25f, 0.97f, 0.3f);
+                        //maneuver planned, waiting for the trigger distance. Green is the
+                        //ACTION cue (inside tolerance: stop / shuttle forward now), light
+                        //blue means ready but still approaching (field feedback 2026-07-27).
+                        if (IsTurnActionDue()) GL.Color3(0.25f, 0.97f, 0.3f);
+                        else GL.Color3(0.35f, 0.65f, 0.95f);
                         state = (yt.activeTurnStyle == 1 ? "K" : "U") + " READY";
                     }
                 }

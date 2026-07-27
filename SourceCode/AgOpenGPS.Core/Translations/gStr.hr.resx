@@ -1511,6 +1511,12 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsTriggerTolerance" xml:space="preserve">
     <value>Tolerancija okidanja (m)</value>
   </data>
+  <data name="gsTriggerTolBefore" xml:space="preserve">
+    <value>Tolerancija prije (m)</value>
+  </data>
+  <data name="gsTriggerTolAfter" xml:space="preserve">
+    <value>Tolerancija poslije (m)</value>
+  </data>
   <data name="gsOvershootDist" xml:space="preserve">
     <value>Overshoot udaljenost (m)</value>
   </data>
