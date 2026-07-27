@@ -128,6 +128,18 @@ namespace AgOpenGPS
             }
 
             test.Start(m, hr);
+            if (m == ITMode.Straight)
+            {
+                // freeze the guidance line now — everything is measured against it
+                test.CaptureLine(mf);
+                if (!test.LineOk)
+                {
+                    test.Stop();
+                    ShowMsg(hr ? "AB linija nije spremna — odaberi je i pričekaj da vodilica proradi."
+                               : "AB line not ready — select it and wait for guidance to come up.");
+                    return;
+                }
+            }
             btnStraight.Enabled = btnCircle.Enabled = false;
             btnFinish.Enabled = true;
             btnSkip.Visible = true;
@@ -196,7 +208,17 @@ namespace AgOpenGPS
             bar.Value = (int)(p * 100);
             lblHintTop.Text = action;
             lblHintBig.Text = big;
-            lblHintSub.Text = (hr ? "uzoraka " : "samples ") + test.SampleCount + " · " + (p * 100).ToString("0") + "%";
+            // show why a sample counts or not: off the line, or heading out of the cone
+            double lat = test.LastLat;
+            string diag;
+            if (double.IsNaN(lat)) diag = hr ? "nema linije" : "no line";
+            else if (Math.Abs(lat) > 3.0)
+                diag = (hr ? "⚠ " : "! ") + Math.Abs(lat).ToString("0.0") + (hr ? " m od linije" : " m off line");
+            else if (!test.LastInCone) diag = hr ? "⚠ izvan smjera linije" : "! off line heading";
+            else diag = (hr ? "od linije " : "off line ") + lat.ToString("0.00") + " m";
+
+            lblHintSub.Text = (hr ? "uzoraka " : "samples ") + test.SampleCount
+                            + " · " + (p * 100).ToString("0") + "% · " + diag;
             if (test.IsComplete()) Finish();
         }
 

@@ -96,6 +96,14 @@ namespace AgOpenGPS
         private int stepIdx;
         private bool? firstSameWay;             // the direction driven first defines dir 0
 
+        // The guidance line as it stood when the test started. AOG guides along the
+        // current PASS, not the reference AB line, and with autosteer off it re-snaps
+        // to the nearest pass every 0.66 s — so the reference is taken once and held,
+        // or the frame could jump to the neighbouring pass mid-run.
+        private bool lineOk;
+        private double lineE, lineN, lineHeading;
+        private double station0 = double.NaN;   // first station seen, so station starts near 0
+
         // straight speed bands (km/h) — center + tolerance
         // speed bands are opportunistic now — only the F2F-noise-vs-speed check
         // uses them; the geometry findings come from the two-way pass instead
@@ -130,7 +138,34 @@ namespace AgOpenGPS
             cumHeadingRad = 0; prevFixRad = double.NaN;
             firstSameWay = null;
             stepIdx = 0;
+            station0 = double.NaN;
+            lineOk = false;
             BuildSteps(m, hr);
+        }
+
+        public bool LineOk { get { return lineOk; } }
+
+        // Live offset from the captured line — shown while driving, because a pass
+        // that never counts looks identical to a test that never started.
+        public double LastLat { get { return s.Count > 0 ? s[s.Count - 1].lat : double.NaN; } }
+        public bool LastInCone { get { return s.Count > 0 && s[s.Count - 1].inCone; } }
+
+        // Snapshot the line actually being guided on. Falls back to the reference AB
+        // line when guidance has not built a current line yet.
+        public void CaptureLine(FormGPS mf)
+        {
+            lineOk = false;
+            if (mf.trk.idx < 0 || mf.trk.idx >= mf.trk.gArr.Count) return;
+            CTrk tk = mf.trk.gArr[mf.trk.idx];
+            if (tk.mode != TrackMode.AB) return;
+
+            lineHeading = tk.heading;
+            vec3 a = mf.ABLine.currentLinePtA, b = mf.ABLine.currentLinePtB;
+            bool haveCurrent = mf.ABLine.isABValid
+                && (Math.Abs(a.easting - b.easting) + Math.Abs(a.northing - b.northing)) > 1.0;
+            if (haveCurrent) { lineE = a.easting; lineN = a.northing; }
+            else { lineE = tk.ptA.easting; lineN = tk.ptA.northing; }
+            lineOk = true;
         }
 
         public void Stop() { running = false; }
@@ -206,7 +241,9 @@ namespace AgOpenGPS
             sb.AppendLine("# maxSteerAngle," + mf.vehicle.maxSteerAngle.ToString("0.#", ci));
             sb.AppendLine("# sampleRateHz," + (MeanDt() > 0 ? (1.0 / MeanDt()) : 0).ToString("0.#", ci));
             sb.AppendLine("# samples," + s.Count.ToString(ci));
-            sb.AppendLine("t,rollDeg,imuRad,f2fRad,fixRad,E,N,xte,yaw,speed,steer,station,lat,sameWay");
+            sb.AppendLine("# lineCaptured," + (lineOk ? "1" : "0")
+                        + ",headingDeg," + glm.toDegrees(lineHeading).ToString("0.##", ci));
+            sb.AppendLine("t,rollDeg,imuRad,f2fRad,fixRad,E,N,xte,yaw,speed,steer,station,lat,sameWay,inCone,steerOn");
             foreach (var x in s)
                 sb.AppendLine(
                     x.t.ToString("0.###", ci) + "," + x.rollDeg.ToString("0.###", ci) + "," +
@@ -215,7 +252,8 @@ namespace AgOpenGPS
                     x.N.ToString("0.###", ci) + "," + x.xte.ToString("0.####", ci) + "," +
                     x.yaw.ToString("0.###", ci) + "," + x.speed.ToString("0.##", ci) + "," +
                     x.steer.ToString("0.##", ci) + "," + x.station.ToString("0.###", ci) + "," +
-                    x.lat.ToString("0.####", ci) + "," + (x.sameWay ? "1" : "0"));
+                    x.lat.ToString("0.####", ci) + "," + (x.sameWay ? "1" : "0") + "," +
+                    (x.inCone ? "1" : "0") + "," + (x.steerOn ? "1" : "0"));
             return sb.ToString();
         }
 
@@ -249,23 +287,23 @@ namespace AgOpenGPS
             // difference this test is built on.
             double station = double.NaN, lat = double.NaN;
             bool sameWay = true, inCone = false;
-            if (mf.trk.idx >= 0 && mf.trk.idx < mf.trk.gArr.Count)
+            if (lineOk)
             {
-                CTrk tk = mf.trk.gArr[mf.trk.idx];
-                if (tk.mode == TrackMode.AB)
-                {
-                    double h = tk.heading;
-                    double dE = E - tk.ptA.easting, dN = N - tk.ptA.northing;
-                    station = (dE * Math.Sin(h)) + (dN * Math.Cos(h));
-                    lat = (dE * Math.Cos(h)) - (dN * Math.Sin(h));
+                double h = lineHeading;
+                double dE = E - lineE, dN = N - lineN;
+                station = (dE * Math.Sin(h)) + (dN * Math.Cos(h));
+                lat = (dE * Math.Cos(h)) - (dN * Math.Sin(h));
+                // the captured line origin sits far back along the heading, so keep
+                // station relative to where the test actually began
+                if (double.IsNaN(station0)) station0 = station;
+                station -= station0;
 
-                    // A cone around the line, not just "which half": while turning
-                    // around, the heading sweeps through everything in between and
-                    // those samples belong to neither pass.
-                    double dh = glm.toDegrees(Math.Abs(WrapPi(mf.fixHeading - h)));
-                    if (dh <= passConeDeg) { sameWay = true; inCone = true; }
-                    else if (dh >= 180.0 - passConeDeg) { sameWay = false; inCone = true; }
-                }
+                // A cone around the line, not just "which half": while turning
+                // around, the heading sweeps through everything in between and
+                // those samples belong to neither pass.
+                double dh = glm.toDegrees(Math.Abs(WrapPi(mf.fixHeading - h)));
+                if (dh <= passConeDeg) { sameWay = true; inCone = true; }
+                else if (dh >= 180.0 - passConeDeg) { sameWay = false; inCone = true; }
             }
 
             var smp = new ITSample
