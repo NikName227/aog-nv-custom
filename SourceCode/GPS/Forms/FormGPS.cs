@@ -374,6 +374,22 @@ namespace AgOpenGPS
             CFeatureLock.Load();
             mapAppToolStripMenu.Visible = CFeatureLock.IsOn(CFeatureLock.FeatureGeoportal);
             btnOrchard.Visible = CFeatureLock.IsOn(CFeatureLock.FeatureOrchard);
+            //F07 Integration Test — add the Wizards item only when the config unlocks it
+            if (CFeatureLock.IsOn(CFeatureLock.FeatureIntegrationTest))
+            {
+                var itMenu = new System.Windows.Forms.ToolStripMenuItem("Integration Test")
+                {
+                    Image = Properties.Resources.Chart,
+                    ImageAlign = System.Drawing.ContentAlignment.MiddleLeft
+                };
+                itMenu.Click += (s, e) =>
+                {
+                    Form f = Application.OpenForms["FormIntegrationTest"];
+                    if (f != null) { f.Focus(); return; }
+                    new FormIntegrationTest(this).Show(this);
+                };
+                wizardsMenu.DropDownItems.Add(itMenu);
+            }
             //the orchard unlock needs the Turn window too (orchard plan = PATH tab)
             if (!CFeatureLock.IsOn(CFeatureLock.FeatureTurnApp)
                 && !CFeatureLock.IsOn(CFeatureLock.FeatureOrchard))
