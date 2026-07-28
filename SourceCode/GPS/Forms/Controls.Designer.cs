@@ -250,23 +250,35 @@ namespace AgOpenGPS
                 if (plan.IsRuntimeOn && !string.IsNullOrEmpty(plan.trackName)
                     && (trk.idx < 0 || trk.gArr[trk.idx].name != plan.trackName))
                 {
+                    //field 2026-07-28: the plan's track can be gone (deleted/renamed) -
+                    //engaging would leave the plan matching nothing and every turn
+                    //silently aborting, so say why and stay off instead
+                    int planTrackIdx = -1;
                     for (int i = 0; i < trk.gArr.Count; i++)
                     {
-                        if (trk.gArr[i].name != plan.trackName) continue;
-
-                        if (isBtnAutoSteerOn)
-                        {
-                            btnAutoSteer.PerformClick();
-                            TimedMessageBox(2000, gStr.gsGuidanceStopped, "Track Changed");
-                        }
-                        trk.idx = i;
-                        ABLine.isABValid = false;
-                        curve.isCurveValid = false;
-                        guideLineCounter = 20;
-                        lblGuidanceLine.Visible = true;
-                        lblGuidanceLine.Text = trk.gArr[i].name;
-                        break;
+                        if (trk.gArr[i].name == plan.trackName) { planTrackIdx = i; break; }
                     }
+
+                    if (planTrackIdx < 0)
+                    {
+                        TimedMessageBox(3000, "Turn Plan",
+                            "Plan track '" + plan.trackName + "' not found - auto turn stays off");
+                        Log.EventWriter("TurnPlan: plan track '" + plan.trackName
+                            + "' missing, auto turn not engaged");
+                        return;
+                    }
+
+                    if (isBtnAutoSteerOn)
+                    {
+                        btnAutoSteer.PerformClick();
+                        TimedMessageBox(2000, gStr.gsGuidanceStopped, "Track Changed");
+                    }
+                    trk.idx = planTrackIdx;
+                    ABLine.isABValid = false;
+                    curve.isCurveValid = false;
+                    guideLineCounter = 20;
+                    lblGuidanceLine.Visible = true;
+                    lblGuidanceLine.Text = trk.gArr[planTrackIdx].name;
                 }
 
                 if (trk.idx == -1) return;
