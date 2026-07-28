@@ -168,8 +168,8 @@ namespace AgOpenGPS
                     ln.effSegSign.Add(cross >= 0 ? 1.0 : -1.0);
                 }
 
-                // far-extrapolated effective line (math + corridor)
-                ln.effExtPts = ExtendPolyline(ln.effPts, 300.0);
+                // extrapolated effective line (math + corridor)
+                ln.effExtPts = ExtendPolyline(ln.effPts, effExtension);
                 ln.effExtSegSign.Clear();
                 for (int i = 0; i < ln.effExtPts.Count - 1; i++)
                 {
@@ -180,6 +180,13 @@ namespace AgOpenGPS
                 }
             }
         }
+
+        // how far (m) past its drawn ends an effective line keeps acting - for the
+        // ray pick, the turn-corridor checks and the rigid builder geometry. Field
+        // 2026-07-28: was 300 m, which let a line reach clear across the field so
+        // the forward ray could pick a line at the WRONG end; 50 m still covers
+        // passes that overhang a line's end (45 m in the test field) but no more.
+        public const double effExtension = 50.0;
 
         /// <summary>
         /// Extend a polyline by dist along its first/last segment directions.
@@ -205,6 +212,17 @@ namespace AgOpenGPS
         /// </summary>
         public List<vec2> GetEffPolylineByRay(vec2 origin, double heading)
         {
+            return GetEffPolylineByRay(origin, heading, out _, out _);
+        }
+
+        /// <summary>
+        /// Same pick, plus WHICH line was hit and how far along the ray (diagnostics
+        /// for the wrong-end turn reports). lineIndex -1 / distance -1 = no hit.
+        /// </summary>
+        public List<vec2> GetEffPolylineByRay(vec2 origin, double heading,
+            out int lineIndex, out double distance)
+        {
+            lineIndex = -1; distance = -1;
             if (lines.Count == 0) return null;
             EnsureBuilt();
             double dirX = Math.Sin(heading), dirY = Math.Cos(heading);
@@ -222,7 +240,10 @@ namespace AgOpenGPS
                     }
                 }
             }
-            return bestLine < 0 ? null : lines[bestLine].effExtPts;
+            if (bestLine < 0) return null;
+            lineIndex = bestLine;
+            distance = best;
+            return lines[bestLine].effExtPts;
         }
 
         /// <summary>

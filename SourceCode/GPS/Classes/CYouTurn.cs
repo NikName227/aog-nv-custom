@@ -1949,14 +1949,37 @@ namespace AgOpenGPS
             return new vec3(frOx + frLx * x + frTx * y, frOy + frLy * x + frTy * y, 0);
         }
 
+        // last effective-line pick, logged with every build result (field 2026-07-28
+        // diag: says WHICH line the forward ray chose for the wrong-end reports)
+        public string lastRayDiag = "";
+
+        // meters the ray origin is backed up when the first cast misses - the row
+        // point can already sit past the margin-inset effective line, which used to
+        // silently fall through to the boundary ring
+        private const double rayBackup = 15.0;
+
         // effective limit polyline in LOCAL coords: the extrapolated drawn line hit by the
         // travel ray, or the boundary turn line (closed ring) when no line is hit there
         private bool TryGetLocalEff(double head, out List<vec2> eff)
         {
             eff = null;
-            List<vec2> world = mf.tnl.GetEffPolylineByRay(new vec2(frOx, frOy), head);
+            List<vec2> world = mf.tnl.GetEffPolylineByRay(new vec2(frOx, frOy), head,
+                out int rayLine, out double rayDist);
             if (world == null)
             {
+                vec2 backed = new vec2(frOx - Math.Sin(head) * rayBackup,
+                                       frOy - Math.Cos(head) * rayBackup);
+                world = mf.tnl.GetEffPolylineByRay(backed, head, out rayLine, out rayDist);
+                if (world != null) rayDist -= rayBackup;
+            }
+
+            if (world != null)
+            {
+                lastRayDiag = "eff line " + rayLine + " at " + rayDist.ToString("F1") + " m";
+            }
+            else
+            {
+                lastRayDiag = "no eff line hit, boundary ring fallback";
                 if (mf.bnd.bndList.Count == 0 || mf.bnd.bndList[0].turnLine.Count < 3) return false;
                 var tl = mf.bnd.bndList[0].turnLine;
                 world = new List<vec2>(tl.Count + 1);
@@ -2056,12 +2079,31 @@ namespace AgOpenGPS
             return outp;
         }
 
+        //field 2026-07-28 diag: throttle for the wrong-end rejection log below
+        private DateTime lastWrongEndLog = DateTime.MinValue;
+
         private bool FinishRigidPath(List<vec2> p1, int redStart, List<vec2> p2, int p2Red)
         {
             if (p1.Count < 6) { FailCreate(); return false; }
 
             var w1 = LocalToWorldPath(p1);
             if (glm.Distance(w1[0], mf.pivotAxlePos) < 3) { FailCreate(); return false; }
+
+            //field 2026-07-28: a start behind the vehicle = wrong-end build; committed,
+            //it would park at phase 10 waiting for a trigger that never comes. No
+            //FailCreate latch - the next fix retries with fresher geometry.
+            double startFwd = (w1[0].easting - mf.pivotAxlePos.easting) * frTx
+                            + (w1[0].northing - mf.pivotAxlePos.northing) * frTy;
+            if (startFwd < -2.0)
+            {
+                if ((DateTime.UtcNow - lastWrongEndLog).TotalSeconds > 15)
+                {
+                    lastWrongEndLog = DateTime.UtcNow;
+                    Log.EventWriter("Rigid turn rejected: start " + (-startFwd).ToString("F1")
+                        + " m behind vehicle, " + lastRayDiag);
+                }
+                return false;
+            }
 
             ytList.Clear();
             ytList.AddRange(w1);
@@ -2084,6 +2126,12 @@ namespace AgOpenGPS
             youTurnPhase = 10;
             turnTooCloseTrigger = false;
             isTurnCreationTooClose = false;
+
+            //field 2026-07-28 diag: one line per created turn - enough to see at which
+            //end and off which limit line every maneuver was anchored
+            Log.EventWriter("Rigid turn built: start " + mf.distancePivotToTurnLine.ToString("F1")
+                + " m ahead, " + (isTurnLeft ? "left" : "right") + " skip " + rowSkipsWidth
+                + ", " + lastRayDiag);
             return true;
         }
 

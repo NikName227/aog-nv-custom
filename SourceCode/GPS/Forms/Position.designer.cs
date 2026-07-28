@@ -1069,11 +1069,11 @@ namespace AgOpenGPS
                             if (yt.isTurnCreationTooClose && !yt.turnTooCloseTrigger)
                             {
                                 yt.turnTooCloseTrigger = true;
-                                if (sounds.isTurnSoundOn)
-                                {
-                                    sounds.sndUTurnTooClose.Play();
-                                    Log.EventWriter("U Turn Creation Failure");
-                                }
+                                if (sounds.isTurnSoundOn) sounds.sndUTurnTooClose.Play();
+                                //field 2026-07-28: log regardless of the sound setting,
+                                //with the effective-line pick behind the failed build
+                                Log.EventWriter("U Turn Creation Failure"
+                                    + (yt.lastRayDiag.Length > 0 ? ", " + yt.lastRayDiag : ""));
                             }
                         }
                         else if (yt.ytList.Count > 5)//wait to trigger the actual turn since its made and waiting
