@@ -220,8 +220,6 @@ namespace AgOpenGPS
             if (mf.plan.zoneCount >= (int)nudZones.Minimum && mf.plan.zoneCount <= (int)nudZones.Maximum)
                 nudZones.Value = mf.plan.zoneCount;
             //saved processing order, if the field has one; blank falls back to the default
-            txtZoneOrder.Text = mf.plan.zoneOrder ?? "";
-            if (txtZoneOrder.Text.Length == 0) ResetZoneOrderText();
 
             // mode buttons carry the confirmed pictograms (drawn at runtime)
             btnMode1.Image = TurnModeIcons.Make(1, 88, 82);
@@ -652,6 +650,13 @@ namespace AgOpenGPS
             if (e.Button != MouseButtons.Left) return;
             if (measureOn) return;   // measure uses drag (MouseDown/Move), not taps
 
+            //PATH tab: the zone badges are the way the processing order is edited
+            if (activeTab == ViewTab.Path && HitTestZoneBadge(e.X, e.Y, out int zoneIdx))
+            {
+                EditZoneOrder(zoneIdx);
+                return;
+            }
+
             if (btnBorderLine.Checked)
             {
                 BorderModeTap(gMapControl.FromLocalToLatLng(e.X, e.Y));
@@ -1050,6 +1055,7 @@ namespace AgOpenGPS
             SaveTurnParams();
 
             mf.plan.isFollowPlan = activateState == 2;   // 3rd state = follow plan
+            UpdateZoneOrderLabel();
             mf.FileSaveTurnPlan();
 
             mf.FileSaveTurnLines();
@@ -1494,68 +1500,96 @@ namespace AgOpenGPS
             btnGeneratePlan.Visible = true;
         }
 
-        // ── zone processing order (field feedback 2026-07-27) ────────────────
-        // The box lays the zones out the way they sit in the field, leftmost first, with
-        // "||" marking the reference line: "3 | 2 | 1 || 4 | 5". The NUMBERS are the
-        // processing order, the separators are decoration - parsing keeps digit runs only,
-        // so "3 2 1 4 5" is the same thing. Which zone is left or right comes from the
-        // geometry, never from this text.
-        private string zoneOrderError = "";
-
+        // ── zone processing order (field feedback 2026-07-27 / 28) ──────────
+        // The order is edited by TAPPING the zone badge on the map (see ZoneNumMarker):
+        // type a number and the zone that held it takes this zone's old one. A plain swap,
+        // so every number the driver has already settled - anything below the one being
+        // typed - is left alone. This label only reports the resulting layout, leftmost
+        // zone first; which zone is left or right of the line comes from the geometry.
         private void SetZoneOrderVisible(bool vis)
         {
-            txtZoneOrder.Visible = vis;
             lblZoneOrderRead.Visible = vis;
-            if (vis && txtZoneOrder.Text.Length == 0) ResetZoneOrderText();
+            if (vis) UpdateZoneOrderLabel();
         }
 
-        private void ResetZoneOrderText()
+        /// <summary>
+        /// Processing order per spatial zone, read back off the BUILT plan: a zone's number
+        /// is the rank of its first pass. Going through the plan rather than through
+        /// TryZoneLayout matters - the layout preview counts passes from the raw offset
+        /// range, while the plan only holds the ones that survived the boundary clip, so
+        /// the two can disagree on how many zones there are. Falls back to the preview only
+        /// when no plan exists yet (label before the first Generate).
+        /// </summary>
+        private int[] CurrentZoneOrder(out int zoneCount)
         {
-            string def = mf.plan.DefaultZoneOrderText((int)nudZones.Value);
-            txtZoneOrder.Text = def;      // TextChanged refreshes the read-back
-            if (def.Length == 0) ValidateZoneOrder();
-        }
-
-        private void txtZoneOrder_TextChanged(object sender, EventArgs e)
-        {
-            ValidateZoneOrder();
-        }
-
-        //touchscreen: same on-screen keyboard the rest of AOG uses
-        private void txtZoneOrder_Click(object sender, EventArgs e)
-        {
-            txtZoneOrder.ShowKeyboard(this);
-        }
-
-        private bool IsZoneOrderValid()
-        {
-            ValidateZoneOrder();
-            return zoneOrderError.Length == 0;
-        }
-
-        /// <summary>Echo what was parsed under the box so a typo is obvious immediately.</summary>
-        private void ValidateZoneOrder()
-        {
-            zoneOrderError = "";
-            if (!mf.plan.TryZoneLayout((int)nudZones.Value, out List<int> zonePasses, out int leftZones))
+            var firstOrder = new Dictionary<int, int>();
+            foreach (var p in mf.plan.entries)
             {
-                lblZoneOrderRead.Text = "";
-                return;
+                if (p.IsManual || p.zone < 1) continue;
+                if (!firstOrder.TryGetValue(p.zone, out int o) || p.order < o)
+                    firstOrder[p.zone] = p.order;
             }
 
-            if (CTurnPlan.TryParseZoneOrder(txtZoneOrder.Text, zonePasses.Count,
-                    out int[] order, out string error))
+            if (firstOrder.Count > 0)
             {
-                lblZoneOrderRead.ForeColor = Color.DimGray;
-                lblZoneOrderRead.Text = gStr.gsZoneOrderRead + " "
-                    + CTurnPlan.FormatZoneOrder(order, leftZones);
+                zoneCount = firstOrder.Count;
+                var zones = new List<int>(firstOrder.Keys);
+                zones.Sort((a, b) => firstOrder[a].CompareTo(firstOrder[b]));
+                var built = new int[zoneCount];
+                for (int rank = 0; rank < zones.Count; rank++)
+                {
+                    int idx = zones[rank] - 1;
+                    if (idx < 0 || idx >= zoneCount) { zoneCount = 0; return null; }
+                    built[idx] = rank + 1;
+                }
+                return built;
             }
-            else
+
+            zoneCount = 0;
+            if (!mf.plan.TryZoneLayout((int)nudZones.Value, out List<int> zonePasses, out _))
+                return null;
+            zoneCount = zonePasses.Count;
+            return CTurnPlan.DefaultZoneOrder(zoneCount, 0);
+        }
+
+        private void UpdateZoneOrderLabel()
+        {
+            int[] order = CurrentZoneOrder(out int n);
+            lblZoneOrderRead.Text = order == null
+                ? ""
+                : gStr.gsZoneOrderRead + " " + CTurnPlan.FormatZoneOrder(order);
+        }
+
+        /// <summary>
+        /// Tap on a zone badge: ask for the new processing number and SWAP it with whichever
+        /// zone currently holds it. Out-of-range input changes nothing. Swapping (rather than
+        /// shifting the rest along) is what keeps the already-confirmed lower numbers put,
+        /// which is how the driver works through the zones - 1, then 2, then 3.
+        /// </summary>
+        private void EditZoneOrder(int zoneIdx)
+        {
+            int[] order = CurrentZoneOrder(out int n);
+            if (order == null || zoneIdx < 0 || zoneIdx >= n) return;
+
+            int current = order[zoneIdx];
+            using (var f = new FormNumeric(1, n, current))
             {
-                zoneOrderError = error;
-                lblZoneOrderRead.ForeColor = Color.Firebrick;
-                lblZoneOrderRead.Text = error;
+                if (f.ShowDialog(this) != DialogResult.OK) return;
+
+                int wanted = (int)Math.Round(f.ReturnValue);
+                if (wanted < 1 || wanted > n || wanted == current) return;
+
+                int other = Array.IndexOf(order, wanted);
+                if (other < 0) return;
+                order[other] = current;
+                order[zoneIdx] = wanted;
             }
+
+            mf.plan.zoneOrder = CTurnPlan.FormatZoneOrder(order);
+            UpdateZoneOrderLabel();
+            //rebuild so the map follows the new order right away - the missing piece in the
+            //first cut, where only the label moved (f05fb-14)
+            GenerateFromWizard();
         }
 
         // the -/+ stepper buttons MakeKeypadField adds beside nudZones
@@ -1619,9 +1653,6 @@ namespace AgOpenGPS
                          : btnMode2.Checked ? CTurnPlan.ModeContour
                          : CTurnPlan.ModeZones;
             mf.plan.zoneCount = (int)nudZones.Value;
-            //a half-typed order must not quietly build a plan the driver did not ask for
-            if (!IsZoneOrderValid()) { lblPlanStatus.Text = zoneOrderError; return; }
-            mf.plan.zoneOrder = txtZoneOrder.Text;
             mf.plan.trackName = cboTrack.SelectedItem?.ToString() ?? "";
             mf.plan.clipToHeadland = chkHeadlandClip.Enabled && chkHeadlandClip.Checked;
 
@@ -1687,8 +1718,8 @@ namespace AgOpenGPS
 
         private void nudZones_ValueChanged(object sender, EventArgs e)
         {
-            //a hand-edited order cannot survive a different zone count - back to default
-            ResetZoneOrderText();
+            //a hand-picked order cannot survive a different zone count - back to default
+            mf.plan.zoneOrder = "";
             //step 2 is interactive: the zone split redraws on every change
             if (wizStep == 2) GenerateFromWizard();
             UpdatePlanInfo();
@@ -1975,6 +2006,7 @@ namespace AgOpenGPS
                 });
             }
 
+            DrawZoneBadges();
             gMapControl.Invalidate();
         }
 
@@ -2017,6 +2049,108 @@ namespace AgOpenGPS
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Zone badge (field feedback 2026-07-28): a thick rounded box in the zone colour
+        /// carrying the zone's PROCESSING number. Sits at a quarter of the pass instead of
+        /// the middle, where the pass numbers already are, so the two never collide. Tap it
+        /// to reorder - see EditZoneOrder.
+        /// </summary>
+        private class ZoneNumMarker : GMapMarker
+        {
+            public readonly int zoneIdx;          // 0-based spatial zone
+            private readonly string text;
+            private readonly Color color;
+
+            public const int HalfW = 21, HalfH = 15;
+
+            public ZoneNumMarker(PointLatLng pos, int idx, string t, Color c) : base(pos)
+            {
+                zoneIdx = idx;
+                text = t;
+                color = c;
+            }
+
+            public override void OnRender(Graphics g)
+            {
+                var box = new Rectangle(LocalPosition.X - HalfW, LocalPosition.Y - HalfH,
+                    2 * HalfW, 2 * HalfH);
+                using (var back = new SolidBrush(Color.FromArgb(225, Color.White)))
+                    g.FillRectangle(back, box);
+                using (var pen = new Pen(color, 5f))
+                    g.DrawRectangle(pen, box);
+                using (var f = new Font("Tahoma", 12f, FontStyle.Bold))
+                {
+                    SizeF sz = g.MeasureString(text, f);
+                    g.DrawString(text, f, Brushes.Black,
+                        LocalPosition.X - sz.Width / 2f, LocalPosition.Y - sz.Height / 2f);
+                }
+            }
+        }
+
+        /// <summary>
+        /// One badge per zone, on the zone's middle pass at ~25 % of its length.
+        /// </summary>
+        private void DrawZoneBadges()
+        {
+            var byZone = new Dictionary<int, List<CPlanEntry>>();
+            foreach (var p in mf.plan.entries)
+            {
+                if (p.IsManual || p.zone < 1 || p.segments.Count == 0) continue;
+                if (!byZone.TryGetValue(p.zone, out List<CPlanEntry> lst))
+                    byZone[p.zone] = lst = new List<CPlanEntry>();
+                lst.Add(p);
+            }
+
+            foreach (var kv in byZone)
+            {
+                var lst = kv.Value;
+                lst.Sort((a, b) => a.offsetIdx.CompareTo(b.offsetIdx));
+                CPlanEntry mid = lst[lst.Count / 2];
+
+                // longest segment of that pass, then a quarter of the way along it
+                List<vec3> main = mid.segments[0];
+                double bestLen = -1;
+                foreach (var seg in mid.segments)
+                {
+                    double len = 0;
+                    for (int i = 1; i < seg.Count; i++) len += glm.Distance(seg[i - 1], seg[i]);
+                    if (len > bestLen) { bestLen = len; main = seg; }
+                }
+                if (main.Count < 2) continue;
+
+                int at = Math.Max(0, Math.Min(main.Count - 1, main.Count / 4));
+                planOverlay.Markers.Add(new ZoneNumMarker(
+                    LocalToLatLng(main[at].easting, main[at].northing),
+                    kv.Key - 1,
+                    ZoneProcessingNumber(kv.Key - 1).ToString(),
+                    zoneColors[(kv.Key - 1) % zoneColors.Length]));
+            }
+        }
+
+        /// <summary>Processing number currently assigned to a spatial zone (1-based).</summary>
+        private int ZoneProcessingNumber(int zoneIdx)
+        {
+            int[] order = CurrentZoneOrder(out int n);
+            return order != null && zoneIdx >= 0 && zoneIdx < n ? order[zoneIdx] : zoneIdx + 1;
+        }
+
+        private bool HitTestZoneBadge(int x, int y, out int zoneIdx)
+        {
+            zoneIdx = -1;
+            foreach (var m in planOverlay.Markers)
+            {
+                if (!(m is ZoneNumMarker z)) continue;
+                GPoint sp = gMapControl.FromLatLngToLocal(z.Position);
+                if (Math.Abs(sp.X - x) <= ZoneNumMarker.HalfW
+                    && Math.Abs(sp.Y - y) <= ZoneNumMarker.HalfH)
+                {
+                    zoneIdx = z.zoneIdx;
+                    return true;
+                }
+            }
+            return false;
         }
 
         private void ShowStyle(System.Windows.Forms.Panel p)

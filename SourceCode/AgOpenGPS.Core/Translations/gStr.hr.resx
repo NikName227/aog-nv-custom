@@ -1515,7 +1515,7 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
     <value>Turn linije su promijenjene. Spremiti?</value>
   </data>
   <data name="gsZoneOrderRead" xml:space="preserve">
-    <value>Procitano:</value>
+    <value>Zone:</value>
   </data>
   <data name="gsTriggerTolerance" xml:space="preserve">
     <value>Tolerancija okidanja (m)</value>

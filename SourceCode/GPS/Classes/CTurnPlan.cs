@@ -182,7 +182,7 @@ namespace AgOpenGPS
         /// goes first. Inside a side the zone touching the reference line is worked first.
         /// Without a side split it is simply left to right, as before.
         /// </summary>
-        private static int[] DefaultZoneOrder(int count, int leftZones)
+        public static int[] DefaultZoneOrder(int count, int leftZones)
         {
             var order = new int[count];
             if (leftZones <= 0 || leftZones >= count)
@@ -207,16 +207,17 @@ namespace AgOpenGPS
         }
 
         /// <summary>
-        /// Human readable order, spatially laid out: "3 | 2 | 1 || 4 | 5". The "||" marks
-        /// the reference line and is decoration only - parsing ignores it.
+        /// Human readable order, laid out the way the zones sit in the field, leftmost
+        /// first: "3 | 2 | 1 | 4 | 5". Where the reference line falls is shown by the zone
+        /// badges on the map, so it is not marked here.
         /// </summary>
-        public static string FormatZoneOrder(int[] order, int leftZones)
+        public static string FormatZoneOrder(int[] order)
         {
             if (order == null || order.Length == 0) return "";
             var sb = new System.Text.StringBuilder();
             for (int i = 0; i < order.Length; i++)
             {
-                if (i > 0) sb.Append(i == leftZones && leftZones > 0 ? " || " : " | ");
+                if (i > 0) sb.Append(" | ");
                 sb.Append(order[i]);
             }
             return sb.ToString();
@@ -295,7 +296,7 @@ namespace AgOpenGPS
         public string DefaultZoneOrderText(int zones)
         {
             if (!TryZoneLayout(zones, out List<int> zonePasses, out int leftZones)) return "";
-            return FormatZoneOrder(DefaultZoneOrder(zonePasses.Count, leftZones), leftZones);
+            return FormatZoneOrder(DefaultZoneOrder(zonePasses.Count, leftZones));
         }
 
         // ── info for the PATH tab: zone width + passes per zone ──────────────
@@ -373,7 +374,7 @@ namespace AgOpenGPS
             int[] zoneOrderById = DefaultZoneOrder(zoneLists.Count, leftZones);
             if (TryParseZoneOrder(zoneOrder, zoneLists.Count, out int[] wanted, out _))
                 zoneOrderById = wanted;
-            zoneOrder = FormatZoneOrder(zoneOrderById, leftZones);
+            zoneOrder = FormatZoneOrder(zoneOrderById);
 
             // order the passes: zone after zone in the requested sequence, inside a zone by mode
             int order = 0;

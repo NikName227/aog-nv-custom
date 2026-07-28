@@ -1882,7 +1882,7 @@ USE AT OWN RISK.</value>
     <value>The turn lines have changed. Save them?</value>
   </data>
   <data name="gsZoneOrderRead" xml:space="preserve">
-    <value>Read:</value>
+    <value>Zone:</value>
   </data>
   <data name="gsTriggerTolerance" xml:space="preserve">
     <value>Trigger tolerance (m)</value>
