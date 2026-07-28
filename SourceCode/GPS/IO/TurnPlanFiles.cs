@@ -1,4 +1,4 @@
-// TurnPlanFiles.cs - per-field pass plan.
+﻿// TurnPlanFiles.cs - per-field pass plan.
 // One file per implement working width (TurnPlan_W<width>.txt) so switching the
 // implement keeps the old plan on disk and it comes back with the same implement.
 // Header flags + one line per pass entry (offsetIdx,order,zone,sameWay,worked[,track]).
@@ -14,6 +14,7 @@ namespace AgOpenGPS.IO
         public bool followPlan;
         public int mode = CTurnPlan.ModeZones;
         public int zoneCount = 2;
+        public string zoneOrder = "";
         public string trackName = "";
         public bool clipHeadland = true;
         public List<CPlanEntry> entries = new List<CPlanEntry>();
@@ -50,6 +51,13 @@ namespace AgOpenGPS.IO
                     if (line.StartsWith("Track,", StringComparison.Ordinal))
                     {
                         data.trackName = line.Substring(6).Trim();
+                        continue;
+                    }
+
+                    // zone order is free text ("3 | 2 | 1 || 4 | 5") - same treatment
+                    if (line.StartsWith("ZoneOrder,", StringComparison.Ordinal))
+                    {
+                        data.zoneOrder = line.Substring(10).Trim();
                         continue;
                     }
 
@@ -132,6 +140,8 @@ namespace AgOpenGPS.IO
                 writer.WriteLine("ClipHeadland," + plan.clipToHeadland);
                 writer.WriteLine("Mode," + plan.mode.ToString(CultureInfo.InvariantCulture));
                 writer.WriteLine("ZoneCount," + plan.zoneCount.ToString(CultureInfo.InvariantCulture));
+                if (!string.IsNullOrEmpty(plan.zoneOrder))
+                    writer.WriteLine("ZoneOrder," + plan.zoneOrder);
                 if (!string.IsNullOrEmpty(plan.trackName))
                     writer.WriteLine("Track," + plan.trackName);
 

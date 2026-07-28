@@ -1,4 +1,4 @@
-namespace AgOpenGPS
+﻿namespace AgOpenGPS
 {
     partial class FormTurnLine
     {
@@ -34,7 +34,9 @@ namespace AgOpenGPS
             this.btnWinFull = new System.Windows.Forms.Button();
             this.btnWinClose = new System.Windows.Forms.Button();
             this.pnlMapTools = new System.Windows.Forms.Panel();
+            this.btnSaveLines = new System.Windows.Forms.Button();
             this.btnAddLine = new System.Windows.Forms.Button();
+            this.btnBorderLine = new System.Windows.Forms.CheckBox();
             this.btnAddPoint = new System.Windows.Forms.CheckBox();
             this.btnDeletePoint = new System.Windows.Forms.CheckBox();
             this.btnDeleteLine = new System.Windows.Forms.CheckBox();
@@ -50,6 +52,7 @@ namespace AgOpenGPS
             this.btnMode2 = new System.Windows.Forms.CheckBox();
             this.btnMode3 = new System.Windows.Forms.CheckBox();
             this.lblZones = new System.Windows.Forms.Label();
+            this.lblZoneOrderRead = new System.Windows.Forms.Label();
             this.nudZones = new System.Windows.Forms.NumericUpDown();
             this.chkHeadlandClip = new System.Windows.Forms.CheckBox();
             this.lblPlanInfo = new System.Windows.Forms.Label();
@@ -85,6 +88,8 @@ namespace AgOpenGPS
             this.nudMinRS = new System.Windows.Forms.NumericUpDown();
             this.lblTolerance = new System.Windows.Forms.Label();
             this.nudTolerance = new System.Windows.Forms.NumericUpDown();
+            this.lblToleranceAfter = new System.Windows.Forms.Label();
+            this.nudToleranceAfter = new System.Windows.Forms.NumericUpDown();
             this.lblOvershootU = new System.Windows.Forms.Label();
             this.nudOvershootU = new System.Windows.Forms.NumericUpDown();
             this.SuspendLayout();
@@ -294,7 +299,9 @@ namespace AgOpenGPS
             this.pnlMapTools.Size = new System.Drawing.Size(192, 556);
             this.pnlMapTools.TabIndex = 14;
             this.pnlMapTools.Visible = false;
+            this.pnlMapTools.Controls.Add(this.btnSaveLines);
             this.pnlMapTools.Controls.Add(this.btnAddLine);
+            this.pnlMapTools.Controls.Add(this.btnBorderLine);
             this.pnlMapTools.Controls.Add(this.btnAddPoint);
             this.pnlMapTools.Controls.Add(this.btnDeletePoint);
             this.pnlMapTools.Controls.Add(this.btnDeleteLine);
@@ -303,10 +310,21 @@ namespace AgOpenGPS
             this.pnlMapTools.Controls.Add(this.lblMeasure);
             this.pnlMapTools.Controls.Add(this.btnMeasure);
             //
+            this.btnSaveLines.BackColor = System.Drawing.Color.Honeydew;
+            this.btnSaveLines.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnSaveLines.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.btnSaveLines.Location = new System.Drawing.Point(10, 10);
+            this.btnSaveLines.Name = "btnSaveLines";
+            this.btnSaveLines.Size = new System.Drawing.Size(170, 46);
+            this.btnSaveLines.TabIndex = 0;
+            this.btnSaveLines.Text = "Save";
+            this.btnSaveLines.UseVisualStyleBackColor = false;
+            this.btnSaveLines.Click += new System.EventHandler(this.btnSaveLines_Click);
+            //
             this.btnAddLine.BackColor = System.Drawing.Color.PapayaWhip;
             this.btnAddLine.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnAddLine.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
-            this.btnAddLine.Location = new System.Drawing.Point(10, 10);
+            this.btnAddLine.Location = new System.Drawing.Point(10, 62);
             this.btnAddLine.Name = "btnAddLine";
             this.btnAddLine.Size = new System.Drawing.Size(170, 46);
             this.btnAddLine.TabIndex = 0;
@@ -314,12 +332,26 @@ namespace AgOpenGPS
             this.btnAddLine.UseVisualStyleBackColor = false;
             this.btnAddLine.Click += new System.EventHandler(this.btnAddLine_Click);
             //
+            this.btnBorderLine.Appearance = System.Windows.Forms.Appearance.Button;
+            this.btnBorderLine.BackColor = System.Drawing.Color.PapayaWhip;
+            this.btnBorderLine.FlatAppearance.CheckedBackColor = System.Drawing.Color.Gold;
+            this.btnBorderLine.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnBorderLine.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Bold);
+            this.btnBorderLine.Location = new System.Drawing.Point(10, 114);
+            this.btnBorderLine.Name = "btnBorderLine";
+            this.btnBorderLine.Size = new System.Drawing.Size(170, 46);
+            this.btnBorderLine.TabIndex = 2;
+            this.btnBorderLine.Text = "Add line on border";
+            this.btnBorderLine.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.btnBorderLine.UseVisualStyleBackColor = false;
+            this.btnBorderLine.CheckedChanged += new System.EventHandler(this.btnBorderLine_CheckedChanged);
+            //
             this.btnAddPoint.Appearance = System.Windows.Forms.Appearance.Button;
             this.btnAddPoint.BackColor = System.Drawing.Color.AliceBlue;
             this.btnAddPoint.FlatAppearance.CheckedBackColor = System.Drawing.Color.Gold;
             this.btnAddPoint.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnAddPoint.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Bold);
-            this.btnAddPoint.Location = new System.Drawing.Point(10, 82);
+            this.btnAddPoint.Location = new System.Drawing.Point(10, 176);
             this.btnAddPoint.Name = "btnAddPoint";
             this.btnAddPoint.Size = new System.Drawing.Size(170, 46);
             this.btnAddPoint.TabIndex = 1;
@@ -333,7 +365,7 @@ namespace AgOpenGPS
             this.btnDeletePoint.FlatAppearance.CheckedBackColor = System.Drawing.Color.IndianRed;
             this.btnDeletePoint.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnDeletePoint.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Bold);
-            this.btnDeletePoint.Location = new System.Drawing.Point(10, 134);
+            this.btnDeletePoint.Location = new System.Drawing.Point(10, 228);
             this.btnDeletePoint.Name = "btnDeletePoint";
             this.btnDeletePoint.Size = new System.Drawing.Size(170, 46);
             this.btnDeletePoint.TabIndex = 2;
@@ -347,7 +379,7 @@ namespace AgOpenGPS
             this.btnDeleteLine.FlatAppearance.CheckedBackColor = System.Drawing.Color.IndianRed;
             this.btnDeleteLine.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnDeleteLine.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Bold);
-            this.btnDeleteLine.Location = new System.Drawing.Point(10, 186);
+            this.btnDeleteLine.Location = new System.Drawing.Point(10, 280);
             this.btnDeleteLine.Name = "btnDeleteLine";
             this.btnDeleteLine.Size = new System.Drawing.Size(170, 46);
             this.btnDeleteLine.TabIndex = 3;
@@ -363,7 +395,7 @@ namespace AgOpenGPS
             this.chkParcels.FlatAppearance.CheckedBackColor = System.Drawing.Color.MediumAquamarine;
             this.chkParcels.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.chkParcels.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Bold);
-            this.chkParcels.Location = new System.Drawing.Point(10, 258);
+            this.chkParcels.Location = new System.Drawing.Point(10, 342);
             this.chkParcels.Name = "chkParcels";
             this.chkParcels.Size = new System.Drawing.Size(170, 46);
             this.chkParcels.TabIndex = 4;
@@ -373,7 +405,7 @@ namespace AgOpenGPS
             this.chkParcels.CheckedChanged += new System.EventHandler(this.chkParcels_CheckedChanged);
             //
             this.btnGoToField.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Bold);
-            this.btnGoToField.Location = new System.Drawing.Point(10, 310);
+            this.btnGoToField.Location = new System.Drawing.Point(10, 394);
             this.btnGoToField.Name = "btnGoToField";
             this.btnGoToField.Size = new System.Drawing.Size(170, 46);
             this.btnGoToField.TabIndex = 5;
@@ -398,6 +430,8 @@ namespace AgOpenGPS
             this.pnlParams.Controls.Add(this.btnStyleRS);
             this.pnlParams.Controls.Add(this.lblTolerance);
             this.pnlParams.Controls.Add(this.nudTolerance);
+            this.pnlParams.Controls.Add(this.lblToleranceAfter);
+            this.pnlParams.Controls.Add(this.nudToleranceAfter);
             this.pnlParams.Controls.Add(this.pnlK);
             this.pnlParams.Controls.Add(this.pnlU);
             this.pnlParams.Controls.Add(this.pnlRS);
@@ -422,6 +456,7 @@ namespace AgOpenGPS
             this.pnlPath.Controls.Add(this.btnMode2);
             this.pnlPath.Controls.Add(this.lblZones);
             this.pnlPath.Controls.Add(this.nudZones);
+            this.pnlPath.Controls.Add(this.lblZoneOrderRead);
             this.pnlPath.Controls.Add(this.chkHeadlandClip);
             this.pnlPath.Controls.Add(this.lblPlanInfo);
             this.pnlPath.Controls.Add(this.btnGeneratePlan);
@@ -538,6 +573,18 @@ namespace AgOpenGPS
             this.nudZones.TabIndex = 9;
             this.nudZones.Value = new decimal(new int[] { 2, 0, 0, 0 });
             this.nudZones.ValueChanged += new System.EventHandler(this.nudZones_ValueChanged);
+            //
+            // zone processing order (field feedback 2026-07-28): the order is edited by
+            // tapping the zone badges on the map, this label only reports the layout
+            //
+            //
+            this.lblZoneOrderRead.Font = new System.Drawing.Font("Tahoma", 9.75F);
+            this.lblZoneOrderRead.ForeColor = System.Drawing.Color.DimGray;
+            this.lblZoneOrderRead.Location = new System.Drawing.Point(10, 266);
+            this.lblZoneOrderRead.Name = "lblZoneOrderRead";
+            this.lblZoneOrderRead.Size = new System.Drawing.Size(300, 26);
+            this.lblZoneOrderRead.TabIndex = 11;
+            this.lblZoneOrderRead.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
             //
             this.lblPlanInfo.Font = new System.Drawing.Font("Tahoma", 9.75F);
             this.lblPlanInfo.ForeColor = System.Drawing.Color.DimGray;
@@ -663,9 +710,9 @@ namespace AgOpenGPS
             this.btnStyleRS.UseVisualStyleBackColor = false;
             this.btnStyleRS.CheckedChanged += new System.EventHandler(this.btnStyleRS_CheckedChanged);
             //
-            this.pnlK.Location = new System.Drawing.Point(16, 72);
+            this.pnlK.Location = new System.Drawing.Point(16, 110);
             this.pnlK.Name = "pnlK";
-            this.pnlK.Size = new System.Drawing.Size(984, 470);
+            this.pnlK.Size = new System.Drawing.Size(984, 432);
             this.pnlK.TabIndex = 3;
             this.pnlK.Controls.Add(this.lblExitK);
             this.pnlK.Controls.Add(this.nudExitK);
@@ -677,9 +724,9 @@ namespace AgOpenGPS
             this.pnlK.Controls.Add(this.nudTransK);
             this.pnlK.Controls.Add(this.lblHintK);
             //
-            this.pnlU.Location = new System.Drawing.Point(16, 72);
+            this.pnlU.Location = new System.Drawing.Point(16, 110);
             this.pnlU.Name = "pnlU";
-            this.pnlU.Size = new System.Drawing.Size(984, 470);
+            this.pnlU.Size = new System.Drawing.Size(984, 432);
             this.pnlU.TabIndex = 4;
             this.pnlU.Visible = false;
             this.pnlU.Controls.Add(this.lblOutU);
@@ -690,9 +737,9 @@ namespace AgOpenGPS
             this.pnlU.Controls.Add(this.nudOvershootU);
             this.pnlU.Controls.Add(this.lblHintU);
             //
-            this.pnlRS.Location = new System.Drawing.Point(16, 72);
+            this.pnlRS.Location = new System.Drawing.Point(16, 110);
             this.pnlRS.Name = "pnlRS";
-            this.pnlRS.Size = new System.Drawing.Size(984, 470);
+            this.pnlRS.Size = new System.Drawing.Size(984, 432);
             this.pnlRS.TabIndex = 5;
             this.pnlRS.Visible = false;
             this.pnlRS.Controls.Add(this.lblMinRS);
@@ -834,24 +881,41 @@ namespace AgOpenGPS
             this.nudMinRS.Size = new System.Drawing.Size(130, 34);
             this.nudMinRS.TabIndex = 2;
             //
-            // trigger tolerance (common)
+            // trigger tolerance (common) - split before/after the turn start
             //
             this.lblTolerance.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
-            this.lblTolerance.Location = new System.Drawing.Point(512, 22);
+            this.lblTolerance.Location = new System.Drawing.Point(496, 64);
             this.lblTolerance.Name = "lblTolerance";
-            this.lblTolerance.Size = new System.Drawing.Size(190, 30);
+            this.lblTolerance.Size = new System.Drawing.Size(206, 30);
             this.lblTolerance.TabIndex = 6;
-            this.lblTolerance.Text = "Trigger tolerance (m)";
+            this.lblTolerance.Text = "Trigger tol. before (m)";
             this.lblTolerance.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             this.nudTolerance.DecimalPlaces = 1;
             this.nudTolerance.Font = new System.Drawing.Font("Tahoma", 12F);
-            this.nudTolerance.Increment = new decimal(new int[] { 5, 0, 0, 65536 });
-            this.nudTolerance.Location = new System.Drawing.Point(712, 18);
+            this.nudTolerance.Increment = new decimal(new int[] { 2, 0, 0, 65536 });
+            this.nudTolerance.Location = new System.Drawing.Point(712, 60);
             this.nudTolerance.Maximum = new decimal(new int[] { 10, 0, 0, 0 });
             this.nudTolerance.Minimum = new decimal(new int[] { 2, 0, 0, 65536 });
             this.nudTolerance.Name = "nudTolerance";
             this.nudTolerance.Size = new System.Drawing.Size(110, 34);
             this.nudTolerance.TabIndex = 7;
+            //
+            this.lblToleranceAfter.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.lblToleranceAfter.Location = new System.Drawing.Point(496, 22);
+            this.lblToleranceAfter.Name = "lblToleranceAfter";
+            this.lblToleranceAfter.Size = new System.Drawing.Size(206, 30);
+            this.lblToleranceAfter.TabIndex = 8;
+            this.lblToleranceAfter.Text = "Trigger tol. after (m)";
+            this.lblToleranceAfter.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
+            this.nudToleranceAfter.DecimalPlaces = 1;
+            this.nudToleranceAfter.Font = new System.Drawing.Font("Tahoma", 12F);
+            this.nudToleranceAfter.Increment = new decimal(new int[] { 2, 0, 0, 65536 });
+            this.nudToleranceAfter.Location = new System.Drawing.Point(712, 18);
+            this.nudToleranceAfter.Maximum = new decimal(new int[] { 10, 0, 0, 0 });
+            this.nudToleranceAfter.Minimum = new decimal(new int[] { 2, 0, 0, 65536 });
+            this.nudToleranceAfter.Name = "nudToleranceAfter";
+            this.nudToleranceAfter.Size = new System.Drawing.Size(110, 34);
+            this.nudToleranceAfter.TabIndex = 9;
             //
             this.lblOvershootU.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
             this.lblOvershootU.Location = new System.Drawing.Point(4, 124);
@@ -876,6 +940,7 @@ namespace AgOpenGPS
             ((System.ComponentModel.ISupportInitialize)(this.nudInU)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudMinRS)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudTolerance)).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)(this.nudToleranceAfter)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudOvershootU)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudZones)).BeginInit();
             //
@@ -919,6 +984,7 @@ namespace AgOpenGPS
             ((System.ComponentModel.ISupportInitialize)(this.nudInU)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudMinRS)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudTolerance)).EndInit();
+            ((System.ComponentModel.ISupportInitialize)(this.nudToleranceAfter)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudOvershootU)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudZones)).EndInit();
             this.ResumeLayout(false);
@@ -943,7 +1009,9 @@ namespace AgOpenGPS
         private System.Windows.Forms.Button btnWinFull;
         private System.Windows.Forms.Button btnWinClose;
         private System.Windows.Forms.Panel pnlMapTools;
+        private System.Windows.Forms.Button btnSaveLines;
         private System.Windows.Forms.Button btnAddLine;
+        private System.Windows.Forms.CheckBox btnBorderLine;
         private System.Windows.Forms.CheckBox btnAddPoint;
         private System.Windows.Forms.CheckBox btnDeletePoint;
         private System.Windows.Forms.CheckBox btnDeleteLine;
@@ -960,6 +1028,7 @@ namespace AgOpenGPS
         private System.Windows.Forms.CheckBox btnMode3;
         private System.Windows.Forms.Label lblZones;
         private System.Windows.Forms.NumericUpDown nudZones;
+        private System.Windows.Forms.Label lblZoneOrderRead;
         private System.Windows.Forms.CheckBox chkHeadlandClip;
         private System.Windows.Forms.Label lblPlanInfo;
         private System.Windows.Forms.Button btnGeneratePlan;
@@ -994,6 +1063,8 @@ namespace AgOpenGPS
         private System.Windows.Forms.NumericUpDown nudMinRS;
         private System.Windows.Forms.Label lblTolerance;
         private System.Windows.Forms.NumericUpDown nudTolerance;
+        private System.Windows.Forms.Label lblToleranceAfter;
+        private System.Windows.Forms.NumericUpDown nudToleranceAfter;
         private System.Windows.Forms.Label lblOvershootU;
         private System.Windows.Forms.NumericUpDown nudOvershootU;
     }

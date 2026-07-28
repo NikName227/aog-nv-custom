@@ -1,3 +1,4 @@
+﻿using AgOpenGPS.Controls;
 using AgOpenGPS.Core.Models;
 using AgOpenGPS.Core.Translations;
 using AgOpenGPS.Forms;
@@ -52,6 +53,20 @@ namespace AgOpenGPS
         private readonly List<EditLine> editLines = new List<EditLine>();
         private EditLine dragLine;
         private int dragIdx = -1;
+
+        // field feedback 2026-07-27: drawn geometry that has not been written to disk yet
+        private bool isDirty;
+
+        // "Add line on border": first tap parks a point here, second tap builds the line.
+        // Both taps near the boundary => the line follows the boundary between them,
+        // otherwise it is a plain straight line. Either way it is editable afterwards.
+        private bool hasBorderPending;
+        private PointLatLng borderPending;
+        private GMapMarker borderPendingMarker;
+        private const double borderSnapMetres = 5.0;      // "on the boundary" tolerance
+        private const double borderExtendMetres = 15.0;   // straight tail at each end
+        private const double borderMaxTraceMetres = 400.0;// refuse absurd traces
+        private const double borderSimplifyMetres = 0.25; // Douglas-Peucker tolerance
 
         // round touch-friendly handle (same idea as the geoportal boundary editor)
         private class CornerMarker : GMapMarker
@@ -132,7 +147,8 @@ namespace AgOpenGPS
             lblOutU.Text = gStr.gsExitRadius;
             lblInU.Text = gStr.gsEntryRadius;
             lblMinRS.Text = gStr.gsMinTurnRadius;
-            lblTolerance.Text = gStr.gsTriggerTolerance;
+            lblTolerance.Text = gStr.gsTriggerTolBefore;
+            lblToleranceAfter.Text = gStr.gsTriggerTolAfter;
             lblOvershootU.Text = gStr.gsOvershootDist;
         }
 
@@ -203,6 +219,7 @@ namespace AgOpenGPS
             btnMode3.Checked = mf.plan.mode == CTurnPlan.ModeZones;
             if (mf.plan.zoneCount >= (int)nudZones.Minimum && mf.plan.zoneCount <= (int)nudZones.Maximum)
                 nudZones.Value = mf.plan.zoneCount;
+            //saved processing order, if the field has one; blank falls back to the default
 
             // mode buttons carry the confirmed pictograms (drawn at runtime)
             btnMode1.Image = TurnModeIcons.Make(1, 88, 82);
@@ -380,6 +397,9 @@ namespace AgOpenGPS
                 editLines.Add(el);
                 BuildLineVisuals(el);
             }
+            //what was just loaded IS what is on disk
+            isDirty = false;
+            UpdateSaveState();
         }
 
         private void CenterOnField()
@@ -456,6 +476,7 @@ namespace AgOpenGPS
 
             editLines.Add(el);
             BuildLineVisuals(el);
+            MarkDirty();
             UpdatePreview();
         }
 
@@ -528,6 +549,7 @@ namespace AgOpenGPS
             if (btnAddPoint != keep) btnAddPoint.Checked = false;
             if (btnDeletePoint != keep) btnDeletePoint.Checked = false;
             if (btnDeleteLine != keep) btnDeleteLine.Checked = false;
+            if (btnBorderLine != keep) btnBorderLine.Checked = false;
             UpdateDragButton();
         }
 
@@ -549,10 +571,19 @@ namespace AgOpenGPS
             UpdateDragButton();
         }
 
+        private void btnBorderLine_CheckedChanged(object sender, EventArgs e)
+        {
+            if (btnBorderLine.Checked) ExclusiveTapMode(btnBorderLine);
+            //leaving the mode drops a half-placed first point
+            if (!btnBorderLine.Checked) ClearBorderPending();
+            UpdateDragButton();
+        }
+
         private void UpdateDragButton()
         {
             gMapControl.DragButton =
-                (btnAddPoint.Checked || btnDeletePoint.Checked || btnDeleteLine.Checked)
+                (btnAddPoint.Checked || btnDeletePoint.Checked || btnDeleteLine.Checked
+                 || btnBorderLine.Checked)
                 ? MouseButtons.Right : MouseButtons.Left;
         }
 
@@ -566,7 +597,8 @@ namespace AgOpenGPS
                 int mh = HitTestMeasure(e.X, e.Y);
                 if (mh >= 0) { measureDrag = mh; gMapControl.CanDragMap = false; return; }
             }
-            if (btnAddPoint.Checked || btnDeletePoint.Checked || btnDeleteLine.Checked) return;
+            if (btnAddPoint.Checked || btnDeletePoint.Checked || btnDeleteLine.Checked
+                || btnBorderLine.Checked) return;
 
             if (HitTestMarker(e.X, e.Y, out EditLine el, out int idx))
             {
@@ -608,6 +640,7 @@ namespace AgOpenGPS
                 dragLine = null;
                 dragIdx = -1;
                 gMapControl.CanDragMap = true;
+                MarkDirty();
                 UpdatePreview();
             }
         }
@@ -617,6 +650,19 @@ namespace AgOpenGPS
             if (e.Button != MouseButtons.Left) return;
             if (measureOn) return;   // measure uses drag (MouseDown/Move), not taps
 
+            //PATH tab: the zone badges are the way the processing order is edited
+            if (activeTab == ViewTab.Path && HitTestZoneBadge(e.X, e.Y, out int zoneIdx))
+            {
+                EditZoneOrder(zoneIdx);
+                return;
+            }
+
+            if (btnBorderLine.Checked)
+            {
+                BorderModeTap(gMapControl.FromLocalToLatLng(e.X, e.Y));
+                return;
+            }
+
             if (btnAddPoint.Checked)
             {
                 if (NearestSegment(e.X, e.Y, 40, out EditLine el, out int seg))
@@ -624,6 +670,7 @@ namespace AgOpenGPS
                     PointLatLng pt = gMapControl.FromLocalToLatLng(e.X, e.Y);
                     el.pts.Insert(seg + 1, pt);
                     RebuildLineVisuals(el);
+                    MarkDirty();
                     UpdatePreview();
                 }
                 return;
@@ -635,6 +682,7 @@ namespace AgOpenGPS
                 {
                     el.pts.RemoveAt(idx);
                     RebuildLineVisuals(el);
+                    MarkDirty();
                     UpdatePreview();
                 }
                 return;
@@ -647,9 +695,200 @@ namespace AgOpenGPS
                     RemoveLineVisuals(el);
                     editLines.Remove(el);
                     gMapControl.Invalidate();
+                    MarkDirty();
                     UpdatePreview();
                 }
             }
+        }
+
+        // ── "Add line on border" (field feedback 2026-07-27) ──────────────
+        // Two taps. Both within borderSnapMetres of the field boundary => the new line
+        // follows the boundary between them; otherwise it is the plain straight line
+        // between the two taps. Either way it gets a straight tail at each end and stays
+        // fully editable. Snapping is judged in METRES, not pixels - pixels change with
+        // zoom, so a pixel threshold would behave differently at every zoom level.
+        private void BorderModeTap(PointLatLng tap)
+        {
+            if (!hasBorderPending)
+            {
+                hasBorderPending = true;
+                borderPending = tap;
+                borderPendingMarker = new CornerMarker(tap);
+                lineOverlay.Markers.Add(borderPendingMarker);
+                gMapControl.Invalidate();
+                lblStatus.Text = gStr.gsBorderLineSecondPoint;
+                return;
+            }
+
+            PointLatLng a = borderPending;
+            PointLatLng b = tap;
+            ClearBorderPending();
+
+            List<PointLatLng> pts;
+            if (!TryTraceBoundary(a, b, out pts))
+                pts = new List<PointLatLng> { a, b };   //not on the boundary -> straight line
+
+            ExtendEnds(pts, borderExtendMetres);
+
+            var el = new EditLine();
+            el.pts.AddRange(pts);
+            editLines.Add(el);
+            BuildLineVisuals(el);
+            MarkDirty();
+            UpdatePreview();
+        }
+
+        private void ClearBorderPending()
+        {
+            hasBorderPending = false;
+            if (borderPendingMarker != null)
+            {
+                lineOverlay.Markers.Remove(borderPendingMarker);
+                borderPendingMarker = null;
+                gMapControl.Invalidate();
+            }
+        }
+
+        /// <summary>
+        /// Walk the fence ring between the points nearest a and b. Returns false when either
+        /// tap is further than borderSnapMetres from the boundary, or when even the shorter
+        /// way round is absurdly long (taps at opposite ends of the field).
+        /// </summary>
+        private bool TryTraceBoundary(PointLatLng a, PointLatLng b, out List<PointLatLng> pts)
+        {
+            pts = null;
+            if (mf.bnd.bndList.Count == 0) return false;
+            var fence = mf.bnd.bndList[0].fenceLine;
+            int n = fence.Count;
+            if (n < 3) return false;
+
+            vec3 la = LatLngToLocal(a), lb = LatLngToLocal(b);
+            int ia = NearestFenceIndex(fence, la, out double da);
+            int ib = NearestFenceIndex(fence, lb, out double db);
+            if (da > borderSnapMetres || db > borderSnapMetres) return false;
+            if (ia == ib) return false;
+
+            // the ring gives two ways round - measure both, keep the shorter
+            var fwd = RingSlice(fence, ia, ib, true);
+            var rev = RingSlice(fence, ia, ib, false);
+            var pick = RingLength(fence, fwd) <= RingLength(fence, rev) ? fwd : rev;
+            if (RingLength(fence, pick) > borderMaxTraceMetres) return false;
+
+            // The fence is densified to 1.1-3.3 m by CFenceLine.FixFenceLine, so a straight
+            // 200 m edge is ~180 points. Left as is that is one draggable handle per point,
+            // and - worse - BuildEffectiveLines extrapolates 300 m along the LAST segment,
+            // whose direction would be pure noise. Simplify back to real corners.
+            var local = new List<vec3>(pick.Count);
+            foreach (int i in pick) local.Add(fence[i]);
+            var simplified = SimplifyLocal(local, borderSimplifyMetres);
+
+            pts = new List<PointLatLng>(simplified.Count);
+            foreach (var v in simplified) pts.Add(LocalToLatLng(v.easting, v.northing));
+            return pts.Count >= 2;
+        }
+
+        private static int NearestFenceIndex(List<vec3> fence, vec3 p, out double dist)
+        {
+            int best = 0;
+            double bestD = double.MaxValue;
+            for (int i = 0; i < fence.Count; i++)
+            {
+                double de = fence[i].easting - p.easting;
+                double dn = fence[i].northing - p.northing;
+                double d = de * de + dn * dn;
+                if (d < bestD) { bestD = d; best = i; }
+            }
+            dist = Math.Sqrt(bestD);
+            return best;
+        }
+
+        /// <summary>Indices from ia to ib around the closed ring, forward or backward.</summary>
+        private static List<int> RingSlice(List<vec3> fence, int ia, int ib, bool forward)
+        {
+            int n = fence.Count;
+            var idx = new List<int>();
+            int i = ia;
+            idx.Add(i);
+            while (i != ib)
+            {
+                i = forward ? (i + 1) % n : (i - 1 + n) % n;
+                idx.Add(i);
+            }
+            return idx;
+        }
+
+        private static double RingLength(List<vec3> fence, List<int> idx)
+        {
+            double len = 0;
+            for (int i = 0; i < idx.Count - 1; i++)
+            {
+                double de = fence[idx[i + 1]].easting - fence[idx[i]].easting;
+                double dn = fence[idx[i + 1]].northing - fence[idx[i]].northing;
+                len += Math.Sqrt(de * de + dn * dn);
+            }
+            return len;
+        }
+
+        /// <summary>Douglas-Peucker in local metres - keeps corners, drops densifier filler.</summary>
+        private static List<vec3> SimplifyLocal(List<vec3> pts, double tol)
+        {
+            if (pts.Count < 3) return new List<vec3>(pts);
+
+            var keep = new bool[pts.Count];
+            keep[0] = keep[pts.Count - 1] = true;
+            var stack = new Stack<int[]>();
+            stack.Push(new[] { 0, pts.Count - 1 });
+
+            while (stack.Count > 0)
+            {
+                var seg = stack.Pop();
+                int first = seg[0], last = seg[1];
+                double worst = 0;
+                int worstAt = -1;
+                for (int i = first + 1; i < last; i++)
+                {
+                    double d = DistPointToSeg(pts[i].easting, pts[i].northing,
+                        pts[first].easting, pts[first].northing,
+                        pts[last].easting, pts[last].northing);
+                    if (d > worst) { worst = d; worstAt = i; }
+                }
+                if (worstAt > 0 && worst > tol)
+                {
+                    keep[worstAt] = true;
+                    stack.Push(new[] { first, worstAt });
+                    stack.Push(new[] { worstAt, last });
+                }
+            }
+
+            var outp = new List<vec3>();
+            for (int i = 0; i < pts.Count; i++) if (keep[i]) outp.Add(pts[i]);
+            return outp;
+        }
+
+        /// <summary>Push the first and last point out by dist along their own end segment.</summary>
+        private void ExtendEnds(List<PointLatLng> pts, double dist)
+        {
+            if (pts.Count < 2) return;
+
+            vec3 p0 = LatLngToLocal(pts[0]), p1 = LatLngToLocal(pts[1]);
+            vec3 pn = LatLngToLocal(pts[pts.Count - 1]), pm = LatLngToLocal(pts[pts.Count - 2]);
+
+            if (TryStep(p1, p0, dist, out double e, out double n))
+                pts[0] = LocalToLatLng(e, n);
+            if (TryStep(pm, pn, dist, out e, out n))
+                pts[pts.Count - 1] = LocalToLatLng(e, n);
+        }
+
+        /// <summary>One step of length dist past "to", along the from->to direction.</summary>
+        private static bool TryStep(vec3 from, vec3 to, double dist, out double e, out double n)
+        {
+            double de = to.easting - from.easting, dn = to.northing - from.northing;
+            double len = Math.Sqrt(de * de + dn * dn);
+            e = n = 0;
+            if (len < 0.001) return false;
+            e = to.easting + de / len * dist;
+            n = to.northing + dn / len * dist;
+            return true;
         }
 
         private bool HitTestMarker(int x, int y, out EditLine line, out int idx)
@@ -789,7 +1028,11 @@ namespace AgOpenGPS
         }
 
         // ── save ──────────────────────────────────────────────────────────
-        private void btnSave_Click(object sender, EventArgs e)
+        // Field feedback 2026-07-27: until now the only way to save was "OK", which also
+        // closed the window - draw a line, leave any other way, and the work was gone with
+        // no warning. The write is now its own method, "Save" keeps the window open, and
+        // unsaved geometry is both visible (see UpdateSaveState) and caught on close.
+        private void SaveAll()
         {
             mf.tnl.lines.Clear();
             foreach (var el in editLines)
@@ -812,11 +1055,40 @@ namespace AgOpenGPS
             SaveTurnParams();
 
             mf.plan.isFollowPlan = activateState == 2;   // 3rd state = follow plan
+            UpdateZoneOrderLabel();
             mf.FileSaveTurnPlan();
 
             mf.FileSaveTurnLines();
+            isDirty = false;
+            UpdateSaveState();
+        }
+
+        private void btnSave_Click(object sender, EventArgs e)
+        {
+            SaveAll();
             mf.TimedMessageBox(1500, gStr.gsTurnLimitLines, gStr.gsTurnLinesSaved);
             Close();
+        }
+
+        private void btnSaveLines_Click(object sender, EventArgs e)
+        {
+            SaveAll();
+            mf.TimedMessageBox(1500, gStr.gsTurnLimitLines, gStr.gsTurnLinesSaved);
+        }
+
+        /// <summary>Any change to the drawn geometry leaves the window out of sync with disk.</summary>
+        private void MarkDirty()
+        {
+            isDirty = true;
+            UpdateSaveState();
+        }
+
+        /// <summary>Save button carries the state so "is it saved?" is answered at a glance.</summary>
+        private void UpdateSaveState()
+        {
+            if (btnSaveLines == null) return;
+            btnSaveLines.Text = isDirty ? "Save *" : "Save";
+            btnSaveLines.BackColor = isDirty ? Color.Gold : Color.Honeydew;
         }
 
         // ── parcels from the shared tile cache (display only) ─────────────
@@ -973,6 +1245,15 @@ namespace AgOpenGPS
 
         private void FormTurnLine_FormClosing(object sender, FormClosingEventArgs e)
         {
+            //field feedback 2026-07-27: leaving with unsaved lines used to discard them
+            //silently. SaveAll clears isDirty, so OK never reaches this prompt.
+            if (isDirty)
+            {
+                var answer = MessageBox.Show(gStr.gsTurnLinesUnsaved, gStr.gsTurnLimitLines,
+                    MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+                if (answer == DialogResult.Cancel) { e.Cancel = true; return; }
+                if (answer == DialogResult.Yes) SaveAll();
+            }
             vehicleTimer.Stop();
         }
 
@@ -1129,6 +1410,7 @@ namespace AgOpenGPS
             chkHeadlandClip.Visible = false;
             lblZones.Visible = nudZones.Visible = false;
             SetZoneStepperVisible(false);
+            SetZoneOrderVisible(false);
             lblPlanInfo.Visible = false;
             btnGeneratePlan.Visible = false;
             btnAddPath.Visible = btnDeletePath.Visible = false;
@@ -1179,6 +1461,7 @@ namespace AgOpenGPS
                     chkHeadlandClip.Visible = true;
                     lblZones.Visible = nudZones.Visible = true;
                     SetZoneStepperVisible(true);
+                    SetZoneOrderVisible(true);
                     lblPlanInfo.Visible = true;
                     btnWizBack.Visible = btnWizNext.Visible = btnWizCancel.Visible = true;
                     btnWizNext.Enabled = true;
@@ -1209,11 +1492,104 @@ namespace AgOpenGPS
             chkHeadlandClip.Visible = false;
             lblZones.Visible = nudZones.Visible = false;
             SetZoneStepperVisible(false);
+            SetZoneOrderVisible(false);
             btnAddPath.Visible = btnDeletePath.Visible = false;
             btnWizBack.Visible = btnWizNext.Visible = btnWizCancel.Visible = false;
             lblWizTitle.Text = "Orchard";
             lblPlanInfo.Visible = true;
             btnGeneratePlan.Visible = true;
+        }
+
+        // ── zone processing order (field feedback 2026-07-27 / 28) ──────────
+        // The order is edited by TAPPING the zone badge on the map (see ZoneNumMarker):
+        // type a number and the zone that held it takes this zone's old one. A plain swap,
+        // so every number the driver has already settled - anything below the one being
+        // typed - is left alone. This label only reports the resulting layout, leftmost
+        // zone first; which zone is left or right of the line comes from the geometry.
+        private void SetZoneOrderVisible(bool vis)
+        {
+            lblZoneOrderRead.Visible = vis;
+            if (vis) UpdateZoneOrderLabel();
+        }
+
+        /// <summary>
+        /// Processing order per spatial zone, read back off the BUILT plan: a zone's number
+        /// is the rank of its first pass. Going through the plan rather than through
+        /// TryZoneLayout matters - the layout preview counts passes from the raw offset
+        /// range, while the plan only holds the ones that survived the boundary clip, so
+        /// the two can disagree on how many zones there are. Falls back to the preview only
+        /// when no plan exists yet (label before the first Generate).
+        /// </summary>
+        private int[] CurrentZoneOrder(out int zoneCount)
+        {
+            var firstOrder = new Dictionary<int, int>();
+            foreach (var p in mf.plan.entries)
+            {
+                if (p.IsManual || p.zone < 1) continue;
+                if (!firstOrder.TryGetValue(p.zone, out int o) || p.order < o)
+                    firstOrder[p.zone] = p.order;
+            }
+
+            if (firstOrder.Count > 0)
+            {
+                zoneCount = firstOrder.Count;
+                var zones = new List<int>(firstOrder.Keys);
+                zones.Sort((a, b) => firstOrder[a].CompareTo(firstOrder[b]));
+                var built = new int[zoneCount];
+                for (int rank = 0; rank < zones.Count; rank++)
+                {
+                    int idx = zones[rank] - 1;
+                    if (idx < 0 || idx >= zoneCount) { zoneCount = 0; return null; }
+                    built[idx] = rank + 1;
+                }
+                return built;
+            }
+
+            zoneCount = 0;
+            if (!mf.plan.TryZoneLayout((int)nudZones.Value, out List<int> zonePasses, out _))
+                return null;
+            zoneCount = zonePasses.Count;
+            return CTurnPlan.DefaultZoneOrder(zoneCount, 0);
+        }
+
+        private void UpdateZoneOrderLabel()
+        {
+            int[] order = CurrentZoneOrder(out int n);
+            lblZoneOrderRead.Text = order == null
+                ? ""
+                : gStr.gsZoneOrderRead + " " + CTurnPlan.FormatZoneOrder(order);
+        }
+
+        /// <summary>
+        /// Tap on a zone badge: ask for the new processing number and SWAP it with whichever
+        /// zone currently holds it. Out-of-range input changes nothing. Swapping (rather than
+        /// shifting the rest along) is what keeps the already-confirmed lower numbers put,
+        /// which is how the driver works through the zones - 1, then 2, then 3.
+        /// </summary>
+        private void EditZoneOrder(int zoneIdx)
+        {
+            int[] order = CurrentZoneOrder(out int n);
+            if (order == null || zoneIdx < 0 || zoneIdx >= n) return;
+
+            int current = order[zoneIdx];
+            using (var f = new FormNumeric(1, n, current))
+            {
+                if (f.ShowDialog(this) != DialogResult.OK) return;
+
+                int wanted = (int)Math.Round(f.ReturnValue);
+                if (wanted < 1 || wanted > n || wanted == current) return;
+
+                int other = Array.IndexOf(order, wanted);
+                if (other < 0) return;
+                order[other] = current;
+                order[zoneIdx] = wanted;
+            }
+
+            mf.plan.zoneOrder = CTurnPlan.FormatZoneOrder(order);
+            UpdateZoneOrderLabel();
+            //rebuild so the map follows the new order right away - the missing piece in the
+            //first cut, where only the label moved (f05fb-14)
+            GenerateFromWizard();
         }
 
         // the -/+ stepper buttons MakeKeypadField adds beside nudZones
@@ -1342,6 +1718,8 @@ namespace AgOpenGPS
 
         private void nudZones_ValueChanged(object sender, EventArgs e)
         {
+            //a hand-picked order cannot survive a different zone count - back to default
+            mf.plan.zoneOrder = "";
             //step 2 is interactive: the zone split redraws on every change
             if (wizStep == 2) GenerateFromWizard();
             UpdatePlanInfo();
@@ -1396,8 +1774,7 @@ namespace AgOpenGPS
                 if (string.IsNullOrEmpty(abName) && mf.trk.idx >= 0 && mf.trk.idx < mf.trk.gArr.Count)
                     abName = mf.trk.gArr[mf.trk.idx].name;
                 lblPlanInfo.Text = gStr.gsABline + ": " + abName + "\n\n"
-                    + gStr.gsZoneWidth + ": " + zoneWidth.ToString("N1") + " m\n"
-                    + passesPerZone + " " + gStr.gsPassesPerZone;
+                    + ZoneWidthText(zoneWidth, passesPerZone);
             }
             else
             {
@@ -1410,6 +1787,33 @@ namespace AgOpenGPS
                 : "";
         }
 
+        /// <summary>
+        /// Zone widths for the PATH tab. With the plan split at the reference line the two
+        /// sides can hold a different number of zones of a different width, so one number
+        /// no longer describes the field - report per side then (field feedback 2026-07-27).
+        /// </summary>
+        private string ZoneWidthText(double zoneWidth, int passesPerZone)
+        {
+            double w = mf.plan.WorkWidth();
+            if (w >= 0.1
+                && mf.plan.TryZoneLayout((int)nudZones.Value, out List<int> zonePasses, out int leftZones)
+                && leftZones > 0 && leftZones < zonePasses.Count)
+            {
+                int leftPasses = 0, rightPasses = 0;
+                for (int i = 0; i < zonePasses.Count; i++)
+                {
+                    if (i < leftZones) leftPasses += zonePasses[i];
+                    else rightPasses += zonePasses[i];
+                }
+                int rightZones = zonePasses.Count - leftZones;
+                return "L: " + leftZones + " x " + (leftPasses * w / leftZones).ToString("N1") + " m\n"
+                     + "R: " + rightZones + " x " + (rightPasses * w / rightZones).ToString("N1") + " m";
+            }
+
+            return gStr.gsZoneWidth + ": " + zoneWidth.ToString("N1") + " m\n"
+                 + passesPerZone + " " + gStr.gsPassesPerZone;
+        }
+
         // ── Orchard mode (F50 phase 3): the PATH tab plans from rows + tool ──
         // Field controls (mode/zones/line/headland/manual passes) make no sense in
         // an orchard - the plan is the ordered pass sequence from the implement
@@ -1418,6 +1822,7 @@ namespace AgOpenGPS
         {
             btnMode1.Visible = btnMode2.Visible = btnMode3.Visible = false;
             lblZones.Visible = nudZones.Visible = false;
+            SetZoneOrderVisible(false);
             chkHeadlandClip.Visible = false;
             lblTrack.Visible = cboTrack.Visible = false;
             btnAddPath.Visible = btnDeletePath.Visible = false;
@@ -1601,6 +2006,7 @@ namespace AgOpenGPS
                 });
             }
 
+            DrawZoneBadges();
             gMapControl.Invalidate();
         }
 
@@ -1643,6 +2049,108 @@ namespace AgOpenGPS
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Zone badge (field feedback 2026-07-28): a thick rounded box in the zone colour
+        /// carrying the zone's PROCESSING number. Sits at a quarter of the pass instead of
+        /// the middle, where the pass numbers already are, so the two never collide. Tap it
+        /// to reorder - see EditZoneOrder.
+        /// </summary>
+        private class ZoneNumMarker : GMapMarker
+        {
+            public readonly int zoneIdx;          // 0-based spatial zone
+            private readonly string text;
+            private readonly Color color;
+
+            public const int HalfW = 21, HalfH = 15;
+
+            public ZoneNumMarker(PointLatLng pos, int idx, string t, Color c) : base(pos)
+            {
+                zoneIdx = idx;
+                text = t;
+                color = c;
+            }
+
+            public override void OnRender(Graphics g)
+            {
+                var box = new Rectangle(LocalPosition.X - HalfW, LocalPosition.Y - HalfH,
+                    2 * HalfW, 2 * HalfH);
+                using (var back = new SolidBrush(Color.FromArgb(225, Color.White)))
+                    g.FillRectangle(back, box);
+                using (var pen = new Pen(color, 5f))
+                    g.DrawRectangle(pen, box);
+                using (var f = new Font("Tahoma", 12f, FontStyle.Bold))
+                {
+                    SizeF sz = g.MeasureString(text, f);
+                    g.DrawString(text, f, Brushes.Black,
+                        LocalPosition.X - sz.Width / 2f, LocalPosition.Y - sz.Height / 2f);
+                }
+            }
+        }
+
+        /// <summary>
+        /// One badge per zone, on the zone's middle pass at ~25 % of its length.
+        /// </summary>
+        private void DrawZoneBadges()
+        {
+            var byZone = new Dictionary<int, List<CPlanEntry>>();
+            foreach (var p in mf.plan.entries)
+            {
+                if (p.IsManual || p.zone < 1 || p.segments.Count == 0) continue;
+                if (!byZone.TryGetValue(p.zone, out List<CPlanEntry> lst))
+                    byZone[p.zone] = lst = new List<CPlanEntry>();
+                lst.Add(p);
+            }
+
+            foreach (var kv in byZone)
+            {
+                var lst = kv.Value;
+                lst.Sort((a, b) => a.offsetIdx.CompareTo(b.offsetIdx));
+                CPlanEntry mid = lst[lst.Count / 2];
+
+                // longest segment of that pass, then a quarter of the way along it
+                List<vec3> main = mid.segments[0];
+                double bestLen = -1;
+                foreach (var seg in mid.segments)
+                {
+                    double len = 0;
+                    for (int i = 1; i < seg.Count; i++) len += glm.Distance(seg[i - 1], seg[i]);
+                    if (len > bestLen) { bestLen = len; main = seg; }
+                }
+                if (main.Count < 2) continue;
+
+                int at = Math.Max(0, Math.Min(main.Count - 1, main.Count / 4));
+                planOverlay.Markers.Add(new ZoneNumMarker(
+                    LocalToLatLng(main[at].easting, main[at].northing),
+                    kv.Key - 1,
+                    ZoneProcessingNumber(kv.Key - 1).ToString(),
+                    zoneColors[(kv.Key - 1) % zoneColors.Length]));
+            }
+        }
+
+        /// <summary>Processing number currently assigned to a spatial zone (1-based).</summary>
+        private int ZoneProcessingNumber(int zoneIdx)
+        {
+            int[] order = CurrentZoneOrder(out int n);
+            return order != null && zoneIdx >= 0 && zoneIdx < n ? order[zoneIdx] : zoneIdx + 1;
+        }
+
+        private bool HitTestZoneBadge(int x, int y, out int zoneIdx)
+        {
+            zoneIdx = -1;
+            foreach (var m in planOverlay.Markers)
+            {
+                if (!(m is ZoneNumMarker z)) continue;
+                GPoint sp = gMapControl.FromLatLngToLocal(z.Position);
+                if (Math.Abs(sp.X - x) <= ZoneNumMarker.HalfW
+                    && Math.Abs(sp.Y - y) <= ZoneNumMarker.HalfH)
+                {
+                    zoneIdx = z.zoneIdx;
+                    return true;
+                }
+            }
+            return false;
         }
 
         private void ShowStyle(System.Windows.Forms.Panel p)
@@ -1688,6 +2196,7 @@ namespace AgOpenGPS
             SetNud(nudOutU, s.set_turnU_exitRadius);
             SetNud(nudInU, s.set_turnU_entryRadius);
             SetNud(nudTolerance, s.set_turnTriggerTolerance);
+            SetNud(nudToleranceAfter, s.set_turnTriggerToleranceAfter);
             SetNud(nudOvershootU, s.set_turnU_overshootDist);
 
             btnStyleK.Checked = true;
@@ -1704,6 +2213,7 @@ namespace AgOpenGPS
             s.set_turnU_exitRadius = (double)nudOutU.Value;
             s.set_turnU_entryRadius = (double)nudInU.Value;
             s.set_turnTriggerTolerance = (double)nudTolerance.Value;
+            s.set_turnTriggerToleranceAfter = (double)nudToleranceAfter.Value;
             s.set_turnU_overshootDist = (double)nudOvershootU.Value;
             s.Save();
         }
@@ -1718,13 +2228,16 @@ namespace AgOpenGPS
         // -/+ stepper buttons (SmartAB style) and open the AOG numeric keypad on tap.
         private void SetupKeypadFields()
         {
-            MakeKeypadField(nudExitK, 0.5);
+            //field feedback 2026-07-27: metre values that need fine adjustment (the turn
+            //radii and the trigger tolerances) step by 0.2; the rest keeps its old step
+            MakeKeypadField(nudExitK, 0.2);
             MakeKeypadField(nudDistK, 0.5);
             MakeKeypadField(nudAngleK, 5);
-            MakeKeypadField(nudOutU, 0.5);
-            MakeKeypadField(nudInU, 0.5);
+            MakeKeypadField(nudOutU, 0.2);
+            MakeKeypadField(nudInU, 0.2);
             MakeKeypadField(nudOvershootU, 0.5);
-            MakeKeypadField(nudTolerance, 0.5);
+            MakeKeypadField(nudTolerance, 0.2);
+            MakeKeypadField(nudToleranceAfter, 0.2);
             MakeKeypadField(nudZones, 1, zoneSteppers);   //wizard step 2 shows/hides these
         }
 

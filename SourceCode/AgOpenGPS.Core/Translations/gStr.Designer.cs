@@ -4909,9 +4909,39 @@ namespace AgOpenGPS.Core.Translations {
             }
         }
 
+        public static string gsBorderLineSecondPoint {
+            get {
+                return ResourceManager.GetString("gsBorderLineSecondPoint", resourceCulture);
+            }
+        }
+
+        public static string gsTurnLinesUnsaved {
+            get {
+                return ResourceManager.GetString("gsTurnLinesUnsaved", resourceCulture);
+            }
+        }
+
+        public static string gsZoneOrderRead {
+            get {
+                return ResourceManager.GetString("gsZoneOrderRead", resourceCulture);
+            }
+        }
+
         public static string gsTriggerTolerance {
             get {
                 return ResourceManager.GetString("gsTriggerTolerance", resourceCulture);
+            }
+        }
+
+        public static string gsTriggerTolBefore {
+            get {
+                return ResourceManager.GetString("gsTriggerTolBefore", resourceCulture);
+            }
+        }
+
+        public static string gsTriggerTolAfter {
+            get {
+                return ResourceManager.GetString("gsTriggerTolAfter", resourceCulture);
             }
         }
 

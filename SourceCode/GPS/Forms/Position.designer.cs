@@ -1069,11 +1069,11 @@ namespace AgOpenGPS
                             if (yt.isTurnCreationTooClose && !yt.turnTooCloseTrigger)
                             {
                                 yt.turnTooCloseTrigger = true;
-                                if (sounds.isTurnSoundOn)
-                                {
-                                    sounds.sndUTurnTooClose.Play();
-                                    Log.EventWriter("U Turn Creation Failure");
-                                }
+                                if (sounds.isTurnSoundOn) sounds.sndUTurnTooClose.Play();
+                                //field 2026-07-28: log regardless of the sound setting,
+                                //with the effective-line pick behind the failed build
+                                Log.EventWriter("U Turn Creation Failure"
+                                    + (yt.lastRayDiag.Length > 0 ? ", " + yt.lastRayDiag : ""));
                             }
                         }
                         else if (yt.ytList.Count > 5)//wait to trigger the actual turn since its made and waiting
@@ -1099,22 +1099,35 @@ namespace AgOpenGPS
                                 double fwd = (pivotAxlePos.easting - yt.ytList[2].easting) * Math.Sin(htv)
                                            + (pivotAxlePos.northing - yt.ytList[2].northing) * Math.Cos(htv);
 
-                                //window half-width (Params tab: Trigger tolerance, was fixed 1 m)
-                                double triggerTol = Properties.Settings.Default.set_turnTriggerTolerance;
-                                if (triggerTol < 0.2) triggerTol = 0.2;
-                                yt.turnOvershot = fwd > triggerTol && !yt.isYouTurnTriggered;
-                                //armed = pivot inside the window: turn is the next action (even stopped) -> orange
-                                yt.turnArmed = fwd >= -triggerTol && fwd <= triggerTol && !yt.isYouTurnTriggered;
+                                //field feedback 2026-07-27: the window is no longer symmetric.
+                                //Firing EARLY is harmless - ytList is already built and starts
+                                //straight along the current line, so pure pursuit just tracks
+                                //that lead-in. Firing LATE pushes the whole maneuver toward the
+                                //turn limit line, so the "after" half stays tight (Params tab).
+                                double tolBefore = Properties.Settings.Default.set_turnTriggerTolerance;
+                                double tolAfter = Properties.Settings.Default.set_turnTriggerToleranceAfter;
+                                if (tolBefore < 0.2) tolBefore = 0.2;
+                                if (tolAfter < 0.2) tolAfter = 0.2;
+                                bool inTriggerWindow = fwd >= -tolBefore && fwd <= tolAfter;
+
+                                yt.turnOvershot = fwd > tolAfter && !yt.isYouTurnTriggered;
+                                //armed = pivot inside the window: turn is the next action (even stopped)
+                                yt.turnArmed = inTriggerWindow && !yt.isYouTurnTriggered;
 
                                 //turn-after-stop: the STOP itself must happen inside the same
-                                //± trigger-tolerance window (field 2026-07-16: was "anywhere
-                                //within 5 m before" - one-sided); outside the window nothing
-                                //arms, the turn waits for a stop IN the zone, then fires on
-                                //forward. Option off = turn fires immediately as before.
+                                //trigger window (field 2026-07-16: was "anywhere within 5 m
+                                //before" - one-sided); outside the window nothing arms, the turn
+                                //waits for a stop IN the zone, then fires on forward.
+                                //Field feedback 2026-07-27: a REVERSE -> FORWARD change of
+                                //direction inside the window arms it too - on some setups the
+                                //averaged speed never dips under 0.3 even though the driver did
+                                //stop and shuttle. Only that direction counts, and only to START
+                                //the maneuver; phases inside a running turn are unchanged.
                                 bool afterStopGate = true;
+                                bool shuttledToForward = yt.UpdateReverseEdge(isReverse);
                                 if (tnl.isAfterStop)
                                 {
-                                    if (fwd >= -triggerTol && fwd <= triggerTol && avgSpeed < 0.3)
+                                    if (inTriggerWindow && (avgSpeed < 0.3 || shuttledToForward))
                                         yt.afterStopStopped = true;
                                     afterStopGate = yt.afterStopStopped && avgSpeed > 0.6 && !isReverse;
                                 }
@@ -1122,7 +1135,7 @@ namespace AgOpenGPS
                                 //fire as the pivot reaches the start (within tol, not overshot beyond);
                                 //only while driving FORWARD > 0.5 km/h - otherwise the trigger swaps
                                 //guidance to the new line while stopped/reversing (jerk + wrong line)
-                                if (fwd >= -triggerTol && fwd <= triggerTol && !yt.isYouTurnTriggered
+                                if (inTriggerWindow && !yt.isYouTurnTriggered
                                     && afterStopGate && !isReverse && avgSpeed > 0.5)
                                 {
                                     yt.YouTurnTrigger();

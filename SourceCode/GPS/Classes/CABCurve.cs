@@ -234,7 +234,10 @@ namespace AgOpenGPS
                 //Gated to autosteer OFF and no active turn so it only reshapes the line
                 //the driver aims at - never commands a cross-track jerk. Once aligned and
                 //steering, physical nearest = plan target, so this is a no-op from then on.
+                //Field 2026-07-28: also gated to the auto turn button ON - with turns off
+                //the guidance is fully stock (line follows the vehicle, not the plan).
                 if (!mf.isBtnAutoSteerOn && !mf.yt.isYouTurnTriggered
+                    && mf.yt.isYouTurnBtnOn
                     && mf.plan.TryGuidanceOffset(out int planIdx))
                     howManyPathsAway = planIdx;
             }

@@ -72,9 +72,39 @@ namespace AgOpenGPS
         public bool turnOvershot = false;
 
         // turn limit lines: true when the pivot is inside the trigger window, so the turn is
-        // the NEXT thing that will happen (even while stopped) — drawn orange so the driver
-        // knows the AB line is no longer what gets followed next.
+        // the NEXT thing that will happen (even while stopped) — drawn green so the driver
+        // knows this is the moment to stop or to shuttle forward.
         public bool turnArmed = false;
+
+        // turn-after-stop, field feedback 2026-07-27: reverse -> forward edge detector.
+        // On some setups isReverse comes from an IMU/heading delta and chatters, so a
+        // reverse only counts once it has been held for reverseDebounceSeconds.
+        private bool reverseHeld;
+        private DateTime reverseRawSince = DateTime.MaxValue;
+        private const double reverseDebounceSeconds = 0.5;
+
+        /// <summary>
+        /// Feed the raw reverse flag once per position update. Returns true on the single
+        /// update where a DEBOUNCED reverse has just been released into forward travel.
+        /// Must be called every cycle (also when turn-after-stop is off) so the detector
+        /// never sees a stale gap and reports a phantom edge.
+        /// </summary>
+        public bool UpdateReverseEdge(bool isReverseRaw)
+        {
+            if (isReverseRaw)
+            {
+                if (reverseRawSince == DateTime.MaxValue) reverseRawSince = DateTime.UtcNow;
+                if (!reverseHeld
+                    && (DateTime.UtcNow - reverseRawSince).TotalSeconds >= reverseDebounceSeconds)
+                    reverseHeld = true;
+                return false;
+            }
+
+            reverseRawSince = DateTime.MaxValue;
+            if (!reverseHeld) return false;
+            reverseHeld = false;
+            return true;      // held reverse -> forward = the driver shuttled
+        }
 
         //sequence of operations of finding the next turn 0 to 3
         public int youTurnPhase;
@@ -1919,14 +1949,37 @@ namespace AgOpenGPS
             return new vec3(frOx + frLx * x + frTx * y, frOy + frLy * x + frTy * y, 0);
         }
 
+        // last effective-line pick, logged with every build result (field 2026-07-28
+        // diag: says WHICH line the forward ray chose for the wrong-end reports)
+        public string lastRayDiag = "";
+
+        // meters the ray origin is backed up when the first cast misses - the row
+        // point can already sit past the margin-inset effective line, which used to
+        // silently fall through to the boundary ring
+        private const double rayBackup = 15.0;
+
         // effective limit polyline in LOCAL coords: the extrapolated drawn line hit by the
         // travel ray, or the boundary turn line (closed ring) when no line is hit there
         private bool TryGetLocalEff(double head, out List<vec2> eff)
         {
             eff = null;
-            List<vec2> world = mf.tnl.GetEffPolylineByRay(new vec2(frOx, frOy), head);
+            List<vec2> world = mf.tnl.GetEffPolylineByRay(new vec2(frOx, frOy), head,
+                out int rayLine, out double rayDist);
             if (world == null)
             {
+                vec2 backed = new vec2(frOx - Math.Sin(head) * rayBackup,
+                                       frOy - Math.Cos(head) * rayBackup);
+                world = mf.tnl.GetEffPolylineByRay(backed, head, out rayLine, out rayDist);
+                if (world != null) rayDist -= rayBackup;
+            }
+
+            if (world != null)
+            {
+                lastRayDiag = "eff line " + rayLine + " at " + rayDist.ToString("F1") + " m";
+            }
+            else
+            {
+                lastRayDiag = "no eff line hit, boundary ring fallback";
                 if (mf.bnd.bndList.Count == 0 || mf.bnd.bndList[0].turnLine.Count < 3) return false;
                 var tl = mf.bnd.bndList[0].turnLine;
                 world = new List<vec2>(tl.Count + 1);
@@ -2026,12 +2079,31 @@ namespace AgOpenGPS
             return outp;
         }
 
+        //field 2026-07-28 diag: throttle for the wrong-end rejection log below
+        private DateTime lastWrongEndLog = DateTime.MinValue;
+
         private bool FinishRigidPath(List<vec2> p1, int redStart, List<vec2> p2, int p2Red)
         {
             if (p1.Count < 6) { FailCreate(); return false; }
 
             var w1 = LocalToWorldPath(p1);
             if (glm.Distance(w1[0], mf.pivotAxlePos) < 3) { FailCreate(); return false; }
+
+            //field 2026-07-28: a start behind the vehicle = wrong-end build; committed,
+            //it would park at phase 10 waiting for a trigger that never comes. No
+            //FailCreate latch - the next fix retries with fresher geometry.
+            double startFwd = (w1[0].easting - mf.pivotAxlePos.easting) * frTx
+                            + (w1[0].northing - mf.pivotAxlePos.northing) * frTy;
+            if (startFwd < -2.0)
+            {
+                if ((DateTime.UtcNow - lastWrongEndLog).TotalSeconds > 15)
+                {
+                    lastWrongEndLog = DateTime.UtcNow;
+                    Log.EventWriter("Rigid turn rejected: start " + (-startFwd).ToString("F1")
+                        + " m behind vehicle, " + lastRayDiag);
+                }
+                return false;
+            }
 
             ytList.Clear();
             ytList.AddRange(w1);
@@ -2054,6 +2126,12 @@ namespace AgOpenGPS
             youTurnPhase = 10;
             turnTooCloseTrigger = false;
             isTurnCreationTooClose = false;
+
+            //field 2026-07-28 diag: one line per created turn - enough to see at which
+            //end and off which limit line every maneuver was anchored
+            Log.EventWriter("Rigid turn built: start " + mf.distancePivotToTurnLine.ToString("F1")
+                + " m ahead, " + (isTurnLeft ? "left" : "right") + " skip " + rowSkipsWidth
+                + ", " + lastRayDiag);
             return true;
         }
 
@@ -3234,6 +3312,9 @@ namespace AgOpenGPS
             afterStopStopped = false;
             turnOvershot = false;
             turnArmed = false;
+            //drop any half-seen reverse so the next turn cannot be armed by a stale edge
+            reverseHeld = false;
+            reverseRawSince = DateTime.MaxValue;
             kPart2List?.Clear();
             kTurnStage = 0;
             kRevReached = false;
@@ -3871,14 +3952,18 @@ namespace AgOpenGPS
 
             GL.PointSize(mf.ABLine.lineWidth + 2);
 
+            //field feedback 2026-07-27: green is an ACTION cue, not a status. Blue while the
+            //maneuver is ready but still far away, green only inside the trigger tolerance
+            //(= stop now / shuttle forward now). Same scheme as the HUD text and arrow.
+            //With the turn limit lines off, turnArmed is never fed - keep the stock green.
             if (isYouTurnTriggered)
                 GL.Color3(0.95f, 0.5f, 0.95f);            //maneuver running
             else if (isOutOfBounds || turnOvershot)
                 GL.Color3(0.9495f, 0.395f, 0.325f);      //red: overshot (reverse) or out of bounds
-            else if (turnArmed)
-                GL.Color3(1.0f, 0.55f, 0.0f);            //orange: in the trigger window - turn is next (even stopped)
+            else if (!mf.tnl.IsFeatureOn || turnArmed)
+                GL.Color3(0.395f, 0.925f, 0.30f);        //green: inside the tolerance - act now
             else
-                GL.Color3(0.395f, 0.925f, 0.30f);        //green: approaching, turn will arm
+                GL.Color3(0.35f, 0.65f, 0.95f);          //light blue: ready, still approaching
 
             GL.Begin(PrimitiveType.Points);
             for (int i = 0; i < ytList.Count; i++)
