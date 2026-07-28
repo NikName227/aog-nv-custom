@@ -562,6 +562,16 @@ namespace AgOpenGPS
         private CPlanEntry runEntry;
         private double runDistance;
 
+        // pass lock (field 2026-07-28): meters driven continuously on the strip of
+        // ONE plan pass (tight lateral tolerance, forward, inside the fence). At
+        // passLockDistance the vehicle is certainly on that pass - a leftover stuck
+        // turn state (failed-creation latch, wrong-end build) is then discarded once
+        // so the builder retries clean. This is what lets manual and automatic turns
+        // mix: however the driver got here, 20 m on a pass re-arms the automatics.
+        private CPlanEntry lockEntry;
+        private double lockDistance;
+        public const double passLockDistance = 20.0;
+
         // manual-flex (wedge/triangle field end): automatic turns are paused and the
         // driver finishes the area by hand; the first not-worked manual pass is drawn
         // dashed as the resume point - driving onto it re-engages the plan
@@ -1038,7 +1048,7 @@ namespace AgOpenGPS
                 runDistance = 0;
             }
             runEntry = now;
-            if (now == null) return;
+            if (now == null) { lockEntry = null; lockDistance = 0; return; }
 
             // only count real driving on the line: forward, laterally on the strip
             double lateral = mf.trk.gArr[mf.trk.idx].mode == TrackMode.AB
@@ -1047,6 +1057,8 @@ namespace AgOpenGPS
 
             if (!mf.isReverse && Math.Abs(lateral) < 0.5 * WorkWidth())
                 runDistance += mf.distanceCurrentStepFix;
+
+            UpdatePassLock(now, lateral);
 
             // manual-flex: forward driving on the dashed resume pass re-engages
             // the plan; with no manual pass left there is nothing to wait for
@@ -1057,6 +1069,52 @@ namespace AgOpenGPS
                 else if (now == resume && runDistance > flexResumeDistance)
                     isFlexPause = false;
             }
+        }
+
+        // accumulate the continuous on-strip distance; fires OnPassLocked ONCE when
+        // passLockDistance is reached (leaving the strip or reversing starts over)
+        private void UpdatePassLock(CPlanEntry now, double lateral)
+        {
+            bool onStrip = !mf.isReverse
+                && Math.Abs(lateral) < 0.25 * WorkWidth()
+                && mf.bnd.IsPointInsideFenceArea(mf.pivotAxlePos);
+
+            if (!onStrip || now != lockEntry)
+            {
+                lockEntry = onStrip ? now : null;
+                lockDistance = 0;
+                return;
+            }
+
+            double before = lockDistance;
+            lockDistance += mf.distanceCurrentStepFix;
+            if (before < passLockDistance && lockDistance >= passLockDistance)
+                OnPassLocked();
+        }
+
+        // certainly on a plan pass now: a turn state stuck from before this pass can
+        // never resolve itself - drop it so the builder retries from a known-good spot
+        private void OnPassLocked()
+        {
+            var yt = mf.yt;
+            if (!yt.isYouTurnBtnOn || yt.isYouTurnTriggered) return;
+
+            bool creationLatch = yt.isTurnCreationTooClose;   // FailCreate parked at phase 11
+            bool startBehind = false;
+            if (!creationLatch && yt.youTurnPhase == 10 && yt.ytList.Count > 2)
+            {
+                // a built turn whose start lies behind the vehicle can never trigger
+                double fwd = (yt.ytList[2].easting - mf.pivotAxlePos.easting) * Math.Sin(mf.fixHeading)
+                           + (yt.ytList[2].northing - mf.pivotAxlePos.northing) * Math.Cos(mf.fixHeading);
+                startBehind = fwd < 0;
+            }
+            if (!creationLatch && !startBehind) return;
+
+            Log.EventWriter("TurnPlan: pass lock reset of stuck turn, phase " + yt.youTurnPhase
+                + (creationLatch ? " (creation latch)" : " (start behind vehicle)"));
+            yt.isTurnCreationTooClose = false;
+            yt.turnTooCloseTrigger = false;
+            yt.ResetCreatedYouTurn();
         }
 
         private void EnsureGeometry(CPlanEntry p)
