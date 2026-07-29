@@ -1601,4 +1601,25 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsDefineTurnBounds" xml:space="preserve">
     <value>Prvo definiraj granice okretanja (Map pogled: dvije turn linije + granica polja)</value>
   </data>
+  <data name="gsOrchard" xml:space="preserve">
+    <value>Voćnjak</value>
+  </data>
+  <data name="gsOrchardPlanner" xml:space="preserve">
+    <value>Planer voćnjaka</value>
+  </data>
+  <data name="gsNewOrchardPlanting" xml:space="preserve">
+    <value>Novi voćnjak (sadnja)</value>
+  </data>
+  <data name="gsNewOrchardPlantingLayoutCaps" xml:space="preserve">
+    <value>NOVI VOĆNJAK - raspored sadnje</value>
+  </data>
+  <data name="gsOrchardPlan" xml:space="preserve">
+    <value>Plan voćnjaka</value>
+  </data>
+  <data name="gsOrchardModePlanInfo" xml:space="preserve">
+    <value>Način voćnjak: plan = redovi + postavke alata</value>
+  </data>
+  <data name="gsFixedOrchardRowNoNudge" xml:space="preserve">
+    <value>Fiksni red voćnjaka - bez pomaka</value>
+  </data>
 </root>

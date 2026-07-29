@@ -1,4 +1,5 @@
-﻿using OpenTK.Graphics.OpenGL;
+﻿using AgOpenGPS.Core.Translations;
+using OpenTK.Graphics.OpenGL;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -140,7 +141,7 @@ namespace AgOpenGPS
             {
                 if (IsFixedTrack(idx))
                 {
-                    mf.TimedMessageBox(1500, "Orchard", "Fixed orchard row - no nudge");
+                    mf.TimedMessageBox(1500, gStr.gsOrchard, gStr.gsFixedOrchardRowNoNudge);
                     return;
                 }
                 if (gArr[idx].mode == TrackMode.AB)
@@ -197,7 +198,7 @@ namespace AgOpenGPS
             {
                 if (IsFixedTrack(idx))
                 {
-                    mf.TimedMessageBox(1500, "Orchard", "Fixed orchard row - no nudge");
+                    mf.TimedMessageBox(1500, gStr.gsOrchard, gStr.gsFixedOrchardRowNoNudge);
                     return;
                 }
                 if (gArr[idx].mode == TrackMode.AB)

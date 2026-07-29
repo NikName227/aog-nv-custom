@@ -13,7 +13,7 @@ namespace AgOpenGPS
     // output as ordinary AOG Curve tracks so the existing guidance + K-turn drives them.
     // Multi-pass / safe-space / tree-marking are later phases.
 
-    public enum RowSource { Manual = 0, KmlLine = 1, KmlPoints = 2, Lidar = 3, Recorded = 4 }
+    public enum RowSource { Manual = 0, KmlLine = 1, KmlPoints = 2, Lidar = 3, Recorded = 4, Generated = 5 }
 
     /// <summary>One orchard row: its control points, the derived dense curve, and (optional) trees.</summary>
     public class OrchRow
@@ -71,6 +71,269 @@ namespace AgOpenGPS
     public static class COrchard
     {
         public const double ExtendMeters = 150.0; // guidance tail length each end (matches Smart AB)
+
+        // ── Generator (planting): lay out a NEW orchard inside the boundary ──
+        // Planting turns F50 around: there are no trees yet, so the rows and the seedling
+        // positions are GENERATED from one drawn reference line (straight AB or a curve)
+        // plus the spacing settings, and the tractor is then guided so the planter drops
+        // each seedling on its planned spot.
+        //
+        // Layout rules:
+        //   rowSpacing   - lateral distance between rows; the reference line is copied
+        //                  sideways both ways until the field is covered
+        //   headland     - turning strip: each row STOPS this far (along the row) before
+        //                  the boundary
+        //   treeSpacing  - distance between seedlings along a row
+        //   treeSetback  - no seedling closer than this to the boundary (any direction)
+        //   stagger      - every other row shifted half a tree spacing along the row
+        //                  (triangular planting instead of a rectangular grid)
+        //
+        // Tree positions are taken at the SAME arc-length parameter of the reference line
+        // on every row, so they line up across rows (radially on a curved reference; on a
+        // curve the along-row spacing of the inner/outer rows therefore differs slightly).
+        //
+        // bounds[0] = outer fence, bounds[1..] = inner exclusions (islands).
+        public static List<OrchRow> GenerateOrchard(List<vec2> refPts, List<List<vec2>> bounds,
+            double rowSpacing, double treeSpacing, double headland, double treeSetback,
+            bool stagger, out string err)
+        {
+            err = null;
+            var rows = new List<OrchRow>();
+
+            if (refPts == null || refPts.Count < 2) { err = "Draw a reference line first (2 points or more)"; return rows; }
+            if (bounds == null || bounds.Count == 0 || bounds[0] == null || bounds[0].Count < 3)
+            { err = "A field boundary is needed to lay out the orchard"; return rows; }
+            if (rowSpacing < 0.5) { err = "Row spacing too small"; return rows; }
+            if (treeSpacing < 0.3) { err = "Tree spacing too small"; return rows; }
+
+            var outer = bounds[0];
+            var ordered = OrderEndToEnd(refPts);
+            bool refIsStraight = ordered.Count == 2;
+
+            // reference curve, densified fine enough to interpolate tree spots on
+            var refCurve = Densify(ordered, 0.5);
+            if (refCurve.Count < 2) { err = "Reference line too short"; return rows; }
+            CABCurve.CalculateHeadings(ref refCurve);
+
+            // stretch it past the field so every row spans the whole boundary
+            BoundsOf(outer, out double minE, out double minN, out double maxE, out double maxN);
+            double diag = Math.Sqrt((maxE - minE) * (maxE - minE) + (maxN - minN) * (maxN - minN));
+            ExtendEnds(refCurve, diag + rowSpacing);
+            CABCurve.CalculateHeadings(ref refCurve);
+
+            // arc length along the reference = the shared longitudinal ruler for all rows
+            var sRef = new double[refCurve.Count];
+            for (int i = 1; i < refCurve.Count; i++)
+            {
+                double de = refCurve[i].easting - refCurve[i - 1].easting;
+                double dn = refCurve[i].northing - refCurve[i - 1].northing;
+                sRef[i] = sRef[i - 1] + Math.Sqrt(de * de + dn * dn);
+            }
+
+            // how far sideways the boundary reaches from the reference line
+            double latMin = double.MaxValue, latMax = -double.MaxValue;
+            foreach (var b in outer)
+            {
+                double lat = SignedLateral(refCurve, b);
+                if (lat < latMin) latMin = lat;
+                if (lat > latMax) latMax = lat;
+            }
+            if (latMin > latMax) { err = "Reference line does not cross the field"; return rows; }
+
+            int kMin = (int)Math.Floor(latMin / rowSpacing);
+            int kMax = (int)Math.Ceiling(latMax / rowSpacing);
+            if (kMax - kMin > 2000) { err = "Row spacing too small for this field"; return rows; }
+
+            for (int k = kMin; k <= kMax; k++)
+            {
+                var rowCurve = OffsetCurve(refCurve, k * rowSpacing);
+
+                // keep the longest run of points that lie inside the field
+                if (!LongestInsideRun(rowCurve, bounds, out int lo, out int hi)) continue;
+
+                // turning strip: pull both ends back by the headland width, along the row
+                double sIn = sRef[lo] + headland, sOut = sRef[hi] - headland;
+                while (lo <= hi && sRef[lo] < sIn) lo++;
+                while (hi >= lo && sRef[hi] > sOut) hi--;
+                if (hi - lo < 1) continue;
+
+                var row = new OrchRow { source = RowSource.Generated, name = "Row " + (rows.Count + 1) };
+
+                // control points: a straight reference needs only the two ends
+                if (refIsStraight)
+                {
+                    row.pts.Add(new vec2(rowCurve[lo].easting, rowCurve[lo].northing));
+                    row.pts.Add(new vec2(rowCurve[hi].easting, rowCurve[hi].northing));
+                }
+                else
+                {
+                    double sLast = double.MinValue;
+                    for (int i = lo; i <= hi; i++)
+                    {
+                        if (i != lo && i != hi && sRef[i] - sLast < 4.0) continue;
+                        row.pts.Add(new vec2(rowCurve[i].easting, rowCurve[i].northing));
+                        sLast = sRef[i];
+                    }
+                }
+                row.BuildCurve();
+                if (row.curve.Count < 2) continue;
+
+                // seedlings at shared multiples of the tree spacing -> aligned across rows
+                double shift = (stagger && (k & 1) != 0) ? treeSpacing * 0.5 : 0.0;
+                long m0 = (long)Math.Ceiling((sRef[lo] - shift) / treeSpacing);
+                long m1 = (long)Math.Floor((sRef[hi] - shift) / treeSpacing);
+                int cursor = lo;
+                for (long m = m0; m <= m1; m++)
+                {
+                    double target = m * treeSpacing + shift;
+                    while (cursor < hi && sRef[cursor + 1] < target) cursor++;
+                    if (cursor >= hi) break;
+
+                    double span = sRef[cursor + 1] - sRef[cursor];
+                    double f = span > 0.0001 ? (target - sRef[cursor]) / span : 0.0;
+                    var tree = new vec2(
+                        rowCurve[cursor].easting + (rowCurve[cursor + 1].easting - rowCurve[cursor].easting) * f,
+                        rowCurve[cursor].northing + (rowCurve[cursor + 1].northing - rowCurve[cursor].northing) * f);
+
+                    if (!IsInsideField(tree, bounds)) continue;
+                    if (treeSetback > 0 && DistToBounds(tree, bounds) < treeSetback) continue;
+                    row.trees.Add(tree);
+                }
+
+                if (row.trees.Count == 0) continue;   // a row with no seedlings is not a row
+                rows.Add(row);
+            }
+
+            if (rows.Count == 0) err = "Nothing generated - check the spacings and the headland width";
+            return rows;
+        }
+
+        /// <summary>Re-place the seedlings of a row along its (possibly hand-edited) curve.</summary>
+        public static void PlaceTreesOnRow(OrchRow row, List<List<vec2>> bounds,
+            double treeSpacing, double treeSetback, double headland)
+        {
+            row.trees.Clear();
+            if (row.curve.Count < 2 || treeSpacing < 0.3) return;
+
+            // arc length along this row, ends pulled back by the headland
+            var s = new double[row.curve.Count];
+            for (int i = 1; i < row.curve.Count; i++)
+            {
+                double de = row.curve[i].easting - row.curve[i - 1].easting;
+                double dn = row.curve[i].northing - row.curve[i - 1].northing;
+                s[i] = s[i - 1] + Math.Sqrt(de * de + dn * dn);
+            }
+            double total = s[s.Length - 1];
+            double from = headland, to = total - headland;
+            if (to <= from) return;
+
+            int cursor = 0;
+            for (double target = from; target <= to + 0.0001; target += treeSpacing)
+            {
+                while (cursor < row.curve.Count - 2 && s[cursor + 1] < target) cursor++;
+                double span = s[cursor + 1] - s[cursor];
+                double f = span > 0.0001 ? (target - s[cursor]) / span : 0.0;
+                var tree = new vec2(
+                    row.curve[cursor].easting + (row.curve[cursor + 1].easting - row.curve[cursor].easting) * f,
+                    row.curve[cursor].northing + (row.curve[cursor + 1].northing - row.curve[cursor].northing) * f);
+
+                if (bounds != null && bounds.Count > 0 && bounds[0] != null && bounds[0].Count >= 3)
+                {
+                    if (!IsInsideField(tree, bounds)) continue;
+                    if (treeSetback > 0 && DistToBounds(tree, bounds) < treeSetback) continue;
+                }
+                row.trees.Add(tree);
+            }
+        }
+
+        // ── Generator helpers ─────────────────────────────────────────────
+        private static void BoundsOf(List<vec2> poly, out double minE, out double minN,
+            out double maxE, out double maxN)
+        {
+            minE = minN = double.MaxValue; maxE = maxN = -double.MaxValue;
+            foreach (var p in poly)
+            {
+                if (p.easting < minE) minE = p.easting;
+                if (p.easting > maxE) maxE = p.easting;
+                if (p.northing < minN) minN = p.northing;
+                if (p.northing > maxN) maxN = p.northing;
+            }
+        }
+
+        // lateral offset of a point from the curve: + = right of the curve heading
+        private static double SignedLateral(List<vec3> curve, vec2 p)
+        {
+            double best = double.MaxValue; int bi = 0;
+            for (int i = 0; i < curve.Count; i++)
+            {
+                double de = curve[i].easting - p.easting, dn = curve[i].northing - p.northing;
+                double d = de * de + dn * dn;
+                if (d < best) { best = d; bi = i; }
+            }
+            double rx = Math.Sin(curve[bi].heading + glm.PIBy2), ry = Math.Cos(curve[bi].heading + glm.PIBy2);
+            return (p.easting - curve[bi].easting) * rx + (p.northing - curve[bi].northing) * ry;
+        }
+
+        public static bool IsInsideField(vec2 p, List<List<vec2>> bounds)
+        {
+            if (bounds == null || bounds.Count == 0) return true;
+            if (!bounds[0].IsPointInPolygon(p)) return false;
+            for (int i = 1; i < bounds.Count; i++)
+                if (bounds[i] != null && bounds[i].Count >= 3 && bounds[i].IsPointInPolygon(p)) return false;
+            return true;
+        }
+
+        /// <summary>Shortest distance from a point to any boundary ring (outer or island).</summary>
+        public static double DistToBounds(vec2 p, List<List<vec2>> bounds)
+        {
+            double best = double.MaxValue;
+            if (bounds == null) return best;
+            foreach (var ring in bounds)
+            {
+                if (ring == null || ring.Count < 2) continue;
+                for (int i = 0; i < ring.Count; i++)
+                {
+                    double d = DistToSegment(p, ring[i], ring[(i + 1) % ring.Count]);
+                    if (d < best) best = d;
+                }
+            }
+            return best;
+        }
+
+        private static double DistToSegment(vec2 p, vec2 a, vec2 b)
+        {
+            double vx = b.easting - a.easting, vy = b.northing - a.northing;
+            double wx = p.easting - a.easting, wy = p.northing - a.northing;
+            double len2 = vx * vx + vy * vy;
+            double t = len2 > 0.000001 ? (wx * vx + wy * vy) / len2 : 0.0;
+            if (t < 0) t = 0; else if (t > 1) t = 1;
+            double dx = wx - vx * t, dy = wy - vy * t;
+            return Math.Sqrt(dx * dx + dy * dy);
+        }
+
+        // longest stretch of consecutive curve points that lies inside the field
+        private static bool LongestInsideRun(List<vec3> curve, List<List<vec2>> bounds,
+            out int lo, out int hi)
+        {
+            lo = hi = -1;
+            int bestLen = 0, runStart = -1;
+            for (int i = 0; i <= curve.Count; i++)
+            {
+                bool inside = i < curve.Count
+                    && IsInsideField(new vec2(curve[i].easting, curve[i].northing), bounds);
+                if (inside)
+                {
+                    if (runStart < 0) runStart = i;
+                }
+                else if (runStart >= 0)
+                {
+                    int len = i - runStart;
+                    if (len > bestLen) { bestLen = len; lo = runStart; hi = i - 1; }
+                    runStart = -1;
+                }
+            }
+            return bestLen >= 2;
+        }
 
         // ── Planner (phase 2): passes per inter-row from the implement settings ──
         // Working mode: 0 = center (symmetric belt coverage), 1 = left, 2 = right

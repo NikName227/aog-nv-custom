@@ -269,6 +269,9 @@ namespace AgOpenGPS
         /// <summary>NV custom - field pass plan (F05 phase 3)</summary>
         public CTurnPlan plan;
 
+        /// <summary>NV custom - planting job: seedling spots + what is already planted (F50)</summary>
+        public CPlanting planting;
+
         /// <summary>
         /// Building a headland instance
         /// </summary>
@@ -465,6 +468,7 @@ namespace AgOpenGPS
             //turn limit lines (NV custom)
             tnl = new CTurnLimitLines(this);
             plan = new CTurnPlan(this);
+            planting = new CPlanting(this);
 
             //nmea simulator built in.
             sim = new CSim(this);
@@ -1283,6 +1287,9 @@ namespace AgOpenGPS
             recPath.recList.Clear();
             recPath.StopDrivingRecordedPath();
             panelDrag.Visible = false;
+
+            //F50 planting: the job belongs to the field that is being closed
+            planting.Clear();
 
             //make sure hydraulic lift is off
             p_239.pgn[p_239.hydLift] = 0;

@@ -92,6 +92,9 @@ namespace AgOpenGPS
             // --- Tracks ---
             FileLoadTracks();
 
+            // --- Planting job (F50): seedling spots + what is already in the ground ---
+            planting.Load(dir);
+
             // --- Sections into triStrip + area ---
             if (TryLoad("Sections.txt", LoadCriticality.Optional, () => SectionsFiles.Load(dir), out var sections))
             {

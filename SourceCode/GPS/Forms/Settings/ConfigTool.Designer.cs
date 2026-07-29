@@ -49,6 +49,10 @@ namespace AgOpenGPS
                 nudOrchardSafe.Value = (decimal)Properties.ToolSettings.Default.setTool_orchardSafeSpace;
                 chkOrchardOnePass.Checked = Properties.ToolSettings.Default.setTool_orchardOnePass;
                 chkOrchardCenterFirst.Checked = Properties.ToolSettings.Default.setTool_orchardCenterFirst;
+                nudPlantLateral.Value = NudClamp(nudPlantLateral,
+                    (decimal)Properties.ToolSettings.Default.setTool_plantLateralOffset);
+                nudPlantBehind.Value = NudClamp(nudPlantBehind,
+                    (decimal)Properties.ToolSettings.Default.setTool_plantDistBehindAxle);
 
                 //seed the toggle state for this visit (see rbtnOrchard_Click)
                 orchardWasChecked = Properties.ToolSettings.Default.setTool_isToolOrchard
@@ -105,6 +109,15 @@ namespace AgOpenGPS
             }
         }
 
+        //a settings file from another install can hold a value outside this control's
+        //range - clamp instead of throwing the whole tab
+        private static decimal NudClamp(NumericUpDown nud, decimal v)
+        {
+            if (v < nud.Minimum) return nud.Minimum;
+            if (v > nud.Maximum) return nud.Maximum;
+            return v;
+        }
+
         //F50: the settings panel covers the hitch-type pictures while Orchard is chosen
         private void rbtnOrchard_CheckedChanged(object sender, EventArgs e)
         {
@@ -141,6 +154,8 @@ namespace AgOpenGPS
                 Properties.ToolSettings.Default.setTool_orchardSafeSpace = (double)nudOrchardSafe.Value;
                 Properties.ToolSettings.Default.setTool_orchardOnePass = chkOrchardOnePass.Checked;
                 Properties.ToolSettings.Default.setTool_orchardCenterFirst = chkOrchardCenterFirst.Checked;
+                Properties.ToolSettings.Default.setTool_plantLateralOffset = (double)nudPlantLateral.Value;
+                Properties.ToolSettings.Default.setTool_plantDistBehindAxle = (double)nudPlantBehind.Value;
 
                 if (rbtnOrchard.Checked)
                 {
@@ -193,6 +208,8 @@ namespace AgOpenGPS
             mf.tool.isToolTBT = Properties.ToolSettings.Default.setTool_isToolTBT;
             mf.tool.isToolFrontFixed = Properties.ToolSettings.Default.setTool_isToolFront;
             mf.tool.isToolOrchard = Properties.ToolSettings.Default.setTool_isToolOrchard;
+            mf.tool.plantLateralOffset = Properties.ToolSettings.Default.setTool_plantLateralOffset;
+            mf.tool.plantDistBehindAxle = Properties.ToolSettings.Default.setTool_plantDistBehindAxle;
 
             //mf.tool.hitchLength = (double)nudDrawbarLength.Value * mf.inchOrCm2m;
             if (Properties.ToolSettings.Default.setTool_isToolFront && mf.tool.hitchLength < 0)

@@ -50,6 +50,23 @@ namespace AgOpenGPS
             this.btnDeleteRow = new System.Windows.Forms.Button();
             this.btnCancel = new System.Windows.Forms.Button();
             this.btnAccept = new System.Windows.Forms.Button();
+            this.btnNewOrchard = new System.Windows.Forms.Button();
+            this.btnTreesOnRow = new System.Windows.Forms.Button();
+            this.pnlGen = new System.Windows.Forms.Panel();
+            this.lblGenCap = new System.Windows.Forms.Label();
+            this.lblGenRowSpace = new System.Windows.Forms.Label();
+            this.nudGenRowSpace = new System.Windows.Forms.NumericUpDown();
+            this.lblGenTreeSpace = new System.Windows.Forms.Label();
+            this.nudGenTreeSpace = new System.Windows.Forms.NumericUpDown();
+            this.lblGenHeadland = new System.Windows.Forms.Label();
+            this.nudGenHeadland = new System.Windows.Forms.NumericUpDown();
+            this.lblGenSetback = new System.Windows.Forms.Label();
+            this.nudGenSetback = new System.Windows.Forms.NumericUpDown();
+            this.chkGenStagger = new System.Windows.Forms.CheckBox();
+            this.btnGenLine = new System.Windows.Forms.Button();
+            this.btnGenerate = new System.Windows.Forms.Button();
+            this.lblGenResult = new System.Windows.Forms.Label();
+            this.btnGenClose = new System.Windows.Forms.Button();
             this.SuspendLayout();
             //
             // oglSelf
@@ -532,6 +549,156 @@ namespace AgOpenGPS
             this.btnAccept.UseVisualStyleBackColor = false;
             this.btnAccept.Click += new System.EventHandler(this.btnAccept_Click);
             //
+            // btnNewOrchard (planting: lay out a brand new orchard from one reference
+            // line + the spacing settings; opens pnlGen over the row-management column)
+            //
+            this.btnNewOrchard.BackColor = System.Drawing.Color.PaleGreen;
+            this.btnNewOrchard.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnNewOrchard.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Bold);
+            this.btnNewOrchard.Location = new System.Drawing.Point(684, 53);
+            this.btnNewOrchard.Name = "btnNewOrchard";
+            this.btnNewOrchard.Size = new System.Drawing.Size(300, 36);
+            this.btnNewOrchard.TabIndex = 39;
+            this.btnNewOrchard.Text = "New orchard (planting)";
+            this.btnNewOrchard.UseVisualStyleBackColor = false;
+            this.btnNewOrchard.Click += new System.EventHandler(this.btnNewOrchard_Click);
+            //
+            // btnTreesOnRow (planting: re-space the seedlings along the active row after
+            // it was hand-edited, and put seedlings on a row drawn by hand for an odd
+            // corner of the field). Tucked into the free corner of the arrow pad.
+            //
+            this.btnTreesOnRow.BackColor = System.Drawing.Color.OldLace;
+            this.btnTreesOnRow.Enabled = false;
+            this.btnTreesOnRow.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnTreesOnRow.Font = new System.Drawing.Font("Tahoma", 8.25F, System.Drawing.FontStyle.Bold);
+            this.btnTreesOnRow.Location = new System.Drawing.Point(772, 220);
+            this.btnTreesOnRow.Name = "btnTreesOnRow";
+            this.btnTreesOnRow.Size = new System.Drawing.Size(78, 58);
+            this.btnTreesOnRow.TabIndex = 41;
+            this.btnTreesOnRow.Text = "Trees\r\non row";
+            this.btnTreesOnRow.UseVisualStyleBackColor = false;
+            this.btnTreesOnRow.Click += new System.EventHandler(this.btnTreesOnRow_Click);
+            //
+            // pnlGen - planting layout settings; sits over the row buttons so the drawing
+            // tools (arrow pad, add/delete point, measure) stay reachable above it
+            //
+            this.pnlGen.BackColor = System.Drawing.Color.Honeydew;
+            this.pnlGen.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            this.pnlGen.Location = new System.Drawing.Point(680, 366);
+            this.pnlGen.Name = "pnlGen";
+            this.pnlGen.Size = new System.Drawing.Size(304, 330);
+            this.pnlGen.TabIndex = 40;
+            this.pnlGen.Visible = false;
+            this.lblGenCap.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
+            this.lblGenCap.ForeColor = System.Drawing.Color.DarkGreen;
+            this.lblGenCap.Location = new System.Drawing.Point(8, 4);
+            this.lblGenCap.Name = "lblGenCap";
+            this.lblGenCap.Size = new System.Drawing.Size(288, 20);
+            this.lblGenCap.Text = "NEW ORCHARD - planting layout";
+            this.lblGenRowSpace.Font = new System.Drawing.Font("Tahoma", 9.75F);
+            this.lblGenRowSpace.Location = new System.Drawing.Point(6, 30);
+            this.lblGenRowSpace.Name = "lblGenRowSpace";
+            this.lblGenRowSpace.Size = new System.Drawing.Size(160, 24);
+            this.lblGenRowSpace.Text = "Row spacing (m)";
+            this.nudGenRowSpace.DecimalPlaces = 2;
+            this.nudGenRowSpace.Font = new System.Drawing.Font("Tahoma", 11F);
+            this.nudGenRowSpace.Increment = new decimal(new int[] { 1, 0, 0, 65536 });
+            this.nudGenRowSpace.Location = new System.Drawing.Point(172, 26);
+            this.nudGenRowSpace.Maximum = new decimal(new int[] { 30, 0, 0, 0 });
+            this.nudGenRowSpace.Minimum = new decimal(new int[] { 5, 0, 0, 65536 });
+            this.nudGenRowSpace.Name = "nudGenRowSpace";
+            this.nudGenRowSpace.Size = new System.Drawing.Size(118, 28);
+            this.nudGenRowSpace.Value = new decimal(new int[] { 4, 0, 0, 0 });
+            this.lblGenTreeSpace.Font = new System.Drawing.Font("Tahoma", 9.75F);
+            this.lblGenTreeSpace.Location = new System.Drawing.Point(6, 60);
+            this.lblGenTreeSpace.Name = "lblGenTreeSpace";
+            this.lblGenTreeSpace.Size = new System.Drawing.Size(160, 24);
+            this.lblGenTreeSpace.Text = "Tree spacing (m)";
+            this.nudGenTreeSpace.DecimalPlaces = 2;
+            this.nudGenTreeSpace.Font = new System.Drawing.Font("Tahoma", 11F);
+            this.nudGenTreeSpace.Increment = new decimal(new int[] { 1, 0, 0, 65536 });
+            this.nudGenTreeSpace.Location = new System.Drawing.Point(172, 56);
+            this.nudGenTreeSpace.Maximum = new decimal(new int[] { 30, 0, 0, 0 });
+            this.nudGenTreeSpace.Minimum = new decimal(new int[] { 3, 0, 0, 65536 });
+            this.nudGenTreeSpace.Name = "nudGenTreeSpace";
+            this.nudGenTreeSpace.Size = new System.Drawing.Size(118, 28);
+            this.nudGenTreeSpace.Value = new decimal(new int[] { 3, 0, 0, 0 });
+            this.lblGenHeadland.Font = new System.Drawing.Font("Tahoma", 9.75F);
+            this.lblGenHeadland.Location = new System.Drawing.Point(6, 90);
+            this.lblGenHeadland.Name = "lblGenHeadland";
+            this.lblGenHeadland.Size = new System.Drawing.Size(160, 24);
+            this.lblGenHeadland.Text = "Headland - row end (m)";
+            this.nudGenHeadland.DecimalPlaces = 1;
+            this.nudGenHeadland.Font = new System.Drawing.Font("Tahoma", 11F);
+            this.nudGenHeadland.Increment = new decimal(new int[] { 5, 0, 0, 65536 });
+            this.nudGenHeadland.Location = new System.Drawing.Point(172, 86);
+            this.nudGenHeadland.Maximum = new decimal(new int[] { 50, 0, 0, 0 });
+            this.nudGenHeadland.Name = "nudGenHeadland";
+            this.nudGenHeadland.Size = new System.Drawing.Size(118, 28);
+            this.nudGenHeadland.Value = new decimal(new int[] { 6, 0, 0, 0 });
+            this.lblGenSetback.Font = new System.Drawing.Font("Tahoma", 9.75F);
+            this.lblGenSetback.Location = new System.Drawing.Point(6, 120);
+            this.lblGenSetback.Name = "lblGenSetback";
+            this.lblGenSetback.Size = new System.Drawing.Size(160, 24);
+            this.lblGenSetback.Text = "Tree to boundary (m)";
+            this.nudGenSetback.DecimalPlaces = 1;
+            this.nudGenSetback.Font = new System.Drawing.Font("Tahoma", 11F);
+            this.nudGenSetback.Increment = new decimal(new int[] { 5, 0, 0, 65536 });
+            this.nudGenSetback.Location = new System.Drawing.Point(172, 116);
+            this.nudGenSetback.Maximum = new decimal(new int[] { 50, 0, 0, 0 });
+            this.nudGenSetback.Name = "nudGenSetback";
+            this.nudGenSetback.Size = new System.Drawing.Size(118, 28);
+            this.nudGenSetback.Value = new decimal(new int[] { 2, 0, 0, 0 });
+            this.chkGenStagger.Font = new System.Drawing.Font("Tahoma", 9.75F);
+            this.chkGenStagger.Location = new System.Drawing.Point(6, 150);
+            this.chkGenStagger.Name = "chkGenStagger";
+            this.chkGenStagger.Size = new System.Drawing.Size(290, 24);
+            this.chkGenStagger.Text = "Stagger rows (half tree spacing)";
+            this.btnGenLine.BackColor = System.Drawing.Color.AliceBlue;
+            this.btnGenLine.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnGenLine.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
+            this.btnGenLine.Location = new System.Drawing.Point(6, 178);
+            this.btnGenLine.Name = "btnGenLine";
+            this.btnGenLine.Size = new System.Drawing.Size(140, 46);
+            this.btnGenLine.Text = "1 - Draw line";
+            this.btnGenLine.UseVisualStyleBackColor = false;
+            this.btnGenLine.Click += new System.EventHandler(this.btnGenLine_Click);
+            this.btnGenerate.BackColor = System.Drawing.Color.LightGoldenrodYellow;
+            this.btnGenerate.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnGenerate.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
+            this.btnGenerate.Location = new System.Drawing.Point(152, 178);
+            this.btnGenerate.Name = "btnGenerate";
+            this.btnGenerate.Size = new System.Drawing.Size(144, 46);
+            this.btnGenerate.Text = "2 - Generate";
+            this.btnGenerate.UseVisualStyleBackColor = false;
+            this.btnGenerate.Click += new System.EventHandler(this.btnGenerate_Click);
+            this.lblGenResult.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
+            this.lblGenResult.ForeColor = System.Drawing.Color.DimGray;
+            this.lblGenResult.Location = new System.Drawing.Point(6, 230);
+            this.lblGenResult.Name = "lblGenResult";
+            this.lblGenResult.Size = new System.Drawing.Size(290, 54);
+            this.btnGenClose.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
+            this.btnGenClose.Location = new System.Drawing.Point(6, 288);
+            this.btnGenClose.Name = "btnGenClose";
+            this.btnGenClose.Size = new System.Drawing.Size(290, 36);
+            this.btnGenClose.Text = "Close";
+            this.btnGenClose.UseVisualStyleBackColor = true;
+            this.btnGenClose.Click += new System.EventHandler(this.btnGenClose_Click);
+            this.pnlGen.Controls.Add(this.lblGenCap);
+            this.pnlGen.Controls.Add(this.lblGenRowSpace);
+            this.pnlGen.Controls.Add(this.nudGenRowSpace);
+            this.pnlGen.Controls.Add(this.lblGenTreeSpace);
+            this.pnlGen.Controls.Add(this.nudGenTreeSpace);
+            this.pnlGen.Controls.Add(this.lblGenHeadland);
+            this.pnlGen.Controls.Add(this.nudGenHeadland);
+            this.pnlGen.Controls.Add(this.lblGenSetback);
+            this.pnlGen.Controls.Add(this.nudGenSetback);
+            this.pnlGen.Controls.Add(this.chkGenStagger);
+            this.pnlGen.Controls.Add(this.btnGenLine);
+            this.pnlGen.Controls.Add(this.btnGenerate);
+            this.pnlGen.Controls.Add(this.lblGenResult);
+            this.pnlGen.Controls.Add(this.btnGenClose);
+            //
             // FormOrchardPlanner
             //
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
@@ -576,6 +743,9 @@ namespace AgOpenGPS
             this.Controls.Add(this.btnNextRow);
             this.Controls.Add(this.btnCancel);
             this.Controls.Add(this.btnAccept);
+            this.Controls.Add(this.btnNewOrchard);
+            this.Controls.Add(this.btnTreesOnRow);
+            this.Controls.Add(this.pnlGen);
             this.Controls.Add(this.oglSelf);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.None;
             this.MinimumSize = new System.Drawing.Size(820, 560);
@@ -630,5 +800,23 @@ namespace AgOpenGPS
         private System.Windows.Forms.Button btnDeleteRow;
         private System.Windows.Forms.Button btnCancel;
         private System.Windows.Forms.Button btnAccept;
+        //planting: new-orchard layout generator
+        private System.Windows.Forms.Button btnNewOrchard;
+        private System.Windows.Forms.Button btnTreesOnRow;
+        private System.Windows.Forms.Panel pnlGen;
+        private System.Windows.Forms.Label lblGenCap;
+        private System.Windows.Forms.Label lblGenRowSpace;
+        private System.Windows.Forms.NumericUpDown nudGenRowSpace;
+        private System.Windows.Forms.Label lblGenTreeSpace;
+        private System.Windows.Forms.NumericUpDown nudGenTreeSpace;
+        private System.Windows.Forms.Label lblGenHeadland;
+        private System.Windows.Forms.NumericUpDown nudGenHeadland;
+        private System.Windows.Forms.Label lblGenSetback;
+        private System.Windows.Forms.NumericUpDown nudGenSetback;
+        private System.Windows.Forms.CheckBox chkGenStagger;
+        private System.Windows.Forms.Button btnGenLine;
+        private System.Windows.Forms.Button btnGenerate;
+        private System.Windows.Forms.Label lblGenResult;
+        private System.Windows.Forms.Button btnGenClose;
     }
 }

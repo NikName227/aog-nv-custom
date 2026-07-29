@@ -139,6 +139,31 @@ namespace AgOpenGPS
             });
         }
 
+        /// <summary>
+        /// Load whatever tiles already exist on disk around the position - no WFS
+        /// calls, no network. For windows that just want to show what is already
+        /// cached (e.g. Geoportal boundary on open) regardless of the main-map
+        /// "show parcels" toggle or an explicit Refresh.
+        /// </summary>
+        public static void LoadDiskCoverage(double lat, double lon)
+        {
+            var (e, n) = CadastralWfsClient.ToEN3765(lat, lon);
+            foreach (var key in TilesAround(e, n))
+            {
+                bool have;
+                lock (gate) have = tiles.ContainsKey(key);
+                if (have) continue;
+
+                string file = TilePath(key.e, key.n);
+                if (!File.Exists(file)) continue;
+
+                var list = CadastralWfsClient.LoadTile(file, out _);
+                if (list == null) continue;
+
+                lock (gate) { tiles[key] = list; Version++; }
+            }
+        }
+
         // tiles whose 1x1 km square comes within CoverRadius of the position
         private static IEnumerable<(int e, int n)> TilesAround(double e, double n)
         {
