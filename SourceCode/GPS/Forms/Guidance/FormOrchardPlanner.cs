@@ -99,7 +99,7 @@ namespace AgOpenGPS
             foreach (var r in loaded) rows.Add(r);
 
             redraw.Interval = 250;
-            redraw.Tick += (s, e) => { RecordSample(); oglSelf.Invalidate(); };
+            redraw.Tick += (s, e) => { RecordSample(); if (recOn) CenterOnVehicle(); oglSelf.Invalidate(); };
 
             this.KeyPreview = true;
             this.KeyDown += (s, e) => { if (e.KeyCode == Keys.Escape) Close(); };
@@ -513,6 +513,17 @@ namespace AgOpenGPS
             }
         }
 
+        // SIM 0729 t1: while a row is being recorded the driver is steering, not panning -
+        // keep the vehicle in the middle of the view. Only while recording: in browse/edit
+        // the pan/zoom the user set stays exactly where it was (zoom is never touched).
+        private void CenterOnVehicle()
+        {
+            if (mf == null || mf.maxFieldDistance < 1.0) return;
+            vec3 piv = mf.pivotAxlePos;
+            sX = (mf.fieldCenterX - piv.easting) / mf.maxFieldDistance;
+            sY = (mf.fieldCenterY - piv.northing) / mf.maxFieldDistance;
+        }
+
         private void RecordSample()
         {
             if (!recOn || mf == null || !mf.isJobStarted) return;
@@ -554,9 +565,10 @@ namespace AgOpenGPS
             rows[workIdx].BuildCurve();
             midlines.Clear();            // rows changed -> old path is stale
             //the seedlings still sit on the OLD shape - say so instead of moving them
-            //behind the driver's back (a small nudge may well be intentional)
+            //behind the driver's back (a small nudge may well be intentional).
+            //SIM 0729 t2: 'Trees on row' is gone, so the way out is a re-generate.
             lblWarn.Text = rows[workIdx].trees.Count > 0
-                ? "Row edited - tap 'Trees on row' to re-space the seedlings"
+                ? "Row edited - seedlings still on the old shape (Generate again to re-lay them)"
                 : "";
             oglSelf.Invalidate();
         }
@@ -1084,6 +1096,11 @@ namespace AgOpenGPS
             // persist rows + loose trees under the field (fixed reference lines)
             try { COrchard.SaveRows(FieldDir(), rows, trees); }
             catch (Exception ex) { Log.EventWriter("Orchard SaveRows: " + ex); }
+
+            // hand the rows to the runtime: they are drawn on the map and the driving
+            // path is derived from them (SIM 0729 t5/t7)
+            mf.orchRows.Clear();
+            foreach (var r in rows) mf.orchRows.Add(new OrchRow(r));
 
             // planting: the seedling spots become the driving job. Only when this really
             // is a planting orchard - a survey orchard (KML/recorded rows of trees that

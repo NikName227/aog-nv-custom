@@ -95,6 +95,10 @@ namespace AgOpenGPS
             // --- Planting job (F50): seedling spots + what is already in the ground ---
             planting.Load(dir);
 
+            // --- Orchard rows (F50): the definition of the orchard. The driving path is
+            // derived from them, so it is rebuilt here instead of being read from file.
+            OrchardLoadRows(dir);
+
             // --- Sections into triStrip + area ---
             if (TryLoad("Sections.txt", LoadCriticality.Optional, () => SectionsFiles.Load(dir), out var sections))
             {

@@ -416,6 +416,9 @@ namespace AgOpenGPS
 
                     #endregion
 
+                    //F50: the tree rows themselves - very thin, they are geometry, not a path
+                    if (orchRows.Count > 0) DrawOrchardRows();
+
                     //F50 planting: where every seedling goes, and what is already planted
                     if (planting.IsOn) DrawPlantSpots();
 
@@ -2141,6 +2144,23 @@ namespace AgOpenGPS
             catch
             {
                 flagNumberPicked = 0;
+            }
+        }
+
+        //F50 (SIM 0729 t7): the tree rows. Deliberately the THINNEST line on the map and
+        //a muted green - a row is where the trees stand, not something that gets driven,
+        //so it must never compete with the guidance line.
+        private void DrawOrchardRows()
+        {
+            GL.LineWidth(1);
+            GL.Color4(0.35f, 0.62f, 0.35f, 0.75f);
+            for (int i = 0; i < orchRows.Count; i++)
+            {
+                var c = orchRows[i].curve;
+                if (c.Count < 2) continue;
+                GL.Begin(PrimitiveType.LineStrip);
+                for (int p = 0; p < c.Count; p++) GL.Vertex3(c[p].easting, c[p].northing, 0);
+                GL.End();
             }
         }
 

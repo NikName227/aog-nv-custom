@@ -273,6 +273,16 @@ namespace AgOpenGPS
         public CPlanting planting;
 
         /// <summary>
+        /// NV custom F50 - the orchard rows of the open field (Orchard.txt). The rows are the
+        /// DEFINITION of the orchard; the driving path is derived from them plus the implement
+        /// settings (see OrchardRebuildTracks), and they are drawn as thin lines on the map.
+        /// </summary>
+        public readonly List<OrchRow> orchRows = new List<OrchRow>();
+
+        /// <summary>NV custom F50 - "implement too wide for this inter-row" alert, "" = fits</summary>
+        public string orchardWarn = "";
+
+        /// <summary>
         /// Building a headland instance
         /// </summary>
         public CHeadLine hdl;
@@ -1290,6 +1300,9 @@ namespace AgOpenGPS
 
             //F50 planting: the job belongs to the field that is being closed
             planting.Clear();
+            //F50: so do the orchard rows (and with them the derived path)
+            orchRows.Clear();
+            orchardWarn = "";
 
             //make sure hydraulic lift is off
             p_239.pgn[p_239.hydLift] = 0;

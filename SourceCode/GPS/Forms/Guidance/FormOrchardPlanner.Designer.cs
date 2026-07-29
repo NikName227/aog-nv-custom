@@ -418,6 +418,10 @@ namespace AgOpenGPS
             this.btnMakePath.TabIndex = 19;
             this.btnMakePath.Text = "Make path";
             this.btnMakePath.UseVisualStyleBackColor = false;
+            //SIM 0729 t4: this window only DEFINES rows - the driving path comes from the
+            //rows plus the implement settings and is (re)generated automatically, so the
+            //manual trigger is hidden. BuildPasses/btnMakePath_Click stay as the engine.
+            this.btnMakePath.Visible = false;
             this.btnMakePath.Click += new System.EventHandler(this.btnMakePath_Click);
             //
             // lblWarn
@@ -577,6 +581,10 @@ namespace AgOpenGPS
             this.btnTreesOnRow.TabIndex = 41;
             this.btnTreesOnRow.Text = "Trees\r\non row";
             this.btnTreesOnRow.UseVisualStyleBackColor = false;
+            //SIM 0729 t2: the generator lays out the whole orchard, so re-spacing one row
+            //by hand only ever REDUCED the seedling count - hidden until it is redefined.
+            //COrchard.PlaceTreesOnRow stays in the code.
+            this.btnTreesOnRow.Visible = false;
             this.btnTreesOnRow.Click += new System.EventHandler(this.btnTreesOnRow_Click);
             //
             // pnlGen - planting layout settings; sits over the row buttons so the drawing
