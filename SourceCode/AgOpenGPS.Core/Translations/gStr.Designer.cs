@@ -5118,5 +5118,47 @@ namespace AgOpenGPS.Core.Translations {
                 return ResourceManager.GetString("gsDeletePath", resourceCulture);
             }
         }
+
+        public static string gsOrchard {
+            get {
+                return ResourceManager.GetString("gsOrchard", resourceCulture);
+            }
+        }
+
+        public static string gsOrchardPlanner {
+            get {
+                return ResourceManager.GetString("gsOrchardPlanner", resourceCulture);
+            }
+        }
+
+        public static string gsNewOrchardPlanting {
+            get {
+                return ResourceManager.GetString("gsNewOrchardPlanting", resourceCulture);
+            }
+        }
+
+        public static string gsNewOrchardPlantingLayoutCaps {
+            get {
+                return ResourceManager.GetString("gsNewOrchardPlantingLayoutCaps", resourceCulture);
+            }
+        }
+
+        public static string gsOrchardPlan {
+            get {
+                return ResourceManager.GetString("gsOrchardPlan", resourceCulture);
+            }
+        }
+
+        public static string gsOrchardModePlanInfo {
+            get {
+                return ResourceManager.GetString("gsOrchardModePlanInfo", resourceCulture);
+            }
+        }
+
+        public static string gsFixedOrchardRowNoNudge {
+            get {
+                return ResourceManager.GetString("gsFixedOrchardRowNoNudge", resourceCulture);
+            }
+        }
     }
 }

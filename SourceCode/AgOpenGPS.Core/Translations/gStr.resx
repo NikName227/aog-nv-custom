@@ -1968,4 +1968,25 @@ USE AT OWN RISK.</value>
   <data name="gsDefineTurnBounds" xml:space="preserve">
     <value>Define the turn boundaries first (Map view: two turn lines + field boundary)</value>
   </data>
+  <data name="gsOrchard" xml:space="preserve">
+    <value>Orchard</value>
+  </data>
+  <data name="gsOrchardPlanner" xml:space="preserve">
+    <value>Orchard Planner</value>
+  </data>
+  <data name="gsNewOrchardPlanting" xml:space="preserve">
+    <value>New orchard (planting)</value>
+  </data>
+  <data name="gsNewOrchardPlantingLayoutCaps" xml:space="preserve">
+    <value>NEW ORCHARD - planting layout</value>
+  </data>
+  <data name="gsOrchardPlan" xml:space="preserve">
+    <value>Orchard plan</value>
+  </data>
+  <data name="gsOrchardModePlanInfo" xml:space="preserve">
+    <value>Orchard mode: plan = rows + tool settings</value>
+  </data>
+  <data name="gsFixedOrchardRowNoNudge" xml:space="preserve">
+    <value>Fixed orchard row - no nudge</value>
+  </data>
 </root>

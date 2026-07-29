@@ -1495,7 +1495,7 @@ namespace AgOpenGPS
             SetZoneOrderVisible(false);
             btnAddPath.Visible = btnDeletePath.Visible = false;
             btnWizBack.Visible = btnWizNext.Visible = btnWizCancel.Visible = false;
-            lblWizTitle.Text = "Orchard";
+            lblWizTitle.Text = gStr.gsOrchard;
             lblPlanInfo.Visible = true;
             btnGeneratePlan.Visible = true;
         }
@@ -1826,8 +1826,8 @@ namespace AgOpenGPS
             chkHeadlandClip.Visible = false;
             lblTrack.Visible = cboTrack.Visible = false;
             btnAddPath.Visible = btnDeletePath.Visible = false;
-            btnGeneratePlan.Text = "Orchard plan";
-            lblPlanInfo.Text = "Orchard mode: plan = rows + tool settings";
+            btnGeneratePlan.Text = gStr.gsOrchardPlan;
+            lblPlanInfo.Text = gStr.gsOrchardModePlanInfo;
         }
 
         private void GenerateOrchardPlan()

@@ -265,6 +265,12 @@ namespace AgOpenGPS
         // background coverage pass fills the view.
         private void LoadParcelsFromCache()
         {
+            // this window shows whatever is already saved on disk regardless of the
+            // main-map "show parcels" toggle - only missing coverage gets the
+            // "load them in Map App" message, never a silent empty cache
+            var c = gMapControl.Position;
+            CParcelCache.LoadDiskCoverage(c.Lat, c.Lng);
+
             var cached = CParcelCache.Snapshot();
             if (cached.Count > 0)
             {

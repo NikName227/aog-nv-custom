@@ -88,6 +88,10 @@ namespace AgOpenGPS
             mf = callingForm as FormGPS;
             InitializeComponent();
 
+            this.Text = gStr.gsOrchardPlanner;
+            btnNewOrchard.Text = gStr.gsNewOrchardPlanting;
+            lblGenCap.Text = gStr.gsNewOrchardPlantingLayoutCaps;
+
             mf.CalculateMinMax();
 
             // load rows + loose trees saved under this field
