@@ -72,6 +72,42 @@ namespace AgOpenGPS
     {
         public const double ExtendMeters = 150.0; // guidance tail length each end (matches Smart AB)
 
+        // ── Path modes (SIM feedback 2026-07-29) ──────────────────────────
+        // How the AB lines are derived from the rows. The rows are the definition of the
+        // orchard; these three say what the machine does with them.
+        public const int PathOnePass = 0;    // one line down the middle of each inter-row
+        public const int PathMultiPass = 1;  // several passes per inter-row (to be re-specced)
+        public const int PathOnRow = 2;      // the line IS the row + planter offset (planting)
+
+        /// <summary>
+        /// Every track that this class generates carries this name prefix. The path is a
+        /// DERIVED object: it is rebuilt whenever the rows or the implement change, and it
+        /// is not written to TrackLines.txt - the prefix is how the tracks the user made by
+        /// hand (Smart AB, recorded curves) are told apart and left alone.
+        /// </summary>
+        public const string DerivedPrefix = "Orch ";
+
+        /// <summary>Legacy prefix: paths committed by the planner's old "Make path" button.</summary>
+        public const string LegacyDerivedPrefix = "Row Mid ";
+
+        public static bool IsDerivedName(string name)
+            => name != null && (name.StartsWith(DerivedPrefix) || name.StartsWith(LegacyDerivedPrefix));
+
+        /// <summary>
+        /// The saved path mode, migrating an install that only knows the old one-pass flag
+        /// (checked = one pass, unchecked = multi pass). Runs once and writes the result back.
+        /// </summary>
+        public static int ResolvePathMode()
+        {
+            var ts = Properties.ToolSettings.Default;
+            if (ts.setTool_orchardPathMode < 0 || ts.setTool_orchardPathMode > PathOnRow)
+            {
+                ts.setTool_orchardPathMode = ts.setTool_orchardOnePass ? PathOnePass : PathMultiPass;
+                try { ts.Save(); } catch { /* a read-only profile is not worth a crash */ }
+            }
+            return ts.setTool_orchardPathMode;
+        }
+
         // ── Generator (planting): lay out a NEW orchard inside the boundary ──
         // Planting turns F50 around: there are no trees yet, so the rows and the seedling
         // positions are GENERATED from one drawn reference line (straight AB or a curve)
@@ -422,9 +458,10 @@ namespace AgOpenGPS
                     CABCurve.CalculateHeadings(ref pass);
 
                     var t = new CTrk { mode = TrackMode.Curve, heading = head, isVisible = true };
+                    t.isOrchardDerived = true;
                     t.ptA = new vec2(pass[0].easting, pass[0].northing);
                     t.ptB = new vec2(pass[pass.Count - 1].easting, pass[pass.Count - 1].northing);
-                    t.name = "Row " + interName + (offs.Count > 1 ? " p" + (k + 1) : "");
+                    t.name = DerivedPrefix + interName + (offs.Count > 1 ? " p" + (k + 1) : "");
                     foreach (vec3 p in pass) t.curvePts.Add(p);
                     result.Add(t);
                 }
@@ -481,6 +518,95 @@ namespace AgOpenGPS
             vec2 bc = b.Centroid();
             double rx = Math.Sin(m.heading + glm.PIBy2), ry = Math.Cos(m.heading + glm.PIBy2);
             return ((bc.easting - m.easting) * rx + (bc.northing - m.northing) * ry) >= 0 ? 1 : -1;
+        }
+
+        // ── Path from rows + implement (SIM 0729 t3/t5) ───────────────────
+        // One entry point for all three modes. Everything it returns is a DERIVED track.
+        public static List<CTrk> BuildTracks(List<OrchRow> rows, int pathMode, double toolWidth,
+            int workMode, double safeSpace, double treeSpace, double rowOffset, bool centerFirst,
+            double plantLateralOffset, double toolOffset, out List<string> warnings)
+        {
+            if (pathMode == PathOnRow)
+                return BuildOnRowTracks(rows, toolWidth, plantLateralOffset, toolOffset, out warnings);
+
+            return BuildPasses(rows, toolWidth, workMode, safeSpace, treeSpace, rowOffset,
+                pathMode == PathOnePass, centerFirst, out warnings);
+        }
+
+        // ── On row (planting): the line IS the row ────────────────────────
+        // Planting a new orchard means driving ALONG the defined rows so the planter drops
+        // each seedling exactly where the row says. Geometry, right of the track heading
+        // positive throughout:
+        //   pivot path = track reference + 0.5*width - tool.offset   (AOG's own convention:
+        //                the reference is the EDGE of pass 0, see CABCurve distAway)
+        //   drop point = pivot path + planter lateral offset         (CPlanting geometry)
+        // Setting drop point = row gives the reference used below. With planter offset 0 and
+        // no implement offset the reference is simply the row shifted half a width, i.e. the
+        // tractor drives the row itself.
+        //
+        // Known limit (deliberate, offset 0 is the normal setup): a NON-zero planter offset
+        // is mirrored if the row is driven in the opposite direction, exactly like AOG's own
+        // tool offset. The track is built for the row's own direction.
+        public static List<CTrk> BuildOnRowTracks(List<OrchRow> rows, double toolWidth,
+            double plantLateralOffset, double toolOffset, out List<string> warnings)
+        {
+            warnings = new List<string>();
+            var result = new List<CTrk>();
+            if (rows == null || rows.Count == 0) return result;
+            if (toolWidth < 0.1) { warnings.Add("No tool width"); return result; }
+
+            double off = -0.5 * toolWidth + toolOffset - plantLateralOffset;
+
+            var sorted = SortRowsTransverse(rows);
+            for (int i = 0; i < sorted.Count; i++)
+            {
+                var r = sorted[i];
+                if (r.curve.Count < 2) continue;
+
+                var line = OffsetCurve(r.curve, off);
+                CABCurve.CalculateHeadings(ref line);
+
+                double head = line[line.Count / 2].heading;
+                if (head < 0) head += glm.twoPI;
+
+                ExtendEnds(line, ExtendMeters);
+                CABCurve.CalculateHeadings(ref line);
+
+                var t = new CTrk { mode = TrackMode.Curve, heading = head, isVisible = true };
+                t.isOrchardDerived = true;
+                t.ptA = new vec2(line[0].easting, line[0].northing);
+                t.ptB = new vec2(line[line.Count - 1].easting, line[line.Count - 1].northing);
+                t.name = DerivedPrefix + "row " + (i + 1);
+                foreach (vec3 p in line) t.curvePts.Add(p);
+                result.Add(t);
+            }
+            return result;
+        }
+
+        // ── Tool-fits check (SIM 0729 t8) ─────────────────────────────────
+        // Safety check against driving into a tree row: the machine has to fit into the
+        // inter-row once both offsets are taken off it.
+        //     width > gap - rowOffset - safeSpace   ->  too wide
+        // Returns how many metres are missing in the WORST inter-row (0 = it fits). Planting
+        // (on row) is not checked: the trees are not in the ground yet, and the machine
+        // straddles the row instead of passing between two of them.
+        public static double ToolTooWideBy(List<OrchRow> rows, double toolWidth,
+            double rowOffset, double safeSpace, out int worstInterRow)
+        {
+            worstInterRow = -1;
+            double worst = 0;
+            if (rows == null || rows.Count < 2 || toolWidth < 0.1) return 0;
+
+            var sorted = SortRowsTransverse(rows);
+            for (int i = 0; i < sorted.Count - 1; i++)
+            {
+                if (sorted[i].curve.Count < 2 || sorted[i + 1].curve.Count < 2) continue;
+                if (BuildMidline(sorted[i], sorted[i + 1], out double gap) == null) continue;
+
+                double missing = toolWidth - (gap - rowOffset - safeSpace);
+                if (missing > worst) { worst = missing; worstInterRow = i + 1; }
+            }
+            return worst;
         }
 
         // ── Planner: "sredina" MVP (kept for reference; BuildPasses supersedes it) ──

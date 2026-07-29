@@ -104,6 +104,8 @@ namespace AgOpenGPS
             this.rbtnTrailing = new System.Windows.Forms.RadioButton();
             this.rbtnOrchard = new System.Windows.Forms.RadioButton();
             this.pnlOrchardSet = new System.Windows.Forms.Panel();
+            this.lblOrchardPath = new System.Windows.Forms.Label();
+            this.cboOrchardPath = new System.Windows.Forms.ComboBox();
             this.lblOrchardMode = new System.Windows.Forms.Label();
             this.cboOrchardMode = new System.Windows.Forms.ComboBox();
             this.lblOrchardRowOffset = new System.Windows.Forms.Label();
@@ -1845,6 +1847,22 @@ namespace AgOpenGPS
             this.pnlOrchardSet.Name = "pnlOrchardSet";
             this.pnlOrchardSet.Size = new System.Drawing.Size(695, 394);
             this.pnlOrchardSet.Visible = false;
+            //SIM 0729 t3: how the AB lines follow the rows. This is the top-level choice -
+            //the fields below it belong to one mode each and are shown accordingly
+            //(ApplyOrchardPathUI).
+            this.lblOrchardPath.Font = new System.Drawing.Font("Tahoma", 12F, System.Drawing.FontStyle.Bold);
+            this.lblOrchardPath.Location = new System.Drawing.Point(20, 24);
+            this.lblOrchardPath.Size = new System.Drawing.Size(300, 26);
+            this.lblOrchardPath.Text = "Path mode";
+            this.cboOrchardPath.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.cboOrchardPath.Font = new System.Drawing.Font("Tahoma", 12F);
+            this.cboOrchardPath.Items.AddRange(new object[] {
+                "One pass (center of inter-row)",
+                "Multi pass (per inter-row)",
+                "On row (planting)" });
+            this.cboOrchardPath.Location = new System.Drawing.Point(340, 20);
+            this.cboOrchardPath.Size = new System.Drawing.Size(330, 30);
+            this.cboOrchardPath.SelectedIndexChanged += new System.EventHandler(this.cboOrchardPath_SelectedIndexChanged);
             this.lblOrchardMode.Font = new System.Drawing.Font("Tahoma", 12F);
             this.lblOrchardMode.Location = new System.Drawing.Point(20, 24);
             this.lblOrchardMode.Size = new System.Drawing.Size(300, 26);
@@ -1915,6 +1933,8 @@ namespace AgOpenGPS
             this.nudPlantBehind.Location = new System.Drawing.Point(340, 348);
             this.nudPlantBehind.Maximum = new decimal(new int[] { 15, 0, 0, 0 });
             this.nudPlantBehind.Size = new System.Drawing.Size(120, 30);
+            this.pnlOrchardSet.Controls.Add(this.lblOrchardPath);
+            this.pnlOrchardSet.Controls.Add(this.cboOrchardPath);
             this.pnlOrchardSet.Controls.Add(this.lblOrchardMode);
             this.pnlOrchardSet.Controls.Add(this.cboOrchardMode);
             this.pnlOrchardSet.Controls.Add(this.lblOrchardRowOffset);
@@ -8944,6 +8964,8 @@ namespace AgOpenGPS
         //F50 orchard tool type + its processing settings (design/image pass comes later)
         private System.Windows.Forms.RadioButton rbtnOrchard;
         private System.Windows.Forms.Panel pnlOrchardSet;
+        private System.Windows.Forms.Label lblOrchardPath;
+        private System.Windows.Forms.ComboBox cboOrchardPath;
         private System.Windows.Forms.Label lblOrchardMode;
         private System.Windows.Forms.ComboBox cboOrchardMode;
         private System.Windows.Forms.Label lblOrchardSafe;

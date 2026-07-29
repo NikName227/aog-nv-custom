@@ -349,6 +349,13 @@ namespace AgOpenGPS
         public double nudgeDistance;
         public HashSet<int> workedTracks = new HashSet<int>();
 
+        /// <summary>
+        /// NV custom F50: this track was DERIVED from the orchard rows + the implement
+        /// settings, not made by the user. Derived tracks are rebuilt on every change and
+        /// are never written to TrackLines.txt, so they cannot pile up (SIM 0729 t5).
+        /// </summary>
+        public bool isOrchardDerived;
+
         public CTrk()
         {
             curvePts = new List<vec3>();
@@ -375,6 +382,7 @@ namespace AgOpenGPS
             endPtB = new vec2();
             mode = _trk.mode;
             nudgeDistance = _trk.nudgeDistance;
+            isOrchardDerived = _trk.isOrchardDerived;
         }
     }
 }

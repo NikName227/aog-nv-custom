@@ -663,6 +663,11 @@ namespace AgOpenGPS
             curve.isCurveValid = false;
             ABLine.isABValid = false;
 
+            //F50 (SIM 0729 t5): the orchard path follows the implement. This runs on every
+            //settings close and on every vehicle/tool profile load, so choosing another
+            //machine re-derives the passes from the same rows - no path is defined by hand.
+            if (isJobStarted) OrchardRebuildTracks("implement or settings changed");
+
             fd.UpdateFieldBoundaryGUIAreas();
 
             btnSection1Man.Visible = false;

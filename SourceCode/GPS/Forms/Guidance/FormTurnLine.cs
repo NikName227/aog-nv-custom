@@ -1840,28 +1840,22 @@ namespace AgOpenGPS
                 return;
             }
 
-            double toolW = mf.tool.width > 0.1 ? mf.tool.width : 3.0;
-            var ts = Properties.ToolSettings.Default;
-            var passes = COrchard.BuildPasses(rows, toolW,
-                ts.setTool_orchardWorkMode, ts.setTool_orchardSafeSpace,
-                ts.setTool_orchardTreeSpace, ts.setTool_orchardRowOffset,
-                ts.setTool_orchardOnePass, ts.setTool_orchardCenterFirst,
-                out List<string> warns);
+            // SIM 0729 t5: the passes are derived centrally from the rows + the implement
+            // (path mode included), so the plan uses that one derivation instead of building
+            // its own set - no second copy of the path, no tracks piling up.
+            if (mf.orchRows.Count == 0) mf.OrchardLoadRows(fieldDir);
+            else mf.OrchardRebuildTracks("orchard plan");
+
+            var passes = new List<CTrk>();
+            foreach (var t in mf.trk.gArr) if (t.isOrchardDerived) passes.Add(t);
             if (passes.Count == 0)
             {
-                lblPlanStatus.Text = warns.Count > 0 ? warns[0] : "No passes";
+                lblPlanStatus.Text = "No passes - check the tool width and the path mode";
                 return;
             }
+            mf.trk.idx = mf.trk.gArr.IndexOf(passes[0]);   // first pass
 
-            // regenerate = replace the previous orchard pass tracks ("Row ..." = fixed)
-            mf.trk.gArr.RemoveAll(t => t.name.StartsWith("Row ", StringComparison.Ordinal));
-            foreach (var t in passes) mf.trk.gArr.Add(t);
-            mf.trk.idx = mf.trk.gArr.Count - passes.Count;   // first pass
-            mf.FileSaveTracks();
-            mf.curve.isCurveValid = false;
-            mf.ABLine.isABValid = false;
-
-            // zone (color) = inter-row number from the pass name "Row Mid N [pM]"
+            // zone (color) = inter-row number from the pass name "Orch Mid N [pM]"
             var zones = new List<int>();
             foreach (var t in passes)
             {
@@ -1875,7 +1869,7 @@ namespace AgOpenGPS
             DrawPlanOverlay();
             UpdatePlanInfo();
             lblPlanStatus.Text = passes.Count + " orchard passes"
-                + (warns.Count > 0 ? "  ·  " + warns.Count + " warning(s): " + warns[0] : "");
+                + (mf.orchardWarn.Length > 0 ? "  ·  " + mf.orchardWarn : "");
         }
 
         //"Generate path" now opens the wizard (line -> zones -> mode); each step

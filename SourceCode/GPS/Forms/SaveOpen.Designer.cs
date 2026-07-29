@@ -231,7 +231,14 @@ namespace AgOpenGPS
         // Save tracks
         public void FileSaveTracks()
         {
-            TrackFiles.Save(GetFieldDir(true), trk.gArr);
+            //F50 (SIM 0729 t5): the orchard path is derived from the rows + the implement,
+            //so it is NOT part of the user's track list - it is rebuilt on every open. Saving
+            //it would mean a fresh copy of every pass each time the machine changes.
+            var keep = new List<CTrk>(trk.gArr.Count);
+            for (int i = 0; i < trk.gArr.Count; i++)
+                if (!trk.gArr[i].isOrchardDerived) keep.Add(trk.gArr[i]);
+
+            TrackFiles.Save(GetFieldDir(true), keep);
         }
 
         // Load tracks
@@ -244,6 +251,12 @@ namespace AgOpenGPS
             {
                 tracks = new List<CTrk>();
             }
+
+            //F50: paths the old "Make path" button committed are in the file of fields that
+            //were planned before this change - mark them derived so the rebuild below
+            //replaces them (and the next save drops them) instead of doubling up
+            foreach (var t in tracks)
+                if (COrchard.IsDerivedName(t.name)) t.isOrchardDerived = true;
 
             trk.gArr?.Clear();
             trk.gArr.AddRange(tracks);

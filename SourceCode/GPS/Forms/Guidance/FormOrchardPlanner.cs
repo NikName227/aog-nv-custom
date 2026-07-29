@@ -1111,18 +1111,14 @@ namespace AgOpenGPS
                 mf.planting.Save(FieldDir());
             }
 
-            // commit the generated mid-lines as ordinary Curve tracks (driven by AOG guidance + K-turn)
-            if (midlines.Count > 0)
-            {
-                foreach (var t in midlines) mf.trk.gArr.Add(new CTrk(t));
-                mf.trk.idx = mf.trk.gArr.Count - midlines.Count; // first new mid-line
-                mf.FileSaveTracks();
-                mf.curve.isCurveValid = false;
-                mf.ABLine.isABValid = false;
-                lblActiveOp.Text = "Saved: " + rows.Count + " rows, +" + midlines.Count + " tracks";
-            }
-            else
-                lblActiveOp.Text = "Rows saved (Make path first for guidance lines)";
+            // SIM 0729 t5: the path is derived, not committed by hand. Editing the rows is a
+            // change of the definition, so the passes are rebuilt from the new rows + the
+            // implement settings - hand-made tracks are untouched.
+            mf.OrchardRebuildTracks("orchard rows accepted");
+
+            int derived = 0;
+            foreach (var t in mf.trk.gArr) if (t.isOrchardDerived) derived++;
+            lblActiveOp.Text = "Saved: " + rows.Count + " rows, path = " + derived + " passes";
 
             UpdateNavButtons();
             oglSelf.Invalidate();
