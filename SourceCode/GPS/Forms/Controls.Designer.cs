@@ -141,14 +141,18 @@ namespace AgOpenGPS
                 //F06: orchard launcher (Controls[3]) only when the feature is unlocked
                 flp1.Controls[3].Visible = CFeatureLock.IsOn(CFeatureLock.FeatureOrchard);
 
-                //auto snap to pivot
-                flp1.Controls[4].Visible = tracksVisible > 0;
+                //+AB and Build tracks (list) - always available, like stock
+                flp1.Controls[4].Visible = true;
+                flp1.Controls[5].Visible = true;
 
                 //off button
-                flp1.Controls[5].Visible = tracksVisible > 0;
+                flp1.Controls[6].Visible = tracksVisible > 0;
+
+                //auto snap to pivot
+                flp1.Controls[7].Visible = tracksVisible > 0;
 
                 //ref nudge
-                flp1.Controls[6].Visible = tracksVisible > 0;
+                flp1.Controls[8].Visible = tracksVisible > 0;
 
                 for (int i = 0; i < flp1.Controls.Count; i++)
                 {
