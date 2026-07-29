@@ -867,6 +867,10 @@ namespace AgOpenGPS
                 try { FileSaveTurnLines(); }
                 catch (Exception ex) { Log.EventWriter($"WARNING: TurnLines save failed: {ex}"); }
 
+                //F50 planting: how much of the orchard is in the ground
+                try { planting.Save(GetFieldDir(true)); }
+                catch (Exception ex) { Log.EventWriter($"WARNING: Planting save failed: {ex}"); }
+
                 try { ExportFieldAs_KML(); }
                 catch (Exception ex) { Log.EventWriter($"WARNING: KML export failed: {ex}"); }
 

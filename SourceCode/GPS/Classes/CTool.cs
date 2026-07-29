@@ -34,6 +34,10 @@ namespace AgOpenGPS
         //(pass pattern) - the orchard rows themselves live with the field
         public bool isToolOrchard;
 
+        //F50 planting: planter geometry - where the seedling actually lands relative to
+        //the tractor (lateral from the driving line, and behind the rear axle)
+        public double plantLateralOffset, plantDistBehindAxle;
+
         public bool isMultiColoredSections, isSectionOffWhenOut;
 
         public double hitchLength;
@@ -84,6 +88,9 @@ namespace AgOpenGPS
             //NV F06: a locked install ignores a stale Orchard tool selection
             isToolOrchard = Properties.ToolSettings.Default.setTool_isToolOrchard
                 && CFeatureLock.IsOn(CFeatureLock.FeatureOrchard);
+
+            plantLateralOffset = Properties.ToolSettings.Default.setTool_plantLateralOffset;
+            plantDistBehindAxle = Properties.ToolSettings.Default.setTool_plantDistBehindAxle;
 
             lookAheadOnSetting = Properties.ToolSettings.Default.setVehicle_toolLookAheadOn;
             lookAheadOffSetting = Properties.ToolSettings.Default.setVehicle_toolLookAheadOff;

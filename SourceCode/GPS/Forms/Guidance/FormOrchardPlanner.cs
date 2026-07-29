@@ -39,6 +39,14 @@ namespace AgOpenGPS
         // Generated mid-inter-row path (yellow). Rebuilt by "Make path"; committed on Accept.
         private readonly List<CTrk> midlines = new List<CTrk>();
 
+        // Planting: while the new-orchard panel is open, "pts" holds the REFERENCE line
+        // (row direction) instead of a row - the layout is generated from it.
+        private bool genMode;
+
+        // set once the seedling layout is actually used in this session, so Accept knows
+        // this is a planting orchard and not a survey of trees that already stand
+        private bool plantingTouched;
+
         private enum ViewMode { Browse, Build }
         private ViewMode mode = ViewMode.Build;
         private int activeIdx = -1; // Browse selection
@@ -226,6 +234,7 @@ namespace AgOpenGPS
             DrawTrees();
             DrawRows();
             DrawMidlines();
+            DrawRefLine();
             if (mode == ViewMode.Build) DrawPoints();
             DrawMeasure();
 
@@ -264,16 +273,44 @@ namespace AgOpenGPS
             }
         }
 
+        // Planting reference line (cyan): the direction the generated rows follow.
+        private void DrawRefLine()
+        {
+            if (!genMode || pts.Count < 2) return;
+            GL.LineWidth(2);
+            GL.Color3(0.2f, 0.9f, 1.0f);
+            GL.Begin(PrimitiveType.LineStrip);
+            foreach (var p in pts) GL.Vertex3(p.easting, p.northing, 0);
+            GL.End();
+        }
+
+        // Trees / planting spots as brown dots; the target row's own trees are drawn
+        // brighter and bigger so it is obvious which row an edit will act on.
         private void DrawTrees()
         {
+            int hotRow = genMode ? -1 : TargetRow();
+
             var all = new List<vec2>(trees);
-            foreach (var r in rows) all.AddRange(r.trees);
-            if (all.Count == 0) return;
-            GL.Color3(0.55f, 0.35f, 0.15f); // brown dots
-            GL.PointSize(5f);
-            GL.Begin(PrimitiveType.Points);
-            foreach (var p in all) GL.Vertex3(p.easting, p.northing, 0);
-            GL.End();
+            for (int i = 0; i < rows.Count; i++)
+                if (i != hotRow) all.AddRange(rows[i].trees);
+
+            if (all.Count > 0)
+            {
+                GL.Color3(0.55f, 0.35f, 0.15f);
+                GL.PointSize(5f);
+                GL.Begin(PrimitiveType.Points);
+                foreach (var p in all) GL.Vertex3(p.easting, p.northing, 0);
+                GL.End();
+            }
+
+            if (hotRow >= 0 && rows[hotRow].trees.Count > 0)
+            {
+                GL.Color3(1.0f, 0.65f, 0.25f);
+                GL.PointSize(8f);
+                GL.Begin(PrimitiveType.Points);
+                foreach (var p in rows[hotRow].trees) GL.Vertex3(p.easting, p.northing, 0);
+                GL.End();
+            }
         }
 
         // Control-point markers. Selected = green, first = cyan, last = orange, others white.
@@ -402,10 +439,10 @@ namespace AgOpenGPS
             {
                 if (AddActive)
                 {
-                    EnsureWorkRow();
+                    if (!genMode) EnsureWorkRow();   // in genMode the points are the reference line
                     pts.Add(ScreenToWorld(e.X, e.Y));
                     BuildActiveRow();
-                    lblActiveOp.Text = "Add point";
+                    lblActiveOp.Text = genMode ? "Reference line: " + pts.Count + " points" : "Add point";
                 }
                 else if (btnDeletePoint.Checked)
                 {
@@ -507,11 +544,16 @@ namespace AgOpenGPS
         // Sync the edited control points into the work row and rebuild its curve.
         private void BuildActiveRow()
         {
-            if (workIdx < 0 || workIdx >= rows.Count) return;
+            //planting: the edited points are the reference line, not a row
+            if (genMode || workIdx < 0 || workIdx >= rows.Count) { oglSelf.Invalidate(); return; }
             rows[workIdx].pts = new List<vec2>(pts);
             rows[workIdx].BuildCurve();
             midlines.Clear();            // rows changed -> old path is stale
-            lblWarn.Text = "";
+            //the seedlings still sit on the OLD shape - say so instead of moving them
+            //behind the driver's back (a small nudge may well be intentional)
+            lblWarn.Text = rows[workIdx].trees.Count > 0
+                ? "Row edited - tap 'Trees on row' to re-space the seedlings"
+                : "";
             oglSelf.Invalidate();
         }
 
@@ -800,6 +842,14 @@ namespace AgOpenGPS
             btnDeleteRow.Enabled = has;
             btnEdit.Enabled = has && mode == ViewMode.Browse;
             btnMakePath.Enabled = rows.Count >= 2;
+            btnTreesOnRow.Enabled = !genMode && TargetRow() >= 0;
+        }
+
+        /// <summary>The row the row-level actions apply to: the edited one, else the browsed one.</summary>
+        private int TargetRow()
+        {
+            int t = (mode == ViewMode.Build) ? workIdx : activeIdx;
+            return (t >= 0 && t < rows.Count) ? t : -1;
         }
 
         private void btnNewRow_Click(object sender, EventArgs e)
@@ -837,7 +887,8 @@ namespace AgOpenGPS
             }
             UpdateNavButtons();
             RefreshActiveName();
-            lblActiveOp.Text = (rows[activeIdx].name ?? "row") + "  (" + (activeIdx + 1) + "/" + rows.Count + ")";
+            lblActiveOp.Text = (rows[activeIdx].name ?? "row") + "  (" + (activeIdx + 1) + "/" + rows.Count + ")"
+                + (rows[activeIdx].trees.Count > 0 ? "  -  " + rows[activeIdx].trees.Count + " trees" : "");
             oglSelf.Invalidate();
         }
 
@@ -877,6 +928,112 @@ namespace AgOpenGPS
                 lblActiveOp.Text = "KML: +" + newRows.Count + " rows, " + trees.Count + " trees";
                 oglSelf.Invalidate();
             }
+        }
+
+        // ── New orchard (planting): generate rows + seedling spots ────────
+        // The orchard does not exist yet: the driver draws ONE reference line inside the
+        // boundary (2 points = straight, more = curve) and the layout settings turn it
+        // into the full grid of rows and planting positions.
+        private List<List<vec2>> FieldBounds()
+        {
+            var b = new List<List<vec2>>();
+            for (int i = 0; i < mf.bnd.bndList.Count; i++)
+            {
+                var ring = mf.bnd.bndList[i].fenceLineEar;
+                if (ring != null && ring.Count >= 3) b.Add(new List<vec2>(ring));
+            }
+            return b;
+        }
+
+        private void btnNewOrchard_Click(object sender, EventArgs e)
+        {
+            if (FieldBounds().Count == 0)
+            {
+                lblActiveOp.Text = "New orchard needs a field boundary first";
+                return;
+            }
+
+            genMode = true;
+            pnlGen.Visible = true;
+            pnlGen.BringToFront();
+            lblGenResult.Text = "";
+
+            pts.Clear(); workIdx = -1; selIndex = -1;
+            SetMode(ViewMode.Build);
+            lblActiveOp.Text = "New orchard - set the spacings, then draw the reference line";
+            oglSelf.Invalidate();
+        }
+
+        private void btnGenLine_Click(object sender, EventArgs e)
+        {
+            pts.Clear(); selIndex = -1;
+            btnDeletePoint.Checked = false;
+            SetMode(ViewMode.Build);
+            addStage = 1;
+            ApplyAddStageVisual();
+            lblActiveOp.Text = "Draw the reference line - tap 2 points (more = curved rows)";
+            oglSelf.Invalidate();
+        }
+
+        private void btnGenerate_Click(object sender, EventArgs e)
+        {
+            if (pts.Count < 2) { lblGenResult.Text = "Draw the reference line first"; return; }
+
+            var bounds = FieldBounds();
+            var made = COrchard.GenerateOrchard(pts, bounds,
+                (double)nudGenRowSpace.Value, (double)nudGenTreeSpace.Value,
+                (double)nudGenHeadland.Value, (double)nudGenSetback.Value,
+                chkGenStagger.Checked, out string err);
+
+            if (err != null && made.Count == 0) { lblGenResult.Text = err; return; }
+
+            // regenerating replaces the previous layout, hand-drawn/imported rows stay
+            rows.RemoveAll(r => r.source == RowSource.Generated);
+            foreach (var r in made) rows.Add(r);
+
+            int treeCount = 0;
+            foreach (var r in made) treeCount += r.trees.Count;
+
+            midlines.Clear(); lblWarn.Text = "";
+            ResetAddStage();
+            plantingTouched = true;
+            UpdateNavButtons();
+            lblGenResult.Text = made.Count + " rows, " + treeCount + " trees";
+            lblActiveOp.Text = "Generated " + made.Count + " rows / " + treeCount + " trees";
+            oglSelf.Invalidate();
+        }
+
+        // Seedlings along ONE row, at the current tree spacing / setback / headland.
+        // Used after hand-editing a generated row and for rows drawn by hand to fill an
+        // odd corner of the field.
+        private void btnTreesOnRow_Click(object sender, EventArgs e)
+        {
+            int t = TargetRow();
+            if (t < 0) { lblActiveOp.Text = "Pick a row first"; return; }
+
+            COrchard.PlaceTreesOnRow(rows[t], FieldBounds(),
+                (double)nudGenTreeSpace.Value, (double)nudGenSetback.Value,
+                (double)nudGenHeadland.Value);
+
+            lblWarn.Text = "";
+            plantingTouched = true;
+            lblActiveOp.Text = (rows[t].name ?? "row") + ": " + rows[t].trees.Count + " trees";
+            oglSelf.Invalidate();
+        }
+
+        private void btnGenClose_Click(object sender, EventArgs e)
+        {
+            genMode = false;
+            pnlGen.Visible = false;
+            pts.Clear(); selIndex = -1;
+            ResetAddStage();
+            btnDeletePoint.Checked = false;
+
+            if (rows.Count > 0) { activeIdx = 0; SetMode(ViewMode.Browse); RefreshActiveName(); }
+            else SetMode(ViewMode.Build);
+            UpdateNavButtons();
+            lblActiveOp.Text = "";
+            oglSelf.Invalidate();
         }
 
         // ── Make path (phase 2: passes from the IMPLEMENT settings) ───────
@@ -923,6 +1080,15 @@ namespace AgOpenGPS
             // persist rows + loose trees under the field (fixed reference lines)
             try { COrchard.SaveRows(FieldDir(), rows, trees); }
             catch (Exception ex) { Log.EventWriter("Orchard SaveRows: " + ex); }
+
+            // planting: the seedling spots become the driving job. Only when this really
+            // is a planting orchard - a survey orchard (KML/recorded rows of trees that
+            // already stand) must not start nagging the driver to plant them.
+            if (plantingTouched || mf.planting.IsOn)
+            {
+                mf.planting.BuildFromRows(rows);
+                mf.planting.Save(FieldDir());
+            }
 
             // commit the generated mid-lines as ordinary Curve tracks (driven by AOG guidance + K-turn)
             if (midlines.Count > 0)
