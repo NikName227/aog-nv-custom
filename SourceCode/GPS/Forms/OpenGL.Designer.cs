@@ -510,6 +510,9 @@ namespace AgOpenGPS
                     //F50 planting: distance to the next seedling
                     if (planting.IsOn) DrawPlantingHud();
 
+                    //F50 (SIM 0729 t8): the machine does not fit into the inter-row
+                    if (orchardWarn.Length > 0) DrawOrchardWarn();
+
                     if (bnd.bndList.Count > 0 && yt.isYouTurnBtnOn) DrawUTurnBtn();
 
                     if ((isBtnAutoSteerOn || yt.isYouTurnBtnOn) && !ct.isContourBtnOn) DrawManUTurnBtn();
@@ -2184,6 +2187,17 @@ namespace AgOpenGPS
             GL.Begin(PrimitiveType.Points);
             GL.Vertex3(planting.PlantPoint.easting, planting.PlantPoint.northing, 0);
             GL.End();
+        }
+
+        //F50 (SIM 0729 t8): safety alert - the implement is wider than the inter-row allows
+        //once the row offset and the clearance on the far side are taken off it. Red, top
+        //centre, with how many metres are missing in the worst inter-row. Set by
+        //OrchardRebuildTracks, so it appears the moment the machine or a setting changes.
+        private void DrawOrchardWarn()
+        {
+            int cx = oglMain.Width / 2;
+            GL.Color4(1.0f, 0.15f, 0.15f, 0.95f);
+            font.DrawText(cx - 150, 46, orchardWarn, 1.1);
         }
 
         //F50 planting HUD: metres to the next seedling (one decimal) + job progress.

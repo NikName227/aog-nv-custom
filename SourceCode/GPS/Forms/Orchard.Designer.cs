@@ -94,7 +94,8 @@ namespace AgOpenGPS
             else
             {
                 double missing = COrchard.ToolTooWideBy(orchRows, toolW,
-                    ts.setTool_orchardRowOffset, ts.setTool_orchardSafeSpace, out int worst);
+                    ts.setTool_orchardRowOffset, ts.setTool_orchardSafeSpace,
+                    ts.setTool_orchardTreeSpace, out int worst);
                 orchardWarn = missing > 0.01
                     ? "Tool too wide: -" + missing.ToString("N1") + " m"
                         + (worst > 0 ? " (inter-row " + worst + ")" : "")

@@ -585,13 +585,17 @@ namespace AgOpenGPS
 
         // ── Tool-fits check (SIM 0729 t8) ─────────────────────────────────
         // Safety check against driving into a tree row: the machine has to fit into the
-        // inter-row once both offsets are taken off it.
-        //     width > gap - rowOffset - safeSpace   ->  too wide
+        // inter-row once the offsets are taken off it.
+        //     width > gap - rowOffset - safeSpace        (the rule from the feedback)
+        //     width > gap - 2*treeSpace                  (the hard limit BuildPasses uses
+        //                                                 to drop a pass - kept so the alert
+        //                                                 can never stay silent while passes
+        //                                                 are being dropped)
         // Returns how many metres are missing in the WORST inter-row (0 = it fits). Planting
         // (on row) is not checked: the trees are not in the ground yet, and the machine
         // straddles the row instead of passing between two of them.
         public static double ToolTooWideBy(List<OrchRow> rows, double toolWidth,
-            double rowOffset, double safeSpace, out int worstInterRow)
+            double rowOffset, double safeSpace, double treeSpace, out int worstInterRow)
         {
             worstInterRow = -1;
             double worst = 0;
@@ -603,7 +607,8 @@ namespace AgOpenGPS
                 if (sorted[i].curve.Count < 2 || sorted[i + 1].curve.Count < 2) continue;
                 if (BuildMidline(sorted[i], sorted[i + 1], out double gap) == null) continue;
 
-                double missing = toolWidth - (gap - rowOffset - safeSpace);
+                double missing = Math.Max(toolWidth - (gap - rowOffset - safeSpace),
+                                          toolWidth - (gap - 2.0 * treeSpace));
                 if (missing > worst) { worst = missing; worstInterRow = i + 1; }
             }
             return worst;
