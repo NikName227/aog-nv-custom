@@ -1769,4 +1769,7 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsOrchRefLong" xml:space="preserve">
     <value>naprijed/nazad od osovine</value>
   </data>
+  <data name="gsOrchEditTrees" xml:space="preserve">
+    <value>Uredi stabla</value>
+  </data>
 </root>

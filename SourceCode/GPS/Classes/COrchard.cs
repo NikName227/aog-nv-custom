@@ -939,6 +939,63 @@ namespace AgOpenGPS
             return res;
         }
 
+        /// <summary>
+        /// First free "Row N" name (SIM 0730). Deliberately NOT translated: row names are written
+        /// to Orchard.txt and the recorded-rows archive is matched by them, so switching the app
+        /// language must not break that match.
+        /// </summary>
+        public static string NextRowName(List<OrchRow> rows)
+        {
+            int n = 0;
+            if (rows != null)
+            {
+                foreach (var r in rows)
+                {
+                    if (r.name == null || !r.name.StartsWith("Row ")) continue;
+                    if (int.TryParse(r.name.Substring(4).Trim(), out int k) && k > n) n = k;
+                }
+            }
+            return "Row " + (n + 1);
+        }
+
+        /// <summary>
+        /// Pull every tree of a row onto its line, moving them LATERALLY only (SIM 0730): a
+        /// recorded tree cannot be placed sideways with any accuracy, and a tree belongs on the
+        /// row - so filtering the line takes the trees with it, keeping their position along the
+        /// row and zeroing the cross-track offset.
+        /// </summary>
+        public static void ProjectTreesOntoRow(OrchRow row)
+        {
+            if (row == null || row.curve.Count < 2 || row.trees.Count == 0) return;
+
+            for (int t = 0; t < row.trees.Count; t++)
+            {
+                vec2 p = row.trees[t];
+                vec2 best = new vec2(row.curve[0].easting, row.curve[0].northing);
+                double bestD = double.MaxValue;
+
+                for (int i = 0; i < row.curve.Count - 1; i++)
+                {
+                    double ax = row.curve[i].easting, ay = row.curve[i].northing;
+                    double bx = row.curve[i + 1].easting, by = row.curve[i + 1].northing;
+                    double dx = bx - ax, dy = by - ay;
+                    double len2 = dx * dx + dy * dy;
+                    if (len2 < 1e-9) continue;
+
+                    //where the tree falls on this segment, clamped to it
+                    double u = ((p.easting - ax) * dx + (p.northing - ay) * dy) / len2;
+                    if (u < 0) u = 0; else if (u > 1) u = 1;
+
+                    double qx = ax + dx * u, qy = ay + dy * u;
+                    double de = p.easting - qx, dn = p.northing - qy;
+                    double d = de * de + dn * dn;
+                    if (d < bestD) { bestD = d; best = new vec2(qx, qy); }
+                }
+
+                row.trees[t] = best;
+            }
+        }
+
         // ── Row filters: thin + smooth (t9) ───────────────────────────────
         // A row driven with the recorder is sampled every metre or so, GPS noise and all, so it
         // arrives with coarse steps. Both filters work on the CONTROL points, never on the dense

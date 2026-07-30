@@ -80,6 +80,7 @@ namespace AgOpenGPS
             this.nudRefLong = new AgOpenGPS.NudlessNumericUpDown();
             this.btnRefDir = new System.Windows.Forms.Button();
             this.btnMarkTree = new System.Windows.Forms.Button();
+            this.btnEditTrees = new System.Windows.Forms.Button();
             this.btnDeleteLastTree = new System.Windows.Forms.Button();
             this.lblTreeMinDist = new System.Windows.Forms.Label();
             this.nudTreeMinDist = new AgOpenGPS.NudlessNumericUpDown();
@@ -196,7 +197,7 @@ namespace AgOpenGPS
             //
             this.lblName.AutoSize = true;
             this.lblName.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
-            this.lblName.Location = new System.Drawing.Point(684, 600);
+            this.lblName.Location = new System.Drawing.Point(684, 616);
             this.lblName.Name = "lblName";
             this.lblName.Size = new System.Drawing.Size(43, 16);
             this.lblName.TabIndex = 33;
@@ -205,7 +206,7 @@ namespace AgOpenGPS
             // tboxName
             //
             this.tboxName.Font = new System.Drawing.Font("Tahoma", 11.25F);
-            this.tboxName.Location = new System.Drawing.Point(740, 596);
+            this.tboxName.Location = new System.Drawing.Point(740, 612);
             this.tboxName.Name = "tboxName";
             this.tboxName.Size = new System.Drawing.Size(246, 26);
             this.tboxName.TabIndex = 34;
@@ -447,9 +448,9 @@ namespace AgOpenGPS
             this.lblWarn.AutoSize = false;
             this.lblWarn.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
             this.lblWarn.ForeColor = System.Drawing.Color.Firebrick;
-            this.lblWarn.Location = new System.Drawing.Point(684, 470);
+            this.lblWarn.Location = new System.Drawing.Point(684, 471);
             this.lblWarn.Name = "lblWarn";
-            this.lblWarn.Size = new System.Drawing.Size(300, 18);
+            this.lblWarn.Size = new System.Drawing.Size(145, 18);
             this.lblWarn.TabIndex = 20;
             //
             // btnRecordRow (F50 phase 2: record a row by DRIVING it, boundary-recorder
@@ -493,7 +494,7 @@ namespace AgOpenGPS
             this.btnNewRow.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
             this.btnNewRow.Location = new System.Drawing.Point(684, 548);
             this.btnNewRow.Name = "btnNewRow";
-            this.btnNewRow.Size = new System.Drawing.Size(146, 42);
+            this.btnNewRow.Size = new System.Drawing.Size(96, 56);
             this.btnNewRow.TabIndex = 21;
             this.btnNewRow.Text = "New row";
             this.btnNewRow.UseVisualStyleBackColor = false;
@@ -504,9 +505,9 @@ namespace AgOpenGPS
             this.btnEdit.BackColor = System.Drawing.Color.AliceBlue;
             this.btnEdit.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnEdit.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
-            this.btnEdit.Location = new System.Drawing.Point(838, 548);
+            this.btnEdit.Location = new System.Drawing.Point(786, 548);
             this.btnEdit.Name = "btnEdit";
-            this.btnEdit.Size = new System.Drawing.Size(146, 42);
+            this.btnEdit.Size = new System.Drawing.Size(96, 56);
             this.btnEdit.TabIndex = 22;
             this.btnEdit.Text = "Edit row";
             this.btnEdit.UseVisualStyleBackColor = false;
@@ -924,6 +925,16 @@ namespace AgOpenGPS
             this.lblKeyTrigger.Size = new System.Drawing.Size(140, 12);
             this.lblKeyTrigger.Text = "";
             this.lblKeyTrigger.Visible = false;
+            this.btnEditTrees.BackColor = System.Drawing.Color.AliceBlue;
+            this.btnEditTrees.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnEditTrees.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
+            this.btnEditTrees.Location = new System.Drawing.Point(888, 548);
+            this.btnEditTrees.Name = "btnEditTrees";
+            this.btnEditTrees.Size = new System.Drawing.Size(96, 56);
+            this.btnEditTrees.Text = "Edit trees";
+            this.btnEditTrees.UseVisualStyleBackColor = false;
+            this.btnEditTrees.Click += new System.EventHandler(this.btnEditTrees_Click);
+            this.Controls.Add(this.btnEditTrees);
             this.Controls.Add(this.btnMarkTree);
             this.Controls.Add(this.btnDeleteLastTree);
             this.Controls.Add(this.lblTreeMinDist);
@@ -1003,6 +1014,7 @@ namespace AgOpenGPS
         private System.Windows.Forms.Label lblFilterCap;
         private AgOpenGPS.NudlessNumericUpDown nudRefLong;
         private System.Windows.Forms.Button btnRefDir;
+        private System.Windows.Forms.Button btnEditTrees;
         private System.Windows.Forms.Button btnMarkTree;
         private System.Windows.Forms.Button btnDeleteLastTree;
         private System.Windows.Forms.Label lblTreeMinDist;

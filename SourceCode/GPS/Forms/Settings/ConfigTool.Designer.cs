@@ -40,6 +40,9 @@ namespace AgOpenGPS
                 rbtnFront.Visible = true;
                 //NV F06: Orchard tool type only for unlocked installs
                 rbtnOrchard.Visible = CFeatureLock.IsOn(CFeatureLock.FeatureOrchard);
+                //SIM 0730: the checkbox stayed on this tab when the parameters moved to the
+                //Hitch tab, so its caption is translated here (HR "Voćnjak")
+                rbtnOrchard.Text = gStr.gsOrchard;
 
                 //F50 (SIM 0730): the orchard panel follows the app language too
                 LocalizeOrchardPanel();

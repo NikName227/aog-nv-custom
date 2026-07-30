@@ -5454,5 +5454,11 @@ public static string gsOrchPlanterBehind {
             }
         }
         
+        public static string gsOrchEditTrees {
+            get {
+                return ResourceManager.GetString("gsOrchEditTrees", resourceCulture);
+            }
+        }
+        
 }
 }

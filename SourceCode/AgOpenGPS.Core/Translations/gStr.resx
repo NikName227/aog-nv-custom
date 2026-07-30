@@ -2136,4 +2136,7 @@ USE AT OWN RISK.</value>
   <data name="gsOrchRefLong" xml:space="preserve">
     <value>fwd/back from axle</value>
   </data>
+  <data name="gsOrchEditTrees" xml:space="preserve">
+    <value>Edit trees</value>
+  </data>
 </root>

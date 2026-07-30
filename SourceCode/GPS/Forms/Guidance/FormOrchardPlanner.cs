@@ -114,8 +114,11 @@ namespace AgOpenGPS
             btnDeletePoint.Text = gStr.gsOrchDeletePoint;
             btnImportKml.Text = gStr.gsOrchImportKml;
             btnRecordRow.Text = gStr.gsOrchRecordRow;
-            btnNewRow.Text = gStr.gsOrchNewRow;
-            btnEdit.Text = gStr.gsOrchEditRow;
+            //two-word captions, broken over two lines so the three buttons stay wide enough
+            //for a finger without eating the row
+            btnNewRow.Text = gStr.gsOrchNewRow.Replace(" ", Environment.NewLine);
+            btnEdit.Text = gStr.gsOrchEditRow.Replace(" ", Environment.NewLine);
+            btnEditTrees.Text = gStr.gsOrchEditTrees.Replace(" ", Environment.NewLine);
             btnDeleteRow.Text = gStr.gsOrchDelRow;
             lblGenRowSpace.Text = gStr.gsOrchGenRowSpace;
             lblGenTreeSpace.Text = gStr.gsOrchGenTreeSpace;
@@ -398,6 +401,17 @@ namespace AgOpenGPS
                 GL.Begin(PrimitiveType.Points);
                 foreach (var p in rows[hotRow].trees) GL.Vertex3(p.easting, p.northing, 0);
                 GL.End();
+
+                //the tree being edited
+                if (treeEditMode && selTree >= 0 && selTree < rows[hotRow].trees.Count)
+                {
+                    GL.Color3(0.2f, 1.0f, 0.2f);
+                    GL.PointSize(14f);
+                    GL.Begin(PrimitiveType.Points);
+                    GL.Vertex3(rows[hotRow].trees[selTree].easting,
+                               rows[hotRow].trees[selTree].northing, 0);
+                    GL.End();
+                }
             }
         }
 
@@ -507,12 +521,12 @@ namespace AgOpenGPS
             rows[t].pts = new List<vec2>(filterPreview);
             rows[t].BuildCurve();
 
-            int now = rows[t].pts.Count;
+            //SIM 0730: the trees come along, moved LATERALLY onto the smoothed line - a recorded
+            //tree has no reliable sideways position, and a tree belongs on its row
+            COrchard.ProjectTreesOntoRow(rows[t]);
 
-            //seedlings stay where they are - same rule as a hand edit
-            lblWarn.Text = rows[t].trees.Count > 0
-                ? "Row filtered - seedlings still on the old shape (Generate again to re-lay them)"
-                : "";
+            int now = rows[t].pts.Count;
+            lblWarn.Text = "";
 
             ResetFilter();
             if (mode == ViewMode.Build && workIdx == t) { pts.Clear(); pts.AddRange(rows[t].pts); }
@@ -598,6 +612,14 @@ namespace AgOpenGPS
             int mh = HitTestMeasure(e.X, e.Y);
             if (mh >= 0) { measureDrag = mh; return; }
 
+            if (treeEditMode)
+            {
+                int th = HitTestTree(e.X, e.Y);
+                if (th >= 0 && !btnDeletePoint.Checked) { selTree = th; dragIndex = -2; return; }
+                panning = true; panStartSX = sX; panStartSY = sY;
+                return;
+            }
+
             int hit = HitTestPoint(e.X, e.Y);
             if (hit >= 0 && !AddActive && !btnDeletePoint.Checked)
                 dragIndex = hit;
@@ -618,7 +640,17 @@ namespace AgOpenGPS
                 oglSelf.Invalidate();
                 return;
             }
-            if (dragIndex >= 0)
+            if (dragIndex == -2 && treeEditMode)
+            {
+                int t = TargetRow();
+                if (t >= 0 && selTree >= 0 && selTree < rows[t].trees.Count)
+                {
+                    moved = true;
+                    rows[t].trees[selTree] = ScreenToWorld(e.X, e.Y);
+                    oglSelf.Invalidate();
+                }
+            }
+            else if (dragIndex >= 0)
             {
                 moved = true;
                 pts[dragIndex] = ScreenToWorld(e.X, e.Y);
@@ -642,6 +674,23 @@ namespace AgOpenGPS
             if (measureDrag >= 0) { measureDrag = -1; moved = false; oglSelf.Invalidate(); return; }
 
             bool wasPointDrag = dragIndex >= 0 && moved;
+
+            if (!moved && treeEditMode)
+            {
+                int th = HitTestTree(e.X, e.Y);
+                int t = TargetRow();
+                if (btnDeletePoint.Checked && th >= 0 && t >= 0)
+                {
+                    rows[t].trees.RemoveAt(th);
+                    selTree = -1;
+                    lblActiveOp.Text = gStr.gsOrchTree + " " + rows[t].trees.Count;
+                }
+                else if (th >= 0) selTree = th;
+
+                dragIndex = -1; panning = false; moved = false;
+                oglSelf.Invalidate();
+                return;
+            }
 
             if (!moved)
             {
@@ -677,6 +726,10 @@ namespace AgOpenGPS
         private bool recSideRight = true;
         private bool refForward = true;          // longitudinal direction of the reference point
         private double recLastE = double.MaxValue, recLastN;
+
+        // tree editing (SIM 0730): the same point tools, aimed at the trees of the active row
+        private bool treeEditMode;
+        private int selTree = -1;
 
         // tree marking while recording (SIM 0730)
         private bool capturingKey;
@@ -790,6 +843,9 @@ namespace AgOpenGPS
             lblThin.Visible = btnThinDown.Visible = btnThinUp.Visible = lblThinVal.Visible = !rec;
             lblSmooth.Visible = btnSmoothDown.Visible = btnSmoothUp.Visible = lblSmoothVal.Visible = !rec;
 
+            btnNewRow.Visible = btnEdit.Visible = btnEditTrees.Visible = !rec;
+            if (rec) SetTreeEditMode(false);
+
             btnMarkTree.Visible = rec;
             btnDeleteLastTree.Visible = rec;
             lblTreeMinDist.Visible = nudTreeMinDist.Visible = rec;
@@ -871,7 +927,12 @@ namespace AgOpenGPS
         private void EnsureWorkRow()
         {
             if (workIdx >= 0 && workIdx < rows.Count) return;
-            var r = new OrchRow { source = RowSource.Manual, name = "Row " + (rows.Count + 1) };
+            string nm = tboxName.Text.Trim();
+            var r = new OrchRow
+            {
+                source = RowSource.Manual,
+                name = nm.Length > 0 ? nm : COrchard.NextRowName(rows)
+            };
             rows.Add(r);
             workIdx = rows.Count - 1;
             UpdateNavButtons();
@@ -945,6 +1006,20 @@ namespace AgOpenGPS
 
         private void Nav(int dx, int dy)
         {
+            if (treeEditMode && selTree >= 0)
+            {
+                int t = TargetRow();
+                if (t >= 0 && selTree < rows[t].trees.Count)
+                {
+                    double k = MetersPerPixel();
+                    var p = rows[t].trees[selTree];
+                    rows[t].trees[selTree] = new vec2(p.easting + dx * stepPx * k,
+                                                     p.northing - dy * stepPx * k);
+                    oglSelf.Invalidate();
+                    return;
+                }
+            }
+
             if (pointMode == PointEdit.Move && selIndex >= 0)
             {
                 double k = MetersPerPixel();
@@ -1193,9 +1268,47 @@ namespace AgOpenGPS
         {
             // commit-by-reference already done live; just start a fresh empty row buffer
             pts.Clear(); workIdx = -1; selIndex = -1;
-            tboxName.Text = "";
+            SetTreeEditMode(false);
+
+            //SIM 0730: offer the next free name straight away - the driver can overwrite it
+            tboxName.Text = COrchard.NextRowName(rows);
             SetMode(ViewMode.Build);
             lblActiveOp.Text = "New row — tap Add point, then place trees-line points";
+        }
+
+        // ── Edit trees (SIM 0730) ─────────────────────────────────────────
+        // Same tools as the row points - click to pick, arrows or drag to move, "Delete point"
+        // to remove - only aimed at the trees of the active row. Filtering a row pulls every
+        // tree onto the line, so hand corrections belong AFTER the filter.
+        private void btnEditTrees_Click(object sender, EventArgs e) => SetTreeEditMode(!treeEditMode);
+
+        private void SetTreeEditMode(bool on)
+        {
+            treeEditMode = on;
+            selTree = -1;
+            btnEditTrees.BackColor = on ? Color.LimeGreen : Color.AliceBlue;
+            if (on)
+            {
+                ResetAddStage();
+                selIndex = -1;
+                SetPointMode(PointEdit.Off);
+                lblActiveOp.Text = gStr.gsOrchEditTrees;
+            }
+            oglSelf.Invalidate();
+        }
+
+        private int HitTestTree(int px, int py)
+        {
+            int t = TargetRow();
+            if (t < 0) return -1;
+
+            var trees = rows[t].trees;
+            for (int i = 0; i < trees.Count; i++)
+            {
+                Point sp = WorldToScreen(trees[i]);
+                if (Math.Abs(sp.X - px) <= 16 && Math.Abs(sp.Y - py) <= 16) return i;
+            }
+            return -1;
         }
 
         private void btnEdit_Click(object sender, EventArgs e)
