@@ -1989,4 +1989,118 @@ USE AT OWN RISK.</value>
   <data name="gsFixedOrchardRowNoNudge" xml:space="preserve">
     <value>Fixed orchard row - no nudge</value>
   </data>
+  <data name="gsOrchPathMode" xml:space="preserve">
+    <value>Path mode</value>
+  </data>
+  <data name="gsOrchPathOnePass" xml:space="preserve">
+    <value>One pass (center of inter-row)</value>
+  </data>
+  <data name="gsOrchPathMultiPass" xml:space="preserve">
+    <value>Multi pass (per inter-row)</value>
+  </data>
+  <data name="gsOrchPathOnRow" xml:space="preserve">
+    <value>On row (planting)</value>
+  </data>
+  <data name="gsOrchWorkMode" xml:space="preserve">
+    <value>Working mode</value>
+  </data>
+  <data name="gsOrchWorkCenter" xml:space="preserve">
+    <value>Center</value>
+  </data>
+  <data name="gsOrchWorkLeft" xml:space="preserve">
+    <value>Left</value>
+  </data>
+  <data name="gsOrchWorkRight" xml:space="preserve">
+    <value>Right</value>
+  </data>
+  <data name="gsOrchRowOffset" xml:space="preserve">
+    <value>Tool offset from row (m)</value>
+  </data>
+  <data name="gsOrchTreeSpaceSet" xml:space="preserve">
+    <value>Tree clearance (m)</value>
+  </data>
+  <data name="gsOrchSafeSpace" xml:space="preserve">
+    <value>Safe space - opposite row (m)</value>
+  </data>
+  <data name="gsOrchCenterFirst" xml:space="preserve">
+    <value>Center pass first (odd pass count)</value>
+  </data>
+  <data name="gsOrchPlanterLateral" xml:space="preserve">
+    <value>Planter offset - right + / left - (m)</value>
+  </data>
+  <data name="gsOrchPlanterBehind" xml:space="preserve">
+    <value>Planter behind rear axle (m)</value>
+  </data>
+  <data name="gsOrchName" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="gsOrchLegend" xml:space="preserve">
+    <value>Legend</value>
+  </data>
+  <data name="gsOrchLegRow" xml:space="preserve">
+    <value>Row</value>
+  </data>
+  <data name="gsOrchLegMid" xml:space="preserve">
+    <value>Mid-line</value>
+  </data>
+  <data name="gsOrchLegTree" xml:space="preserve">
+    <value>Tree</value>
+  </data>
+  <data name="gsOrchFine" xml:space="preserve">
+    <value>Fine</value>
+  </data>
+  <data name="gsOrchCoarse" xml:space="preserve">
+    <value>Coarse</value>
+  </data>
+  <data name="gsOrchMeasure" xml:space="preserve">
+    <value>Measure</value>
+  </data>
+  <data name="gsOrchAddPoint" xml:space="preserve">
+    <value>Add point</value>
+  </data>
+  <data name="gsOrchDeletePoint" xml:space="preserve">
+    <value>Delete point</value>
+  </data>
+  <data name="gsOrchImportKml" xml:space="preserve">
+    <value>Import KML</value>
+  </data>
+  <data name="gsOrchRecordRow" xml:space="preserve">
+    <value>Record row</value>
+  </data>
+  <data name="gsOrchRecordStop" xml:space="preserve">
+    <value>STOP rec</value>
+  </data>
+  <data name="gsOrchNewRow" xml:space="preserve">
+    <value>New row</value>
+  </data>
+  <data name="gsOrchEditRow" xml:space="preserve">
+    <value>Edit row</value>
+  </data>
+  <data name="gsOrchDelRow" xml:space="preserve">
+    <value>Del</value>
+  </data>
+  <data name="gsOrchGenRowSpace" xml:space="preserve">
+    <value>Row spacing (m)</value>
+  </data>
+  <data name="gsOrchGenTreeSpace" xml:space="preserve">
+    <value>Tree spacing (m)</value>
+  </data>
+  <data name="gsOrchGenHeadland" xml:space="preserve">
+    <value>Headland - row end (m)</value>
+  </data>
+  <data name="gsOrchGenSetback" xml:space="preserve">
+    <value>Tree to boundary (m)</value>
+  </data>
+  <data name="gsOrchGenStagger" xml:space="preserve">
+    <value>Stagger rows (half tree spacing)</value>
+  </data>
+  <data name="gsOrchGenLine" xml:space="preserve">
+    <value>1 - Draw line</value>
+  </data>
+  <data name="gsOrchGenerate" xml:space="preserve">
+    <value>2 - Generate</value>
+  </data>
+  <data name="gsOrchClose" xml:space="preserve">
+    <value>Close</value>
+  </data>
 </root>

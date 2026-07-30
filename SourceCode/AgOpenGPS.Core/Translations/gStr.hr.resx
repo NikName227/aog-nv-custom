@@ -1622,4 +1622,118 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsFixedOrchardRowNoNudge" xml:space="preserve">
     <value>Fiksni red voćnjaka - bez pomaka</value>
   </data>
+  <data name="gsOrchPathMode" xml:space="preserve">
+    <value>Način patha</value>
+  </data>
+  <data name="gsOrchPathOnePass" xml:space="preserve">
+    <value>Jedan prolaz (sredina međureda)</value>
+  </data>
+  <data name="gsOrchPathMultiPass" xml:space="preserve">
+    <value>Više prolaza (po međuredu)</value>
+  </data>
+  <data name="gsOrchPathOnRow" xml:space="preserve">
+    <value>Po redu (sadnja)</value>
+  </data>
+  <data name="gsOrchWorkMode" xml:space="preserve">
+    <value>Način rada</value>
+  </data>
+  <data name="gsOrchWorkCenter" xml:space="preserve">
+    <value>Sredina</value>
+  </data>
+  <data name="gsOrchWorkLeft" xml:space="preserve">
+    <value>Lijevo</value>
+  </data>
+  <data name="gsOrchWorkRight" xml:space="preserve">
+    <value>Desno</value>
+  </data>
+  <data name="gsOrchRowOffset" xml:space="preserve">
+    <value>Odmak stroja od reda (m)</value>
+  </data>
+  <data name="gsOrchTreeSpaceSet" xml:space="preserve">
+    <value>Odmak od stabla (m)</value>
+  </data>
+  <data name="gsOrchSafeSpace" xml:space="preserve">
+    <value>Sigurnosni odmak - suprotni red (m)</value>
+  </data>
+  <data name="gsOrchCenterFirst" xml:space="preserve">
+    <value>Prvo srednji prolaz (neparan broj prolaza)</value>
+  </data>
+  <data name="gsOrchPlanterLateral" xml:space="preserve">
+    <value>Odmak sadilice - desno + / lijevo - (m)</value>
+  </data>
+  <data name="gsOrchPlanterBehind" xml:space="preserve">
+    <value>Sadilica iza zadnje osovine (m)</value>
+  </data>
+  <data name="gsOrchName" xml:space="preserve">
+    <value>Naziv</value>
+  </data>
+  <data name="gsOrchLegend" xml:space="preserve">
+    <value>Legenda</value>
+  </data>
+  <data name="gsOrchLegRow" xml:space="preserve">
+    <value>Red</value>
+  </data>
+  <data name="gsOrchLegMid" xml:space="preserve">
+    <value>Sredina</value>
+  </data>
+  <data name="gsOrchLegTree" xml:space="preserve">
+    <value>Stablo</value>
+  </data>
+  <data name="gsOrchFine" xml:space="preserve">
+    <value>Fino</value>
+  </data>
+  <data name="gsOrchCoarse" xml:space="preserve">
+    <value>Grubo</value>
+  </data>
+  <data name="gsOrchMeasure" xml:space="preserve">
+    <value>Mjeri</value>
+  </data>
+  <data name="gsOrchAddPoint" xml:space="preserve">
+    <value>Dodaj točku</value>
+  </data>
+  <data name="gsOrchDeletePoint" xml:space="preserve">
+    <value>Briši točku</value>
+  </data>
+  <data name="gsOrchImportKml" xml:space="preserve">
+    <value>Uvezi KML</value>
+  </data>
+  <data name="gsOrchRecordRow" xml:space="preserve">
+    <value>Snimi red</value>
+  </data>
+  <data name="gsOrchRecordStop" xml:space="preserve">
+    <value>STOP snim.</value>
+  </data>
+  <data name="gsOrchNewRow" xml:space="preserve">
+    <value>Novi red</value>
+  </data>
+  <data name="gsOrchEditRow" xml:space="preserve">
+    <value>Uredi red</value>
+  </data>
+  <data name="gsOrchDelRow" xml:space="preserve">
+    <value>Briši</value>
+  </data>
+  <data name="gsOrchGenRowSpace" xml:space="preserve">
+    <value>Razmak redova (m)</value>
+  </data>
+  <data name="gsOrchGenTreeSpace" xml:space="preserve">
+    <value>Razmak sadnica (m)</value>
+  </data>
+  <data name="gsOrchGenHeadland" xml:space="preserve">
+    <value>Uvratina - kraj reda (m)</value>
+  </data>
+  <data name="gsOrchGenSetback" xml:space="preserve">
+    <value>Sadnica do granice (m)</value>
+  </data>
+  <data name="gsOrchGenStagger" xml:space="preserve">
+    <value>Cik-cak redovi (pola razmaka)</value>
+  </data>
+  <data name="gsOrchGenLine" xml:space="preserve">
+    <value>1 - Nacrtaj liniju</value>
+  </data>
+  <data name="gsOrchGenerate" xml:space="preserve">
+    <value>2 - Generiraj</value>
+  </data>
+  <data name="gsOrchClose" xml:space="preserve">
+    <value>Zatvori</value>
+  </data>
 </root>

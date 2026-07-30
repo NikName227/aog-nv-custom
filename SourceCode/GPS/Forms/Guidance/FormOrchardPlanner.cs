@@ -92,6 +92,31 @@ namespace AgOpenGPS
             btnNewOrchard.Text = gStr.gsNewOrchardPlanting;
             lblGenCap.Text = gStr.gsNewOrchardPlantingLayoutCaps;
 
+            //SIM 0730: the whole window follows the app language, not just its title
+            lblName.Text = gStr.gsOrchName;
+            lblLegCap.Text = gStr.gsOrchLegend;
+            lblLegRow.Text = gStr.gsOrchLegRow;
+            lblLegMid.Text = gStr.gsOrchLegMid;
+            lblLegTree.Text = gStr.gsOrchLegTree;
+            btnFine.Text = gStr.gsOrchFine;
+            btnCoarse.Text = gStr.gsOrchCoarse;
+            btnMeasure.Text = gStr.gsOrchMeasure;
+            btnAddPoint.Text = gStr.gsOrchAddPoint;
+            btnDeletePoint.Text = gStr.gsOrchDeletePoint;
+            btnImportKml.Text = gStr.gsOrchImportKml;
+            btnRecordRow.Text = gStr.gsOrchRecordRow;
+            btnNewRow.Text = gStr.gsOrchNewRow;
+            btnEdit.Text = gStr.gsOrchEditRow;
+            btnDeleteRow.Text = gStr.gsOrchDelRow;
+            lblGenRowSpace.Text = gStr.gsOrchGenRowSpace;
+            lblGenTreeSpace.Text = gStr.gsOrchGenTreeSpace;
+            lblGenHeadland.Text = gStr.gsOrchGenHeadland;
+            lblGenSetback.Text = gStr.gsOrchGenSetback;
+            chkGenStagger.Text = gStr.gsOrchGenStagger;
+            btnGenLine.Text = gStr.gsOrchGenLine;
+            btnGenerate.Text = gStr.gsOrchGenerate;
+            btnGenClose.Text = gStr.gsOrchClose;
+
             mf.CalculateMinMax();
 
             // load rows + loose trees saved under this field
@@ -490,14 +515,14 @@ namespace AgOpenGPS
                 SetMode(ViewMode.Build);
                 recLastE = double.MaxValue;
                 recOn = true;
-                btnRecordRow.Text = "STOP rec";
+                btnRecordRow.Text = gStr.gsOrchRecordStop;
                 btnRecordRow.BackColor = System.Drawing.Color.LightGreen;
                 lblActiveOp.Text = "Recording row - drive along it";
             }
             else
             {
                 recOn = false;
-                btnRecordRow.Text = "Record row";
+                btnRecordRow.Text = gStr.gsOrchRecordRow;
                 btnRecordRow.BackColor = System.Drawing.Color.MistyRose;
                 if (pts.Count >= 2)
                 {

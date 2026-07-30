@@ -41,6 +41,9 @@ namespace AgOpenGPS
                 //NV F06: Orchard tool type only for unlocked installs
                 rbtnOrchard.Visible = CFeatureLock.IsOn(CFeatureLock.FeatureOrchard);
 
+                //F50 (SIM 0730): the orchard panel follows the app language too
+                LocalizeOrchardPanel();
+
                 //F50: orchard settings ride on the implement profile
                 cboOrchardPath.SelectedIndex = COrchard.ResolvePathMode();
                 cboOrchardMode.SelectedIndex = Math.Max(0, Math.Min(2,
@@ -125,6 +128,33 @@ namespace AgOpenGPS
         //machine is driving between the rows, and vice versa. The visible rows are packed
         //from the top so there are no holes left by the hidden ones.
         private void cboOrchardPath_SelectedIndexChanged(object sender, EventArgs e) => ApplyOrchardPathUI();
+
+        //F50 (SIM 0730): the panel was hard-coded English. The combo items are rebuilt rather
+        //than translated in place so the indices stay 0/1/2 = one pass / multi pass / on row.
+        private bool orchardPanelLocalized;
+
+        private void LocalizeOrchardPanel()
+        {
+            if (orchardPanelLocalized) return;
+            orchardPanelLocalized = true;
+
+            lblOrchardPath.Text = gStr.gsOrchPathMode;
+            cboOrchardPath.Items.Clear();
+            cboOrchardPath.Items.AddRange(new object[] {
+                gStr.gsOrchPathOnePass, gStr.gsOrchPathMultiPass, gStr.gsOrchPathOnRow });
+
+            lblOrchardMode.Text = gStr.gsOrchWorkMode;
+            cboOrchardMode.Items.Clear();
+            cboOrchardMode.Items.AddRange(new object[] {
+                gStr.gsOrchWorkCenter, gStr.gsOrchWorkLeft, gStr.gsOrchWorkRight });
+
+            lblOrchardRowOffset.Text = gStr.gsOrchRowOffset;
+            lblOrchardTree.Text = gStr.gsOrchTreeSpaceSet;
+            lblOrchardSafe.Text = gStr.gsOrchSafeSpace;
+            chkOrchardCenterFirst.Text = gStr.gsOrchCenterFirst;
+            lblPlantLateral.Text = gStr.gsOrchPlanterLateral;
+            lblPlantBehind.Text = gStr.gsOrchPlanterBehind;
+        }
 
         private void ApplyOrchardPathUI()
         {
