@@ -539,7 +539,7 @@ namespace AgOpenGPS
         // bounds (t10 E) let the OUTER strips - between the boundary and the first / last row -
         // get their pass too; without a boundary they are simply skipped.
         public static List<CTrk> BuildTracks(List<OrchRow> rows, int pathMode, double toolWidth,
-            int workMode, double safeSpace, double treeWidth, double rowOffset, bool centerFirst,
+            double treeWidth, bool centerFirst, int passCount,
             out List<string> warnings, List<List<vec2>> bounds = null)
         {
             if (pathMode == PathOnRow)
@@ -550,18 +550,15 @@ namespace AgOpenGPS
             if (pathMode == PathTwoPass || pathMode == PathMultiPass)
             {
                 var along = BuildRowPassTracks(rows, toolWidth, treeWidth,
-                    pathMode == PathMultiPass, centerFirst, out warnings);
+                    pathMode == PathMultiPass, centerFirst, passCount, out warnings);
                 //the outer rows get their one strip along the boundary side as well
                 AddOuterStripPasses(rows, bounds, toolWidth, treeWidth, true, along, warnings);
                 return along;
             }
 
-            //one pass: a single line down the middle of each inter-row. Working mode
-            //(centre/left/right) is not shown for it, so a value left over from an earlier
-            //profile must not silently drop lines through the L/R safe-space check.
-            workMode = 0;
-
-            var passes = BuildPasses(rows, toolWidth, workMode, safeSpace, treeWidth, rowOffset,
+            //one pass: a single line down the middle of each inter-row. The old belt settings
+            //(row offset, safe space, working mode) are gone - they shaped no line any more.
+            var passes = BuildPasses(rows, toolWidth, 0, 0, treeWidth, 0,
                 true, centerFirst, out warnings);
 
             AddOuterStripPasses(rows, bounds, toolWidth, treeWidth,
@@ -700,8 +697,15 @@ namespace AgOpenGPS
         // The middle passes have no side and are drivable either way.
         //
         // middleFirst = do the middle before the two row passes instead of after.
+        //
+        // passCount (SIM 0730, multi pass only): 0 = work the count out from the tool width as
+        // above; >= 3 = take exactly that many passes whatever the width and the overlap - the
+        // two outer ones still hug the tree lines by the safe tree width, the rest are spread
+        // evenly between them. 1 and 2 are refused in the UI (they are the one-pass and two-pass
+        // modes), so anything below 3 is treated as 0 here.
         public static List<CTrk> BuildRowPassTracks(List<OrchRow> rows, double toolWidth,
-            double treeWidth, bool multiPass, bool middleFirst, out List<string> warnings)
+            double treeWidth, bool multiPass, bool middleFirst, int passCount,
+            out List<string> warnings)
         {
             warnings = new List<string>();
             var result = new List<CTrk>();
@@ -736,10 +740,14 @@ namespace AgOpenGPS
                 int n = 2;
                 if (multiPass)
                 {
-                    double workable = gap - treeWidth;
-                    n = (int)Math.Ceiling(workable / toolWidth - 0.001);
-                    if (n < 2) n = 2;
-                    if (n > 40) n = 40;
+                    if (passCount >= 3) n = Math.Min(passCount, 40);
+                    else
+                    {
+                        double workable = gap - treeWidth;
+                        n = (int)Math.Ceiling(workable / toolWidth - 0.001);
+                        if (n < 2) n = 2;
+                        if (n > 40) n = 40;
+                    }
                 }
                 double step = n > 1 ? span / (n - 1) : 0;
 
@@ -851,16 +859,14 @@ namespace AgOpenGPS
         // ── Tool-fits check (SIM 0729 t8) ─────────────────────────────────
         // Safety check against driving into a tree row: the machine has to fit into the
         // inter-row once the offsets are taken off it.
-        //     width > gap - rowOffset - safeSpace        (the rule from the feedback)
-        //     width > gap - treeWidth                    (the hard limit BuildPasses uses
-        //                                                 to drop a pass - kept so the alert
-        //                                                 can never stay silent while passes
-        //                                                 are being dropped)
+        //     width > gap - treeWidth
+        // SIM 0730: this is the ONE rule now - the same one every pass is placed by, so the alert
+        // can no longer fire over settings that shape no line.
         // Returns how many metres are missing in the WORST inter-row (0 = it fits). Planting
         // (on row) is not checked: the trees are not in the ground yet, and the machine
         // straddles the row instead of passing between two of them.
         public static double ToolTooWideBy(List<OrchRow> rows, double toolWidth,
-            double rowOffset, double safeSpace, double treeWidth, out int worstInterRow)
+            double treeWidth, out int worstInterRow)
         {
             worstInterRow = -1;
             double worst = 0;
@@ -872,8 +878,7 @@ namespace AgOpenGPS
                 if (sorted[i].curve.Count < 2 || sorted[i + 1].curve.Count < 2) continue;
                 if (BuildMidline(sorted[i], sorted[i + 1], out double gap) == null) continue;
 
-                double missing = Math.Max(toolWidth - (gap - rowOffset - safeSpace),
-                                          toolWidth - (gap - treeWidth));
+                double missing = toolWidth - (gap - treeWidth);
                 if (missing > worst) { worst = missing; worstInterRow = i + 1; }
             }
             return worst;

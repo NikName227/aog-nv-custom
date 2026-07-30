@@ -39,20 +39,21 @@ namespace AgOpenGPS.Properties
         // is kept (never renamed): settings are serialized BY FIELD NAME, so renaming it
         // would silently throw away what is already saved on the machine (F05 lesson).
         public int setTool_orchardPathMode = -1;
+        // Multi pass only: how many passes per inter-row. 0 = work it out from the tool
+        // width; >= 3 = exactly that many, whatever the width and the overlap. 1 and 2 are
+        // refused by the UI - they would be the one-pass and two-pass modes.
+        public int setTool_orchardPassCount = 0;
         public int setTool_orchardWorkMode = 0;        // 0 = center, 1 = left, 2 = right (multi pass only)
-        public double setTool_orchardSafeSpace = 1.0;  // m clearance to the OPPOSITE row (from pass line)
         // Full width of the band around a row line that is NOT worked (SIM 0730: measured
         // in the field as the untouched strip around the trees, which is easier to judge than
         // a one-sided margin). Half of it is the clearance the tool edge keeps from the row.
         public double setTool_orchardTreeWidth = 1.0;   // m, the whole unworked band
-        public double setTool_orchardRowOffset = 0.5;  // m tool offset from the row -> working belt width
         public bool setTool_orchardOnePass = false;    // force 1 center pass per inter-row (spraying)
         public bool setTool_orchardCenterFirst = true; // odd passes: center first, then outward
 
         // Planter geometry (F50 planting): where the seedling actually lands, relative
         // to the tractor. Guidance still steers the pivot - only the "next tree" HUD and
         // the planted marking use this point.
-        public double setTool_plantDistBehindAxle = 1.0; // m behind the rear axle
         public bool setTool_isSectionsNotZones = true;
         public bool setTool_isSectionOffWhenOut = true;
         public bool setTool_isDisplayTramControl = true;

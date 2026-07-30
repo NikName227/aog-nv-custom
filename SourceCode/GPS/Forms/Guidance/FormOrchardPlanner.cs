@@ -1281,13 +1281,9 @@ namespace AgOpenGPS
             double toolW = mf.tool.width > 0.1 ? mf.tool.width : 3.0;
 
             var ts = Properties.ToolSettings.Default;
-            List<CTrk> passes = mf.tool.isToolOrchard
-                ? COrchard.BuildPasses(rows, toolW,
-                    ts.setTool_orchardWorkMode, ts.setTool_orchardSafeSpace,
-                    ts.setTool_orchardTreeWidth, ts.setTool_orchardRowOffset,
-                    ts.setTool_orchardOnePass, ts.setTool_orchardCenterFirst,
-                    out List<string> warns)
-                : COrchard.BuildPasses(rows, toolW, 0, 0, 0, 0, true, true, out warns);
+            List<CTrk> passes = COrchard.BuildTracks(rows, COrchard.ResolvePathMode(), toolW,
+                ts.setTool_orchardTreeWidth, ts.setTool_orchardCenterFirst,
+                ts.setTool_orchardPassCount, out List<string> warns, FieldBounds());
 
             foreach (var t in passes) midlines.Add(t);
             lblWarn.Text = warns.Count > 0

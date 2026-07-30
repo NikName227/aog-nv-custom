@@ -48,13 +48,11 @@ namespace AgOpenGPS
                 cboOrchardPath.SelectedIndex = OrchardModeToRow(COrchard.ResolvePathMode());
                 cboOrchardMode.SelectedIndex = Math.Max(0, Math.Min(2,
                     Properties.ToolSettings.Default.setTool_orchardWorkMode));
-                nudOrchardRowOffset.Value = (decimal)Properties.ToolSettings.Default.setTool_orchardRowOffset;
                 nudOrchardTree.Value = (decimal)Properties.ToolSettings.Default.setTool_orchardTreeWidth;
-                nudOrchardSafe.Value = (decimal)Properties.ToolSettings.Default.setTool_orchardSafeSpace;
+                nudOrchardPassCount.Value = NudClamp(nudOrchardPassCount,
+                    Properties.ToolSettings.Default.setTool_orchardPassCount);
                 chkOrchardOnePass.Checked = Properties.ToolSettings.Default.setTool_orchardOnePass;
                 chkOrchardCenterFirst.Checked = Properties.ToolSettings.Default.setTool_orchardCenterFirst;
-                nudPlantBehind.Value = NudClamp(nudPlantBehind,
-                    (decimal)Properties.ToolSettings.Default.setTool_plantDistBehindAxle);
                 ApplyOrchardPathUI();
 
                 //seed the toggle state for this visit (see rbtnOrchard_Click)
@@ -177,11 +175,9 @@ namespace AgOpenGPS
             cboOrchardMode.Items.AddRange(new object[] {
                 gStr.gsOrchWorkCenter, gStr.gsOrchWorkLeft, gStr.gsOrchWorkRight });
 
-            lblOrchardRowOffset.Text = gStr.gsOrchRowOffset;
             lblOrchardTree.Text = gStr.gsOrchTreeWidth;
-            lblOrchardSafe.Text = gStr.gsOrchSafeSpace;
+            lblOrchardPassCount.Text = gStr.gsOrchPassCount;
             chkOrchardCenterFirst.Text = gStr.gsOrchCenterFirst;
-            lblPlantBehind.Text = gStr.gsOrchPlanterBehind;
         }
 
         private void ApplyOrchardPathUI()
@@ -198,38 +194,63 @@ namespace AgOpenGPS
 
             //two pass: the working-mode box is the side the implement is mounted on, and it is
             //the only setting that mode needs besides the safe tree width
-            lblOrchardMode.Visible = cboOrchardMode.Visible = multi || twoPass;
+            bool side = multi || twoPass;
             lblOrchardMode.Text = twoPass ? gStr.gsOrchImplementSide : gStr.gsOrchWorkMode;
-            lblOrchardRowOffset.Visible = nudOrchardRowOffset.Visible = multi;
-            lblOrchardSafe.Visible = nudOrchardSafe.Visible = multi;
-            chkOrchardCenterFirst.Visible = multi;
-            lblOrchardTree.Visible = nudOrchardTree.Visible = between;
-            lblPlantBehind.Visible = nudPlantBehind.Visible = onRow;
             //superseded by the path mode; kept only so old profiles still migrate
             chkOrchardOnePass.Visible = false;
 
+            //SIM 0730: pack by the INTENDED visibility, never by Control.Visible - WinForms
+            //reports a control inside a hidden panel as invisible, and this runs from
+            //tabTConfig_Enter BEFORE the panel is shown. Reading it there left every row on its
+            //designer position, which is why "Implement side" only appeared on a second pick.
             int y = 74;
-            PackOrchardRow(lblOrchardMode, cboOrchardMode, ref y);
-            PackOrchardRow(lblOrchardRowOffset, nudOrchardRowOffset, ref y);
-            PackOrchardRow(lblOrchardTree, nudOrchardTree, ref y);
-            PackOrchardRow(lblOrchardSafe, nudOrchardSafe, ref y);
-            PackOrchardRow(chkOrchardCenterFirst, null, ref y);
-            PackOrchardRow(lblPlantBehind, nudPlantBehind, ref y);
+            PackOrchardRow(side, lblOrchardMode, cboOrchardMode, ref y);
+            PackOrchardRow(multi, lblOrchardPassCount, nudOrchardPassCount, ref y, lblOrchardPassWarn);
+            PackOrchardRow(between, lblOrchardTree, nudOrchardTree, ref y);
+            PackOrchardRow(multi, chkOrchardCenterFirst, null, ref y);
         }
 
-        private static void PackOrchardRow(Control label, Control field, ref int y)
+        private static void PackOrchardRow(bool show, Control label, Control field, ref int y,
+            Control extra = null)
         {
-            if (!label.Visible) return;
+            label.Visible = show;
+            if (field != null) field.Visible = show;
+            if (extra != null) extra.Visible = show;
+            if (!show) return;
+
             label.Location = new Point(label.Location.X, y + 4);
             if (field != null) field.Location = new Point(field.Location.X, y);
+            if (extra != null) extra.Location = new Point(extra.Location.X, y + 4);
             y += 50;
+        }
+
+        //F50 (SIM 0730): 1 and 2 passes ARE the one-pass and two-pass modes, so they are refused
+        //here - the value snaps back to 0 (auto), the box goes red and says what is allowed.
+        private void nudOrchardPassCount_ValueChanged(object sender, EventArgs e)
+        {
+            if (nudOrchardPassCount.Value == 1 || nudOrchardPassCount.Value == 2)
+            {
+                nudOrchardPassCount.Value = 0;
+                nudOrchardPassCount.BackColor = Color.LightCoral;
+                lblOrchardPassWarn.Text = gStr.gsOrchPassCountMin;
+            }
+            else
+            {
+                nudOrchardPassCount.BackColor = Color.White;
+                lblOrchardPassWarn.Text = "";
+            }
         }
 
         //F50: the settings panel covers the hitch-type pictures while Orchard is chosen
         private void rbtnOrchard_CheckedChanged(object sender, EventArgs e)
         {
             pnlOrchardSet.Visible = rbtnOrchard.Checked;
-            if (rbtnOrchard.Checked) pnlOrchardSet.BringToFront();
+            if (rbtnOrchard.Checked)
+            {
+                pnlOrchardSet.BringToFront();
+                //and lay the rows out now that the panel is really on screen
+                ApplyOrchardPathUI();
+            }
         }
 
         //field 2026-07-16: the settings panel covers the other four type buttons, so
@@ -259,12 +280,10 @@ namespace AgOpenGPS
                     Properties.ToolSettings.Default.setTool_orchardPathMode =
                         OrchardRowToMode(cboOrchardPath.SelectedIndex);
                 Properties.ToolSettings.Default.setTool_orchardWorkMode = cboOrchardMode.SelectedIndex;
-                Properties.ToolSettings.Default.setTool_orchardRowOffset = (double)nudOrchardRowOffset.Value;
                 Properties.ToolSettings.Default.setTool_orchardTreeWidth = (double)nudOrchardTree.Value;
-                Properties.ToolSettings.Default.setTool_orchardSafeSpace = (double)nudOrchardSafe.Value;
+                Properties.ToolSettings.Default.setTool_orchardPassCount = (int)nudOrchardPassCount.Value;
                 Properties.ToolSettings.Default.setTool_orchardOnePass = chkOrchardOnePass.Checked;
                 Properties.ToolSettings.Default.setTool_orchardCenterFirst = chkOrchardCenterFirst.Checked;
-                Properties.ToolSettings.Default.setTool_plantDistBehindAxle = (double)nudPlantBehind.Value;
 
                 if (rbtnOrchard.Checked)
                 {
@@ -317,7 +336,6 @@ namespace AgOpenGPS
             mf.tool.isToolTBT = Properties.ToolSettings.Default.setTool_isToolTBT;
             mf.tool.isToolFrontFixed = Properties.ToolSettings.Default.setTool_isToolFront;
             mf.tool.isToolOrchard = Properties.ToolSettings.Default.setTool_isToolOrchard;
-            mf.tool.plantDistBehindAxle = Properties.ToolSettings.Default.setTool_plantDistBehindAxle;
             mf.tool.orchardPathMode = Properties.ToolSettings.Default.setTool_orchardPathMode;
 
             //mf.tool.hitchLength = (double)nudDrawbarLength.Value * mf.inchOrCm2m;

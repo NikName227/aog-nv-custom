@@ -28,6 +28,11 @@ namespace AgOpenGPS
             try { orchRows.AddRange(COrchard.LoadRows(fieldDir)); }
             catch (Exception ex) { Log.EventWriter("Orchard LoadRows: " + ex); }
 
+            //SIM 0730: the "next tree" readout works in every orchard mode, so the tree
+            //positions of the rows are handed to the runtime even without a planting job
+            planting.rowTrees.Clear();
+            for (int i = 0; i < orchRows.Count; i++) planting.rowTrees.AddRange(orchRows[i].trees);
+
             //t10 G: a field with orchard rows opens in orchard mode - the driver should not have
             //to pick anything to get the passes that belong to this orchard
             trk.isOrchardAuto = orchRows.Count > 0;
@@ -153,6 +158,47 @@ namespace AgOpenGPS
                 || (rowSide == TrackSide.Right && side == 2);
         }
 
+        /// <summary>
+        /// Where the driver is, as "pass/of - inter-row/of" (SIM 0730: "5/6 - 21/56", no words).
+        /// Everything is read from the derived pass name, which already carries it: "Orch Mid 21 p5".
+        /// A planting row gives "7/56", an outer strip "E1". "" when no derived pass is active.
+        /// </summary>
+        public string OrchardPositionText()
+        {
+            if (!trk.IsActiveOrchardPass) return "";
+
+            string[] w = trk.gArr[trk.idx].name.Split(' ');   // Orch | Mid | 21 | p5
+            if (w.Length < 3) return "";
+
+            if (w[1] == "edge") return "E" + w[2];
+
+            if (w[1] == "row")
+            {
+                int rows = 0;
+                for (int i = 0; i < trk.gArr.Count; i++)
+                    if (trk.gArr[i].isOrchardDerived && trk.gArr[i].name.StartsWith(COrchard.DerivedPrefix + "row ")) rows++;
+                return w[2] + "/" + rows;
+            }
+
+            //inter-row passes: how many passes this inter-row has, and how many inter-rows exist
+            string mine = COrchard.DerivedPrefix + "Mid " + w[2] + " ";
+            int passes = 0, mids = 0;
+            int lastMid = -1;
+            for (int i = 0; i < trk.gArr.Count; i++)
+            {
+                var t = trk.gArr[i];
+                if (!t.isOrchardDerived) continue;
+                if (t.name.StartsWith(mine)) passes++;
+
+                string[] p = t.name.Split(' ');
+                if (p.Length > 2 && p[1] == "Mid" && int.TryParse(p[2], out int m) && m != lastMid)
+                { mids++; lastMid = m; }
+            }
+
+            string pass = w.Length > 3 && w[3].StartsWith("p") ? w[3].Substring(1) : "1";
+            return pass + "/" + passes + " - " + w[2] + "/" + mids;
+        }
+
         /// <summary>Shortest distance from the pivot to a track's line, in metres.</summary>
         private double OrchardPassDistance(CTrk t)
         {
@@ -247,9 +293,8 @@ namespace AgOpenGPS
                 try
                 {
                     made = COrchard.BuildTracks(orchRows, pathMode, toolW,
-                        ts.setTool_orchardWorkMode, ts.setTool_orchardSafeSpace,
-                        ts.setTool_orchardTreeWidth, ts.setTool_orchardRowOffset,
-                        ts.setTool_orchardCenterFirst, out List<string> warns,
+                        ts.setTool_orchardTreeWidth, ts.setTool_orchardCenterFirst,
+                        ts.setTool_orchardPassCount, out List<string> warns,
                         OrchardFieldBounds());
 
                     if (warns.Count > 0)
@@ -271,7 +316,6 @@ namespace AgOpenGPS
             else
             {
                 double missing = COrchard.ToolTooWideBy(orchRows, toolW,
-                    ts.setTool_orchardRowOffset, ts.setTool_orchardSafeSpace,
                     ts.setTool_orchardTreeWidth, out int worst);
                 orchardWarn = missing > 0.01
                     ? "Tool too wide: -" + missing.ToString("N1") + " m"

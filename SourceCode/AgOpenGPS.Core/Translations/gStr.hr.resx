@@ -1646,16 +1646,10 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsOrchWorkRight" xml:space="preserve">
     <value>Desno</value>
   </data>
-  <data name="gsOrchRowOffset" xml:space="preserve">
-    <value>Odmak stroja od reda (m)</value>
-  </data>
-  <data name="gsOrchTreeWidth" xml:space="preserve">
+<data name="gsOrchTreeWidth" xml:space="preserve">
     <value>Sigurna širina stabla (m)</value>
   </data>
-  <data name="gsOrchSafeSpace" xml:space="preserve">
-    <value>Sigurnosni odmak - suprotni red (m)</value>
-  </data>
-  <data name="gsOrchCenterFirst" xml:space="preserve">
+<data name="gsOrchCenterFirst" xml:space="preserve">
     <value>Prvo srednji prolaz (neparan broj prolaza)</value>
   </data>
 <data name="gsOrchPlanterBehind" xml:space="preserve">
@@ -1750,5 +1744,11 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   </data>
   <data name="gsOrchFilterApply" xml:space="preserve">
     <value>Primijeni filtar</value>
+  </data>
+  <data name="gsOrchPassCount" xml:space="preserve">
+    <value>Broj prolaza (0 = auto)</value>
+  </data>
+  <data name="gsOrchPassCountMin" xml:space="preserve">
+    <value>broj prolaza >= 3</value>
   </data>
 </root>

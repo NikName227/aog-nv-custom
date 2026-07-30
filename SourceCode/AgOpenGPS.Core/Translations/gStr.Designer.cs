@@ -5208,25 +5208,13 @@ namespace AgOpenGPS.Core.Translations {
             }
         }
         
-        public static string gsOrchRowOffset {
-            get {
-                return ResourceManager.GetString("gsOrchRowOffset", resourceCulture);
-            }
-        }
-        
-        public static string gsOrchTreeWidth {
+public static string gsOrchTreeWidth {
             get {
                 return ResourceManager.GetString("gsOrchTreeWidth", resourceCulture);
             }
         }
         
-        public static string gsOrchSafeSpace {
-            get {
-                return ResourceManager.GetString("gsOrchSafeSpace", resourceCulture);
-            }
-        }
-        
-        public static string gsOrchCenterFirst {
+public static string gsOrchCenterFirst {
             get {
                 return ResourceManager.GetString("gsOrchCenterFirst", resourceCulture);
             }
@@ -5415,6 +5403,18 @@ public static string gsOrchPlanterBehind {
         public static string gsOrchFilterApply {
             get {
                 return ResourceManager.GetString("gsOrchFilterApply", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchPassCount {
+            get {
+                return ResourceManager.GetString("gsOrchPassCount", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchPassCountMin {
+            get {
+                return ResourceManager.GetString("gsOrchPassCountMin", resourceCulture);
             }
         }
         

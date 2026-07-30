@@ -2013,16 +2013,10 @@ USE AT OWN RISK.</value>
   <data name="gsOrchWorkRight" xml:space="preserve">
     <value>Right</value>
   </data>
-  <data name="gsOrchRowOffset" xml:space="preserve">
-    <value>Tool offset from row (m)</value>
-  </data>
-  <data name="gsOrchTreeWidth" xml:space="preserve">
+<data name="gsOrchTreeWidth" xml:space="preserve">
     <value>Safe tree width (m)</value>
   </data>
-  <data name="gsOrchSafeSpace" xml:space="preserve">
-    <value>Safe space - opposite row (m)</value>
-  </data>
-  <data name="gsOrchCenterFirst" xml:space="preserve">
+<data name="gsOrchCenterFirst" xml:space="preserve">
     <value>Center pass first (odd pass count)</value>
   </data>
 <data name="gsOrchPlanterBehind" xml:space="preserve">
@@ -2117,5 +2111,11 @@ USE AT OWN RISK.</value>
   </data>
   <data name="gsOrchFilterApply" xml:space="preserve">
     <value>Apply filter</value>
+  </data>
+  <data name="gsOrchPassCount" xml:space="preserve">
+    <value>Passes per inter-row (0 = auto)</value>
+  </data>
+  <data name="gsOrchPassCountMin" xml:space="preserve">
+    <value>passes >= 3</value>
   </data>
 </root>

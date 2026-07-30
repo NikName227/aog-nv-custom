@@ -511,8 +511,8 @@ namespace AgOpenGPS
 
                     if (trk.idx > -1 && !ct.isContourBtnOn) DrawTrackInfo();
 
-                    //F50 planting: distance to the next seedling
-                    if (planting.IsOn) DrawPlantingHud();
+                    //F50: where the driver is in the orchard, and how far the next tree is
+                    if (trk.IsOrchardAutoOn) DrawOrchardHud();
 
                     //F50 (SIM 0729 t8): the machine does not fit into the inter-row
                     if (orchardWarn.Length > 0) DrawOrchardWarn();
@@ -2210,28 +2210,33 @@ namespace AgOpenGPS
             font.DrawText(-oglMain.Width / 2 + 30, 110, orchardWarn, 1.1);
         }
 
-        //F50 planting HUD: metres to the next seedling (one decimal) + job progress.
-        //Mirrors the turn HUD on the other side of the screen.
-        private void DrawPlantingHud()
+        //F50 orchard HUD (SIM 0730). Two readouts, both live whenever the orchard automatics
+        //are on - mulching wants to know where it is just as much as planting does:
+        //  metres to the next tree, measured from the IMPLEMENT (CPlanting.PlantPoint)
+        //  where the driver is: "5/6 - 21/56" = pass 5 of 6, inter-row 21 of 56 (no words, the
+        //  old planted/total counter said nothing once marking became a manual act)
+        private void DrawOrchardHud()
         {
             int rx = oglMain.Width / 4;
 
-            string dist = planting.DistToNext >= 0
-                ? planting.DistToNext.ToString("N1") + " m"
-                : "--";
+            if (planting.HasTrees)
+            {
+                string dist = planting.DistToNext >= 0
+                    ? planting.DistToNext.ToString("N1") + " m"
+                    : "--";
 
-            //inside half a metre the seedling should be going in the ground right now
-            if (planting.DistToNext >= 0 && planting.DistToNext < 0.5) GL.Color4(0.25f, 0.97f, 0.35f, 0.95f);
-            else GL.Color4(0.60f, 0.90f, 0.95f, 0.92f);
-            font.DrawText(rx - 40, 82, dist, 1.5);
+                //inside half a metre the tree is right at the implement
+                if (planting.DistToNext >= 0 && planting.DistToNext < 0.5) GL.Color4(0.25f, 0.97f, 0.35f, 0.95f);
+                else GL.Color4(0.60f, 0.90f, 0.95f, 0.92f);
+                font.DrawText(rx - 40, 82, dist, 1.5);
+            }
 
-            //SIM 0730: nothing marks a spot planted by itself any more, so the readout is the
-            //planned total (with the count of hand-marked ones only once there are any)
-            GL.Color4(0.92f, 0.92f, 0.92f, 0.85f);
-            string count = planting.PlantedCount > 0
-                ? planting.PlantedCount + "/" + planting.spots.Count
-                : planting.spots.Count.ToString();
-            font.DrawText(rx - 40, 130, count, 0.9);
+            string where = OrchardPositionText();
+            if (where.Length > 0)
+            {
+                GL.Color4(0.92f, 0.92f, 0.92f, 0.85f);
+                font.DrawText(rx - 40, 130, where, 0.9);
+            }
         }
 
         private void DrawFlags()
