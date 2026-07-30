@@ -10,7 +10,10 @@ using System.Windows.Forms;
 
 namespace AgOpenGPS
 {
-    public enum TrackMode { None = 0, AB = 2, Curve = 4, bndTrackOuter = 8, bndTrackInner = 16, bndCurve = 32, waterPivot = 64 };//, Heading, Circle, Spiral
+    public enum TrackMode { None = 0, AB = 2, Curve = 4, bndTrackOuter = 8, bndTrackInner = 16, bndCurve = 32, waterPivot = 64 }
+
+    /// <summary>NV custom F50: a side relative to a track's heading.</summary>
+    public enum TrackSide { None = 0, Left = 1, Right = 2 };//, Heading, Circle, Spiral
 
     public class CTrack
     {
@@ -436,6 +439,15 @@ namespace AgOpenGPS
         public HashSet<int> workedTracks = new HashSet<int>();
 
         /// <summary>
+        /// NV custom F50 (SIM 0730): which side of THIS track's own heading the tree line it
+        /// belongs to lies on. Only the two passes that hug a row have one - the passes in the
+        /// middle of an inter-row are None and can be driven either way. A side-mounted implement
+        /// can only work a pass whose row is on the implement's side, and that flips when the pass
+        /// is driven the other way round, so this is what the automatics filter on.
+        /// </summary>
+        public TrackSide orchardRowSide;
+
+        /// <summary>
         /// NV custom F50: this track was DERIVED from the orchard rows + the implement
         /// settings, not made by the user. Derived tracks are rebuilt on every change and
         /// are never written to TrackLines.txt, so they cannot pile up (SIM 0729 t5).
@@ -469,6 +481,7 @@ namespace AgOpenGPS
             mode = _trk.mode;
             nudgeDistance = _trk.nudgeDistance;
             isOrchardDerived = _trk.isOrchardDerived;
+            orchardRowSide = _trk.orchardRowSide;
         }
     }
 }

@@ -546,23 +546,24 @@ namespace AgOpenGPS
             if (pathMode == PathOnRow)
                 return BuildOnRowTracks(rows, toolWidth, plantLateralOffset, toolOffset, out warnings);
 
-            if (pathMode == PathTwoPass)
+            //two pass and multi pass are the same layout, only the pass count differs
+            //(SIM 0730). centerFirst = do the middle before the two row passes.
+            if (pathMode == PathTwoPass || pathMode == PathMultiPass)
             {
-                var two = BuildTwoPassTracks(rows, toolWidth, treeWidth, out warnings);
+                var along = BuildRowPassTracks(rows, toolWidth, treeWidth,
+                    pathMode == PathMultiPass, centerFirst, out warnings);
                 //the outer rows get their one strip along the boundary side as well
-                AddOuterStripPasses(rows, bounds, toolWidth, treeWidth, true, two, warnings);
-                return two;
+                AddOuterStripPasses(rows, bounds, toolWidth, treeWidth, true, along, warnings);
+                return along;
             }
 
-            //SIM 0730: working mode (centre / left / right) belongs to multi pass (and to two
-            //pass, where it means the side the implement is mounted on), and the Settings panel
-            //only shows it there. A value left over from an earlier profile must not silently
-            //drop one-pass lines through the L/R safe-space check, so anything else is driven
-            //down the middle.
-            if (pathMode != PathMultiPass) workMode = 0;
+            //one pass: a single line down the middle of each inter-row. Working mode
+            //(centre/left/right) is not shown for it, so a value left over from an earlier
+            //profile must not silently drop lines through the L/R safe-space check.
+            workMode = 0;
 
             var passes = BuildPasses(rows, toolWidth, workMode, safeSpace, treeWidth, rowOffset,
-                pathMode == PathOnePass, centerFirst, out warnings);
+                true, centerFirst, out warnings);
 
             AddOuterStripPasses(rows, bounds, toolWidth, treeWidth,
                 pathMode == PathOnePass, passes, warnings);
@@ -678,30 +679,36 @@ namespace AgOpenGPS
             return worst;
         }
 
-        // ── Two passes beside the trees (SIM 0730) ────────────────────────
-        // A side-mounted implement (mulcher, mower, trimmer) has to go down each inter-row
-        // TWICE, working along one tree line each time. So: exactly two passes per inter-row,
-        // whatever the tool width, each one hugging its own row - the middle of a wide inter-row
-        // is left unworked on purpose, that is what this mode is for.
+        // ── Passes along the rows: two pass and multi pass are ONE layout ─
+        // A side-mounted implement (mulcher, mower, trimmer) goes down each inter-row twice,
+        // working along one tree line each time. A centred implement does the same two passes and
+        // then fills what is left in the middle. Same geometry, one function (user 2026-07-30:
+        // "logika je jednaka pa da iskoristimo kod za obje opcije").
         //
-        // Strip beside a row: its inner edge keeps half the safe tree width off the row line, so
-        // the strip centre sits at treeWidth/2 + toolWidth/2 from the row. The track reference is
-        // then half a tool width further (AOG's edge convention, as everywhere else here).
+        //   workable width   Wc = gap - treeWidth        (between the unworked bands)
+        //   pass count       n  = 2                      (two pass)
+        //                    n  = max(2, ceil(Wc / W))   (multi pass)
+        //   outer centres    at treeWidth/2 + W/2 from each row - hugging the tree lines
+        //   spacing          s  = (gap - treeWidth - W) / (n - 1)
+        //   overlap          o  = W - s, THE SAME at every junction
         //
-        // The mounting side (working mode) does NOT move these strips - it decides which
-        // DIRECTION each pass is driven so the implement faces its own trees. That direction is
-        // carried by the plan (CPlanEntry.isSameWay, which alternates between consecutive
-        // entries - exactly the down-and-back a side implement needs), and AOG's own tool-offset
-        // compensation shifts the tractor, not the strip, when the direction flips.
-        public static List<CTrk> BuildTwoPassTracks(List<OrchRow> rows, double toolWidth,
-            double treeWidth, out List<string> warnings)
+        // The surplus when n passes are wider than Wc is spread evenly over all junctions, and by
+        // symmetry an odd n puts one pass exactly down the middle of the inter-row - both of the
+        // things the layout was asked for. n = 2 leaves the middle unworked on purpose.
+        //
+        // Only the two OUTER passes belong to a tree line; that side is recorded on the track
+        // (orchardRowSide) so a side implement can be kept to the passes it can actually work.
+        // The middle passes have no side and are drivable either way.
+        //
+        // middleFirst = do the middle before the two row passes instead of after.
+        public static List<CTrk> BuildRowPassTracks(List<OrchRow> rows, double toolWidth,
+            double treeWidth, bool multiPass, bool middleFirst, out List<string> warnings)
         {
             warnings = new List<string>();
             var result = new List<CTrk>();
             if (rows == null || rows.Count < 2) return result;
             if (toolWidth < 0.1) { warnings.Add("No tool width"); return result; }
 
-            double d = treeWidth * 0.5 + toolWidth * 0.5;   // row line -> strip centre
             var sorted = SortRowsTransverse(rows);
 
             for (int i = 0; i < sorted.Count - 1; i++)
@@ -710,11 +717,12 @@ namespace AgOpenGPS
                 var b = sorted[i + 1];
                 if (a.curve.Count < 2 || b.curve.Count < 2) continue;
 
-                if (BuildMidline(a, b, out double gap) == null) continue;
+                var mid = BuildMidline(a, b, out double gap);
+                if (mid == null) continue;
 
                 string interName = "Mid " + (i + 1);
 
-                //the machine has to fit beside a row at all - same rule as everywhere:
+                //the machine has to fit beside a row at all:
                 //row spacing >= tool width + safe tree width
                 if (gap - treeWidth - toolWidth < -0.001)
                 {
@@ -723,15 +731,46 @@ namespace AgOpenGPS
                     continue;
                 }
 
-                //pass 1 along row a, pass 2 along row b - each offset INTO the inter-row
-                for (int k = 0; k < 2; k++)
+                double outer = treeWidth * 0.5 + toolWidth * 0.5;   // row line -> outer centre
+                double span = gap - treeWidth - toolWidth;          // outer centre -> outer centre
+
+                int n = 2;
+                if (multiPass)
                 {
-                    OrchRow from = k == 0 ? a : b;
-                    OrchRow toward = k == 0 ? b : a;
+                    double workable = gap - treeWidth;
+                    n = (int)Math.Ceiling(workable / toolWidth - 0.001);
+                    if (n < 2) n = 2;
+                    if (n > 40) n = 40;
+                }
+                double step = n > 1 ? span / (n - 1) : 0;
 
-                    double sign = OffsetSignTowardB(from.curve, toward);
+                //offsets measured from row a, toward row b
+                var offsets = new List<double>();
+                for (int k = 0; k < n; k++) offsets.Add(outer + step * k);
 
-                    var line = OffsetCurve(from.curve, sign * d);
+                //order: the two row passes first, then the middle - or the other way round
+                var order = new List<int>();
+                if (middleFirst)
+                {
+                    for (int k = 1; k < n - 1; k++) order.Add(k);
+                    order.Add(0);
+                    if (n > 1) order.Add(n - 1);
+                }
+                else
+                {
+                    order.Add(0);
+                    if (n > 1) order.Add(n - 1);
+                    for (int k = 1; k < n - 1; k++) order.Add(k);
+                }
+
+                double signAB = OffsetSignTowardB(a.curve, b);   // + = right of row a's heading
+
+                int passNo = 0;
+                foreach (int k in order)
+                {
+                    passNo++;
+
+                    var line = OffsetCurve(a.curve, signAB * offsets[k]);
                     if (line.Count < 2) continue;
                     CABCurve.CalculateHeadings(ref line);
                     line = OffsetCurve(line, -0.5 * toolWidth);
@@ -744,9 +783,16 @@ namespace AgOpenGPS
 
                     var t = new CTrk { mode = TrackMode.Curve, heading = head, isVisible = true };
                     t.isOrchardDerived = true;
+
+                    //which tree line this pass belongs to, as a side of ITS OWN heading:
+                    //k = 0 hugs row a (row is on the -signAB side), k = n-1 hugs row b
+                    if (k == 0) t.orchardRowSide = signAB > 0 ? TrackSide.Left : TrackSide.Right;
+                    else if (k == n - 1) t.orchardRowSide = signAB > 0 ? TrackSide.Right : TrackSide.Left;
+                    else t.orchardRowSide = TrackSide.None;
+
                     t.ptA = new vec2(line[0].easting, line[0].northing);
                     t.ptB = new vec2(line[line.Count - 1].easting, line[line.Count - 1].northing);
-                    t.name = DerivedPrefix + interName + " p" + (k + 1);
+                    t.name = DerivedPrefix + interName + " p" + passNo;
                     foreach (vec3 p in line) t.curvePts.Add(p);
                     result.Add(t);
                 }

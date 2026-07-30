@@ -110,6 +110,49 @@ namespace AgOpenGPS
             return b.Count == 0 ? null : b;
         }
 
+        /// <summary>
+        /// Can this pass be worked right now (SIM 0730)? A side-mounted implement only reaches the
+        /// tree line on its own side, so of the two passes in an inter-row only one is workable in
+        /// a given driving direction - and which one flips when the tractor turns around.
+        ///
+        /// The pass carries the side its row is on relative to ITS OWN heading; driving the pass
+        /// against that heading mirrors it. Middle passes (TrackSide.None) and a centred implement
+        /// have no restriction. reversed = judge it for the direction AFTER a turn.
+        /// </summary>
+        public bool OrchardPassAllowed(CTrk t, bool reversed = false)
+        {
+            if (t == null || !t.isOrchardDerived) return true;
+            if (t.orchardRowSide == TrackSide.None) return true;
+
+            //implement side: 1 = left, 2 = right, 0 = centred -> everything goes
+            int side = Properties.ToolSettings.Default.setTool_orchardWorkMode;
+            if (side != 1 && side != 2) return true;
+
+            //driving with or against the pass heading
+            var pts = t.curvePts;
+            if (pts.Count < 2) return true;
+
+            int bi = 0; double bd = double.MaxValue;
+            for (int i = 0; i < pts.Count; i++)
+            {
+                double de = pts[i].easting - pivotAxlePos.easting;
+                double dn = pts[i].northing - pivotAxlePos.northing;
+                double d = de * de + dn * dn;
+                if (d < bd) { bd = d; bi = i; }
+            }
+
+            double diff = Math.PI - Math.Abs(Math.Abs(pivotAxlePos.heading - pts[bi].heading) - Math.PI);
+            bool sameWay = diff < glm.PIBy2;
+            if (reversed) sameWay = !sameWay;
+
+            TrackSide rowSide = sameWay
+                ? t.orchardRowSide
+                : (t.orchardRowSide == TrackSide.Left ? TrackSide.Right : TrackSide.Left);
+
+            return (rowSide == TrackSide.Left && side == 1)
+                || (rowSide == TrackSide.Right && side == 2);
+        }
+
         /// <summary>Shortest distance from the pivot to a track's line, in metres.</summary>
         private double OrchardPassDistance(CTrk t)
         {
@@ -142,6 +185,8 @@ namespace AgOpenGPS
             {
                 if (!trk.gArr[i].isOrchardDerived || !trk.gArr[i].isVisible) continue;
                 if (trk.gArr[i].curvePts.Count < 2) continue;
+                //SIM 0730: never hand the driver a pass the implement cannot work from here
+                if (!OrchardPassAllowed(trk.gArr[i])) continue;
 
                 double d = OrchardPassDistance(trk.gArr[i]);
                 if (d < bestDist) { bestDist = d; best = i; }
