@@ -35,6 +35,41 @@ namespace AgOpenGPS
         //used throughout to acces the master Track list
         private int idx;
 
+        // ── F50 t10 (G): one "Orchard" row instead of every derived pass ──────────
+        // The derived passes are not listed one by one - with 40 tree rows the list would be
+        // unusable. They collapse into a single row at the top which doubles as the MODE
+        // SWITCH: pick it and the orchard automatics run (fixed pass, nearest line selects
+        // itself, no side guide lines); pick any hand-made line and everything is stock,
+        // which is what the work around the orchard needs.
+        //
+        // Display rows therefore no longer map 1:1 onto trk.gArr, so rowMap translates:
+        // rowMap[displayRow] = gArr index, or OrchardSel for the collapsed row. OrchardSel is
+        // negative on purpose - every editing handler here is guarded by "selectedItem > -1",
+        // so delete / rename / duplicate / swap / reorder cannot touch a derived pass.
+        private const int OrchardSel = -2;
+        private readonly List<int> rowMap = new List<int>();
+        private bool origOrchardAuto;
+
+        private int DerivedCount()
+        {
+            int n = 0;
+            for (int i = 0; i < mf.trk.gArr.Count; i++) if (mf.trk.gArr[i].isOrchardDerived) n++;
+            return n;
+        }
+
+        private bool AnyDerivedVisible()
+        {
+            for (int i = 0; i < mf.trk.gArr.Count; i++)
+                if (mf.trk.gArr[i].isOrchardDerived && mf.trk.gArr[i].isVisible) return true;
+            return false;
+        }
+
+        /// <summary>Display row of a selection (gArr index or OrchardSel); -1 = not on screen.</summary>
+        private int DisplayRowOf(int sel) => rowMap.IndexOf(sel);
+
+        /// <summary>The text button of a display row (b, t, a are added per row).</summary>
+        private Control RowText(int row) => flp.Controls[row * 3 + 1];
+
         // Touch drag scrolling
         private bool isDragging = false;
         private int dragStartY = 0;
@@ -111,9 +146,11 @@ namespace AgOpenGPS
             this.Size = new System.Drawing.Size(650, 480);
 
             originalLine = mf.trk.idx;
+            origOrchardAuto = mf.trk.isOrchardAuto;
 
-            // Set the currently active track as selected
-            selectedItem = originalLine;
+            // Set the currently active track as selected. F50 t10: while the orchard
+            // automatics are on, the selection is the collapsed orchard row, not one pass.
+            selectedItem = (mf.trk.isOrchardAuto && DerivedCount() > 0) ? OrchardSel : originalLine;
             Location = Properties.Settings.Default.setWindow_buildTracksLocation;
 
             nudLatitudeA.Controls[0].Enabled = false;
@@ -186,6 +223,7 @@ namespace AgOpenGPS
             }
 
             mf.trk.idx = originalLine;
+            mf.trk.isOrchardAuto = origOrchardAuto;
 
             mf.curve.isCurveValid = false;
             mf.ABLine.isABValid = false;
@@ -206,6 +244,21 @@ namespace AgOpenGPS
             if (mf.yt.isYouTurnBtnOn) mf.btnAutoYouTurn.PerformClick();
 
             mf.FileSaveTracks();
+
+            //F50 t10: the collapsed orchard row = drive the derived passes with the automatics
+            //on; the nearest one becomes active and from there they select themselves
+            if (selectedItem == OrchardSel && DerivedCount() > 0)
+            {
+                mf.trk.isOrchardAuto = true;
+                mf.OrchardPickNearestPass(true);
+                mf.yt.ResetYouTurn();
+                Close();
+                return;
+            }
+
+            //any hand-made line = stock behaviour (parallel passes, guide lines): that is what
+            //working the ground AROUND the orchard needs
+            if (selectedItem > -1) mf.trk.isOrchardAuto = false;
 
             if (selectedItem > -1 && mf.trk.gArr.Count > 0 && mf.trk.gArr[selectedItem].isVisible)
             {
@@ -270,15 +323,29 @@ namespace AgOpenGPS
             System.Drawing.Font backupfont = new System.Drawing.Font(base.Font.FontFamily, 18F, FontStyle.Regular);
             flp.Controls.Clear();
 
-
+            //F50 t10: build the display rows - the collapsed orchard row first, then the
+            //hand-made lines in list order
+            rowMap.Clear();
+            int derived = DerivedCount();
+            if (derived > 0) rowMap.Add(OrchardSel);
             for (int i = 0; i < mf.trk.gArr.Count; i++)
+                if (!mf.trk.gArr[i].isOrchardDerived) rowMap.Add(i);
+
+            for (int row = 0; row < rowMap.Count; row++)
             {
+                int i = rowMap[row];
+                bool isOrchardRow = i == OrchardSel;
+                bool rowVisible = isOrchardRow ? AnyDerivedVisible() : mf.trk.gArr[i].isVisible;
+                string rowName = isOrchardRow
+                    ? gStr.gsOrchard + "  (" + derived + ")"
+                    : mf.trk.gArr[i].name;
+
                 //outer inner
                 Button a = new Button
                 {
                     Margin = new Padding(20, 10, 2, 10),
                     Size = new Size(40, 25),
-                    Name = i.ToString(),
+                    Name = row.ToString(),
                     TextAlign = ContentAlignment.MiddleCenter,
                 };
                 a.Click += A_Click;
@@ -286,7 +353,7 @@ namespace AgOpenGPS
                 a.MouseMove += DoDrag;
                 a.MouseUp += Flp_MouseUp;
 
-                if (mf.trk.gArr[i].isVisible)
+                if (rowVisible)
                     a.BackColor = System.Drawing.Color.Green;
                 else
                     a.BackColor = System.Drawing.Color.Red;
@@ -295,12 +362,14 @@ namespace AgOpenGPS
                 {
                     Margin = new Padding(1, 10, 3, 10),
                     Size = new Size(35, 25),
-                    Name = i.ToString(),
+                    Name = row.ToString(),
                     TextAlign = ContentAlignment.MiddleCenter,
                     FlatStyle = FlatStyle.Flat,
                 };
 
-                if (mf.trk.gArr[i].mode == TrackMode.AB)
+                if (isOrchardRow || mf.trk.gArr[i].mode == TrackMode.Curve)
+                    b.Image = Properties.Resources.TrackCurve;
+                else if (mf.trk.gArr[i].mode == TrackMode.AB)
                     b.Image = Properties.Resources.TrackLine;
                 else if (mf.trk.gArr[i].mode == TrackMode.waterPivot)
                     b.Image = Properties.Resources.TrackPivot;
@@ -317,8 +386,8 @@ namespace AgOpenGPS
                 {
                     Margin = new Padding(3),
                     Size = new Size(330, 40),
-                    Text = mf.trk.gArr[i].name,
-                    Name = i.ToString(),
+                    Text = rowName,
+                    Name = row.ToString(),
                     Font = backupfont,
                     FlatStyle = FlatStyle.Flat,
                     TextAlign = ContentAlignment.MiddleLeft,
@@ -330,7 +399,7 @@ namespace AgOpenGPS
                 t.MouseMove += DoDrag;
                 t.MouseUp += Flp_MouseUp;
 
-                if (mf.trk.gArr[i].isVisible)
+                if (rowVisible)
                     t.ForeColor = System.Drawing.Color.Black;
                 else
                     t.ForeColor = System.Drawing.Color.Gray;
@@ -358,18 +427,34 @@ namespace AgOpenGPS
         {
             if (sender is Button b)
             {
-                int line = Convert.ToInt32(b.Name);
-                mf.trk.gArr[line].isVisible = !mf.trk.gArr[line].isVisible;
+                int row = Convert.ToInt32(b.Name);
+                if (row < 0 || row >= rowMap.Count) return;
+                int line = rowMap[row];
 
-                for (int i = 0; i < mf.trk.gArr.Count; i++)
+                bool nowVisible;
+                if (line == OrchardSel)
                 {
-                    flp.Controls[(i) * 3 + 1].BackColor = Color.AliceBlue;
+                    //F50 t10: one switch for all derived passes - show/hide only, the mode
+                    //itself is not touched
+                    nowVisible = !AnyDerivedVisible();
+                    for (int i = 0; i < mf.trk.gArr.Count; i++)
+                        if (mf.trk.gArr[i].isOrchardDerived) mf.trk.gArr[i].isVisible = nowVisible;
+                }
+                else
+                {
+                    mf.trk.gArr[line].isVisible = !mf.trk.gArr[line].isVisible;
+                    nowVisible = mf.trk.gArr[line].isVisible;
+                }
+
+                for (int i = 0; i < rowMap.Count; i++)
+                {
+                    RowText(i).BackColor = Color.AliceBlue;
                 }
                 selectedItem = -1;
 
-                b.BackColor = mf.trk.gArr[line].isVisible ? System.Drawing.Color.Green : System.Drawing.Color.Red;
+                b.BackColor = nowVisible ? System.Drawing.Color.Green : System.Drawing.Color.Red;
 
-                flp.Controls[(line) * 3 + 1].ForeColor = mf.trk.gArr[line].isVisible ? System.Drawing.Color.Black : System.Drawing.Color.Gray;
+                RowText(row).ForeColor = nowVisible ? System.Drawing.Color.Black : System.Drawing.Color.Gray;
             }
         }
 
@@ -383,31 +468,24 @@ namespace AgOpenGPS
 
             if (sender is Button t)
             {
-                int line = Convert.ToInt32(t.Name);
-                int numLines = mf.trk.gArr.Count;
+                int row = Convert.ToInt32(t.Name);
+                if (row < 0 || row >= rowMap.Count) return;
+                int line = rowMap[row];
 
                 //un highlight selected item
-                for (int i = 0; i < numLines; i++)
+                for (int i = 0; i < rowMap.Count; i++)
                 {
-                    flp.Controls[(i) * 3 + 1].BackColor = Color.AliceBlue;
+                    RowText(i).BackColor = Color.AliceBlue;
                 }
 
-                if (mf.trk.gArr[line].isVisible)
-                {
-                    //just highlight it
-                    if (selectedItem == -1)
-                    {
-                        selectedItem = line;
-                        selectedItem = Convert.ToInt32(t.Name);
-                        flp.Controls[(line) * 3 + 1].BackColor = Color.LightBlue;
-                    }
+                bool rowVisible = line == OrchardSel
+                    ? AnyDerivedVisible()
+                    : mf.trk.gArr[line].isVisible;
 
-                    //a different line was selcted and one already was
-                    else if (selectedItem != line)
-                    {
-                        selectedItem = line;
-                        flp.Controls[(line) * 3 + 1].BackColor = Color.LightBlue;
-                    }
+                if (rowVisible)
+                {
+                    selectedItem = line;
+                    RowText(row).BackColor = Color.LightBlue;
                 }
                 else
                 {
@@ -418,13 +496,26 @@ namespace AgOpenGPS
             }
         }
 
+        //F50 t10: reordering walks over the derived passes - they are not in the list, so
+        //swapping with one would look like nothing happened. -1 = no hand-made neighbour.
+        private int NeighbourLine(int from, int step)
+        {
+            for (int i = from + step; i >= 0 && i < mf.trk.gArr.Count; i += step)
+                if (!mf.trk.gArr[i].isOrchardDerived) return i;
+            return -1;
+        }
+
         private void btnMoveUp_Click(object sender, EventArgs e)
         {
-            if (selectedItem == -1 || selectedItem == 0)
-                return;
+            if (selectedItem < 0) return;
 
-            mf.trk.gArr.Reverse(selectedItem - 1, 2);
-            selectedItem--;
+            int up = NeighbourLine(selectedItem, -1);
+            if (up < 0) return;
+
+            var moved = mf.trk.gArr[selectedItem];
+            mf.trk.gArr.RemoveAt(selectedItem);
+            mf.trk.gArr.Insert(up, moved);
+            selectedItem = up;
             idx = selectedItem;
 
             int scrollPixels = flp.VerticalScroll.Value;
@@ -441,11 +532,15 @@ namespace AgOpenGPS
 
         private void btnMoveDn_Click(object sender, EventArgs e)
         {
-            if (selectedItem == -1 || selectedItem == (mf.trk.gArr.Count - 1))
-                return;
+            if (selectedItem < 0) return;
 
-            mf.trk.gArr.Reverse(selectedItem, 2);
-            selectedItem++;
+            int dn = NeighbourLine(selectedItem, 1);
+            if (dn < 0) return;
+
+            var moved = mf.trk.gArr[selectedItem];
+            mf.trk.gArr.RemoveAt(selectedItem);
+            mf.trk.gArr.Insert(dn, moved);
+            selectedItem = dn;
 
             idx = selectedItem;
 
@@ -606,6 +701,14 @@ namespace AgOpenGPS
 
         private void btnListDelete_Click(object sender, EventArgs e)
         {
+            //F50 t10: the orchard row is not a line - it is the whole derived path. Say so
+            //instead of doing nothing: it changes with the rows and the implement settings.
+            if (selectedItem == OrchardSel)
+            {
+                mf.TimedMessageBox(2500, gStr.gsOrchard, gStr.gsFixedOrchardRowNoNudge);
+                return;
+            }
+
             if (selectedItem > -1)
             {
                 mf.trk.gArr.RemoveAt(selectedItem);
@@ -640,6 +743,13 @@ namespace AgOpenGPS
 
         private void btnEditName_Click(object sender, EventArgs e)
         {
+            //F50 t10: the derived passes are named by the generator and rebuilt on every change
+            if (selectedItem == OrchardSel)
+            {
+                mf.TimedMessageBox(2500, gStr.gsOrchard, gStr.gsFixedOrchardRowNoNudge);
+                return;
+            }
+
             if (selectedItem > -1)
             {
                 idx = selectedItem;

@@ -1303,6 +1303,7 @@ namespace AgOpenGPS
             //F50: so do the orchard rows (and with them the derived path)
             orchRows.Clear();
             orchardWarn = "";
+            trk.isOrchardAuto = false;
 
             //make sure hydraulic lift is off
             p_239.pgn[p_239.hydLift] = 0;

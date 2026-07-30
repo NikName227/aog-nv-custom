@@ -1736,6 +1736,9 @@ namespace AgOpenGPS
             {
                 var t = mf.trk.gArr[i];
                 if (t.mode != TrackMode.AB && t.curvePts.Count < 2) continue;
+                //t10 G: the derived orchard passes are already the plan - listing all of them
+                //here would drown the hand-made lines these pickers are for
+                if (t.isOrchardDerived) continue;
                 cboTrack.Items.Add(t.name);
                 lstLines.Items.Add(t.name);
             }
@@ -1825,7 +1828,10 @@ namespace AgOpenGPS
             SetZoneOrderVisible(false);
             chkHeadlandClip.Visible = false;
             lblTrack.Visible = cboTrack.Visible = false;
-            btnAddPath.Visible = btnDeletePath.Visible = false;
+            //t10 F: manual passes DO belong in an orchard - a skewed boundary, the strip along
+            //it, the ground around the orchard. Those lines are drawn in Smart AB (they are not
+            //derived, so a path rebuild leaves them alone) and added to the plan from here.
+            btnAddPath.Visible = btnDeletePath.Visible = true;
             btnGeneratePlan.Text = gStr.gsOrchardPlan;
             lblPlanInfo.Text = gStr.gsOrchardModePlanInfo;
         }

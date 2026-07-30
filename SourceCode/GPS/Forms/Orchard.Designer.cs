@@ -27,7 +27,72 @@ namespace AgOpenGPS
             try { orchRows.AddRange(COrchard.LoadRows(fieldDir)); }
             catch (Exception ex) { Log.EventWriter("Orchard LoadRows: " + ex); }
 
+            //t10 G: a field with orchard rows opens in orchard mode - the driver should not have
+            //to pick anything to get the passes that belong to this orchard
+            trk.isOrchardAuto = orchRows.Count > 0;
+
             OrchardRebuildTracks("field opened");
+
+            if (trk.isOrchardAuto) OrchardPickNearestPass(true);
+        }
+
+        /// <summary>
+        /// How much closer another pass has to be before the active one is given up (m).
+        /// Without it the choice would flicker while driving along the edge between two
+        /// inter-rows.
+        /// </summary>
+        private const double OrchardSwitchHysteresis = 0.5;
+
+        /// <summary>Shortest distance from the pivot to a track's line, in metres.</summary>
+        private double OrchardPassDistance(CTrk t)
+        {
+            double best = double.MaxValue;
+            var pts = t.curvePts;
+            for (int i = 0; i < pts.Count; i++)
+            {
+                double de = pts[i].easting - pivotAxlePos.easting;
+                double dn = pts[i].northing - pivotAxlePos.northing;
+                double d = de * de + dn * dn;
+                if (d < best) best = d;
+            }
+            return best == double.MaxValue ? best : Math.Sqrt(best);
+        }
+
+        /// <summary>
+        /// Make the derived pass nearest to the vehicle the active one (t10 B). This is how the
+        /// next inter-row is reached in orchard mode - the pass itself is a fixed single line,
+        /// so driving sideways selects the next line instead of stepping this one over.
+        /// force = take the nearest one no matter what (used when the driver picks "Orchard"
+        /// in the track list).
+        /// </summary>
+        public bool OrchardPickNearestPass(bool force)
+        {
+            if (!trk.isOrchardAuto) return false;
+
+            int best = -1;
+            double bestDist = double.MaxValue;
+            for (int i = 0; i < trk.gArr.Count; i++)
+            {
+                if (!trk.gArr[i].isOrchardDerived || !trk.gArr[i].isVisible) continue;
+                if (trk.gArr[i].curvePts.Count < 2) continue;
+
+                double d = OrchardPassDistance(trk.gArr[i]);
+                if (d < bestDist) { bestDist = d; best = i; }
+            }
+
+            if (best < 0 || best == trk.idx) return false;
+
+            //hold the current line unless another is clearly closer
+            if (!force && trk.IsActiveOrchardPass)
+            {
+                double cur = OrchardPassDistance(trk.gArr[trk.idx]);
+                if (bestDist + OrchardSwitchHysteresis > cur) return false;
+            }
+
+            trk.idx = best;
+            curve.isCurveValid = false;
+            ABLine.isABValid = false;
+            return true;
         }
 
         /// <summary>
