@@ -5400,5 +5400,29 @@ namespace AgOpenGPS.Core.Translations {
             }
         }
         
+        public static string gsOrchFilterCap {
+            get {
+                return ResourceManager.GetString("gsOrchFilterCap", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchThin {
+            get {
+                return ResourceManager.GetString("gsOrchThin", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchSmoothLbl {
+            get {
+                return ResourceManager.GetString("gsOrchSmoothLbl", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchFilterApply {
+            get {
+                return ResourceManager.GetString("gsOrchFilterApply", resourceCulture);
+            }
+        }
+        
 }
 }

@@ -1742,4 +1742,16 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsOrchImplementSide" xml:space="preserve">
     <value>Strana stroja</value>
   </data>
+  <data name="gsOrchFilterCap" xml:space="preserve">
+    <value>Filtriraj red</value>
+  </data>
+  <data name="gsOrchThin" xml:space="preserve">
+    <value>Prorijedi (m)</value>
+  </data>
+  <data name="gsOrchSmoothLbl" xml:space="preserve">
+    <value>Zagladi</value>
+  </data>
+  <data name="gsOrchFilterApply" xml:space="preserve">
+    <value>Primijeni</value>
+  </data>
 </root>

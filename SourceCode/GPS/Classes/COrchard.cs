@@ -936,6 +936,88 @@ namespace AgOpenGPS
             return res;
         }
 
+        // ── Row filters: thin + smooth (t9) ───────────────────────────────
+        // A row driven with the recorder is sampled every metre or so, GPS noise and all, so it
+        // arrives with coarse steps. Both filters work on the CONTROL points, never on the dense
+        // curve: Orchard.txt stores only the control points and rebuilds the curve on load, so a
+        // filter applied to the curve would quietly vanish the next time the field is opened.
+
+        /// <summary>
+        /// Drop points closer together than minDist. The first and the LAST point always stay -
+        /// the ends of a row are its anchors (headland, row length). This is what actually removes
+        /// the coarse steps of a 1 m recording; the average alone only rounds them off.
+        /// </summary>
+        public static List<vec2> ThinPoints(List<vec2> pts, double minDist)
+        {
+            var outPts = new List<vec2>();
+            if (pts == null || pts.Count == 0) return outPts;
+            if (minDist <= 0.01 || pts.Count < 3) { outPts.AddRange(pts); return outPts; }
+
+            double sq = minDist * minDist;
+            outPts.Add(pts[0]);
+            for (int i = 1; i < pts.Count - 1; i++)
+            {
+                var last = outPts[outPts.Count - 1];
+                double de = pts[i].easting - last.easting, dn = pts[i].northing - last.northing;
+                if (de * de + dn * dn >= sq) outPts.Add(pts[i]);
+            }
+            outPts.Add(pts[pts.Count - 1]);
+            return outPts;
+        }
+
+        /// <summary>
+        /// Centre-weighted moving average over "window" points (same idea as Smart AB's smooth,
+        /// on vec2 control points). The first and last half-window keep their place, so the row
+        /// ends do not creep.
+        /// </summary>
+        public static List<vec2> SmoothPoints(List<vec2> pts, int window)
+        {
+            var outPts = new List<vec2>();
+            if (pts == null) return outPts;
+            outPts.AddRange(pts);
+            if (window < 2 || pts.Count < window) return outPts;
+
+            int half = window / 2;
+            for (int i = half; i < pts.Count - half; i++)
+            {
+                double e = 0, n = 0;
+                for (int j = -half; j < half; j++) { e += pts[i + j].easting; n += pts[i + j].northing; }
+                outPts[i] = new vec2(e / window, n / window);
+            }
+            return outPts;
+        }
+
+        /// <summary>Thin then smooth, as ONE step - the order the values are read in.</summary>
+        public static List<vec2> FilterRowPoints(List<vec2> pts, double thinMeters, int smoothWindow)
+        {
+            var res = ThinPoints(pts, thinMeters);
+            if (smoothWindow >= 2) res = SmoothPoints(res, smoothWindow);
+            return res;
+        }
+
+        // ── Raw recorded rows: Orchard_recorded.txt (t9) ──────────────────
+        // Written lazily, the first time a recorded row is filtered, and never overwritten for a
+        // row that is already in it - otherwise the second filtering would archive the already
+        // smoothed line and the measurement would be gone. Rows are matched BY NAME.
+        public static void ArchiveRecordedRow(string fieldDir, OrchRow row)
+        {
+            if (string.IsNullOrEmpty(fieldDir) || row == null) return;
+            if (row.source != RowSource.Recorded) return;   // KML has its own original
+
+            try
+            {
+                var have = LoadRowsFrom(fieldDir, RecordedFile);
+                foreach (var r in have) if (r.name == row.name) return;   // already measured
+
+                have.Add(new OrchRow(row));
+                SaveRowsTo(fieldDir, RecordedFile, have);
+            }
+            catch (Exception ex)
+            {
+                Log.EventWriter("Orchard ArchiveRecordedRow: " + ex);
+            }
+        }
+
         // ── Shared geometry helpers (mirror Smart AB) ─────────────────────
         // Order points into a path: farthest-apart pair are the ends; nearest-neighbour through the rest.
         public static List<vec2> OrderEndToEnd(List<vec2> pts)
@@ -1098,10 +1180,23 @@ namespace AgOpenGPS
 
         // ── Per-field persistence (rows saved "under field", fixed) ───────
         // Simple text format: one row block per row, control points only (curve is derived on load).
+        /// <summary>The working rows of the field.</summary>
+        public const string RowsFile = "Orchard.txt";
+
+        /// <summary>
+        /// The raw recorded rows, kept beside the field the first time a recorded row is filtered
+        /// (t9). Orchard.txt holds the rows that are worked with; this one is the measurement, so
+        /// a filter can always be judged against - or undone back to - what was actually driven.
+        /// </summary>
+        public const string RecordedFile = "Orchard_recorded.txt";
+
         public static void SaveRows(string fieldDir, List<OrchRow> rows, List<vec2> looseTrees = null)
+            => SaveRowsTo(fieldDir, RowsFile, rows, looseTrees);
+
+        public static void SaveRowsTo(string fieldDir, string fileName, List<OrchRow> rows, List<vec2> looseTrees = null)
         {
             if (string.IsNullOrEmpty(fieldDir)) return;
-            string path = Path.Combine(fieldDir, "Orchard.txt");
+            string path = Path.Combine(fieldDir, fileName);
             using (var w = new StreamWriter(path, false))
             {
                 w.WriteLine("$Orchard");
@@ -1135,10 +1230,13 @@ namespace AgOpenGPS
         }
 
         public static List<OrchRow> LoadRows(string fieldDir, List<vec2> looseTreesOut)
+            => LoadRowsFrom(fieldDir, RowsFile, looseTreesOut);
+
+        public static List<OrchRow> LoadRowsFrom(string fieldDir, string fileName, List<vec2> looseTreesOut = null)
         {
             var rows = new List<OrchRow>();
             if (string.IsNullOrEmpty(fieldDir)) return rows;
-            string path = Path.Combine(fieldDir, "Orchard.txt");
+            string path = Path.Combine(fieldDir, fileName);
             if (!File.Exists(path)) return rows;
             try
             {

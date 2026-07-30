@@ -2109,4 +2109,16 @@ USE AT OWN RISK.</value>
   <data name="gsOrchImplementSide" xml:space="preserve">
     <value>Implement side</value>
   </data>
+  <data name="gsOrchFilterCap" xml:space="preserve">
+    <value>Filter row</value>
+  </data>
+  <data name="gsOrchThin" xml:space="preserve">
+    <value>Thin (m)</value>
+  </data>
+  <data name="gsOrchSmoothLbl" xml:space="preserve">
+    <value>Smooth</value>
+  </data>
+  <data name="gsOrchFilterApply" xml:space="preserve">
+    <value>Apply filter</value>
+  </data>
 </root>

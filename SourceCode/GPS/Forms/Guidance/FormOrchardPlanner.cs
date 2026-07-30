@@ -73,6 +73,15 @@ namespace AgOpenGPS
 
         private BingMapVisual satVisual;
 
+        // Row filter (t9): thin + smooth, previewed in magenta and only written on Apply.
+        // filterOrig holds the row's UNTOUCHED points while the values are being tried, so
+        // turning a knob re-solves from the original instead of stacking filter on filter.
+        private int filterRow = -1;
+        private List<vec2> filterOrig;
+        private List<vec2> filterPreview;
+        private double thinVal = -1;      // metres, -1 = off
+        private int smoothVal = -1;       // window/2, -1 = off
+
         // Measure ruler (temporary; never saved).
         private bool measureOn;
         private vec2 mp0, mp1;
@@ -116,6 +125,10 @@ namespace AgOpenGPS
             btnGenLine.Text = gStr.gsOrchGenLine;
             btnGenerate.Text = gStr.gsOrchGenerate;
             btnGenClose.Text = gStr.gsOrchClose;
+            lblFilterCap.Text = gStr.gsOrchFilterCap;
+            lblThin.Text = gStr.gsOrchThin;
+            lblSmooth.Text = gStr.gsOrchSmoothLbl;
+            btnFilterApply.Text = gStr.gsOrchFilterApply;
 
             mf.CalculateMinMax();
 
@@ -270,6 +283,7 @@ namespace AgOpenGPS
             DrawRows();
             DrawMidlines();
             DrawRefLine();
+            DrawFilterPreview();
             if (mode == ViewMode.Build) DrawPoints();
             DrawMeasure();
 
@@ -346,6 +360,126 @@ namespace AgOpenGPS
                 foreach (var p in rows[hotRow].trees) GL.Vertex3(p.easting, p.northing, 0);
                 GL.End();
             }
+        }
+
+        // Filter preview (t9): what the row would look like after thin + smooth. Magenta, like
+        // the Smart AB smooth preview, so it reads as "not committed yet".
+        private void DrawFilterPreview()
+        {
+            if (filterPreview == null || filterPreview.Count < 2) return;
+
+            GL.LineWidth(3);
+            GL.Color3(1.0f, 0.2f, 1.0f);
+            GL.Begin(PrimitiveType.LineStrip);
+            foreach (var p in filterPreview) GL.Vertex3(p.easting, p.northing, 0);
+            GL.End();
+
+            GL.PointSize(5f);
+            GL.Begin(PrimitiveType.Points);
+            foreach (var p in filterPreview) GL.Vertex3(p.easting, p.northing, 0);
+            GL.End();
+        }
+
+        // ── Row filter: thin + smooth (t9) ────────────────────────────────
+        // Both work on the row's CONTROL points: Orchard.txt keeps only those and rebuilds the
+        // curve on load, so a filter applied to the curve would be gone the next time the field
+        // is opened. Thin first (that is what removes the coarse steps of a 1 m recording), then
+        // the moving average.
+        private void btnThinDown_Click(object sender, EventArgs e)
+        {
+            if (thinVal < 0) thinVal = 3;
+            else { thinVal -= 1; if (thinVal < 1) thinVal = -1; }
+            ApplyFilterPreview();
+        }
+
+        private void btnThinUp_Click(object sender, EventArgs e)
+        {
+            if (thinVal < 0) thinVal = 3; else thinVal += 1;
+            if (thinVal > 20) thinVal = 20;
+            ApplyFilterPreview();
+        }
+
+        private void btnSmoothDown_Click(object sender, EventArgs e)
+        {
+            if (smoothVal < 0) smoothVal = 5;
+            else { smoothVal -= 1; if (smoothVal < 2) smoothVal = -1; }
+            ApplyFilterPreview();
+        }
+
+        private void btnSmoothUp_Click(object sender, EventArgs e)
+        {
+            if (smoothVal < 0) smoothVal = 5; else smoothVal++;
+            if (smoothVal > 30) smoothVal = 30;
+            ApplyFilterPreview();
+        }
+
+        /// <summary>Re-solve the preview from the row's original points (never cumulative).</summary>
+        private void ApplyFilterPreview()
+        {
+            int t = TargetRow();
+            if (t < 0 || genMode) { ResetFilter(); return; }
+
+            if (filterRow != t || filterOrig == null)
+            {
+                filterRow = t;
+                filterOrig = new List<vec2>(rows[t].pts);
+            }
+
+            if (thinVal < 0 && smoothVal < 0) filterPreview = null;
+            else filterPreview = COrchard.FilterRowPoints(filterOrig,
+                    thinVal < 0 ? 0 : thinVal, smoothVal < 0 ? 0 : smoothVal * 2);
+
+            UpdateFilterUI();
+            oglSelf.Invalidate();
+        }
+
+        private void ResetFilter()
+        {
+            filterRow = -1; filterOrig = null; filterPreview = null;
+            thinVal = -1; smoothVal = -1;
+            UpdateFilterUI();
+        }
+
+        private void UpdateFilterUI()
+        {
+            bool canFilter = !genMode && TargetRow() >= 0;
+            btnThinUp.Enabled = btnThinDown.Enabled = canFilter;
+            btnSmoothUp.Enabled = btnSmoothDown.Enabled = canFilter;
+            btnFilterApply.Enabled = canFilter && filterPreview != null;
+
+            lblThinVal.Text = thinVal < 0 ? "--" : thinVal.ToString("0");
+            lblSmoothVal.Text = smoothVal < 0 ? "--" : smoothVal.ToString();
+
+            if (filterPreview != null && filterOrig != null)
+                lblActiveOp.Text = "Filter: " + filterOrig.Count + " -> " + filterPreview.Count + " points";
+        }
+
+        private void btnFilterApply_Click(object sender, EventArgs e)
+        {
+            int t = TargetRow();
+            if (t < 0 || filterPreview == null || filterPreview.Count < 2) return;
+
+            //keep the measurement before the row changes - once per row, and only for a row that
+            //was actually recorded (t9). Orchard.txt stays the working copy.
+            COrchard.ArchiveRecordedRow(FieldDir(), rows[t]);
+
+            int had = filterOrig != null ? filterOrig.Count : rows[t].pts.Count;
+
+            rows[t].pts = new List<vec2>(filterPreview);
+            rows[t].BuildCurve();
+
+            int now = rows[t].pts.Count;
+
+            //seedlings stay where they are - same rule as a hand edit
+            lblWarn.Text = rows[t].trees.Count > 0
+                ? "Row filtered - seedlings still on the old shape (Generate again to re-lay them)"
+                : "";
+
+            ResetFilter();
+            if (mode == ViewMode.Build && workIdx == t) { pts.Clear(); pts.AddRange(rows[t].pts); }
+
+            lblActiveOp.Text = "Filtered: " + had + " -> " + now + " points";
+            oglSelf.Invalidate();
         }
 
         // Control-point markers. Selected = green, first = cyan, last = orange, others white.
@@ -911,6 +1045,7 @@ namespace AgOpenGPS
         private void btnEdit_Click(object sender, EventArgs e)
         {
             if (activeIdx < 0 || activeIdx >= rows.Count) return;
+            ResetFilter();
             workIdx = activeIdx;
             pts.Clear();
             pts.AddRange(rows[activeIdx].pts);
@@ -925,6 +1060,7 @@ namespace AgOpenGPS
         private void Navigate(int dir)
         {
             if (rows.Count == 0) return;
+            ResetFilter();
             if (mode != ViewMode.Browse) { SetMode(ViewMode.Browse); if (activeIdx < 0) activeIdx = 0; }
             else
             {
@@ -962,9 +1098,19 @@ namespace AgOpenGPS
         {
             using (var ofd = new OpenFileDialog())
             {
-                ofd.Filter = "KML files (*.kml)|*.kml|All files (*.*)|*.*";
-                ofd.Title = "Import orchard rows / trees from KML";
+                //t9: the same dialog restores the measurement - Orchard_recorded.txt holds the raw
+                //recorded rows, so "back to what I drove" is an import, not a separate undo
+                ofd.Filter = "Rows (*.kml;*.txt)|*.kml;*.txt|KML files (*.kml)|*.kml"
+                           + "|Recorded rows (*.txt)|*.txt|All files (*.*)|*.*";
+                ofd.Title = "Import orchard rows / trees (KML, or recorded rows)";
+                ofd.InitialDirectory = FieldDir();
                 if (ofd.ShowDialog(this) != DialogResult.OK) return;
+
+                if (ofd.FileName.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
+                {
+                    ImportRecordedRows(ofd.FileName);
+                    return;
+                }
 
                 var newRows = COrchard.ImportKml(ofd.FileName, mf.AppModel.LocalPlane, trees, out string err);
                 if (err != null) { lblActiveOp.Text = "KML: " + err; return; }
@@ -981,6 +1127,49 @@ namespace AgOpenGPS
         // The orchard does not exist yet: the driver draws ONE reference line inside the
         // boundary (2 points = straight, more = curve) and the layout settings turn it
         // into the full grid of rows and planting positions.
+        /// <summary>
+        /// Restore rows from a saved row file - in practice Orchard_recorded.txt, the raw rows kept
+        /// when a recorded row was first filtered (t9). Rows are matched BY NAME: a row that exists
+        /// is replaced by its measurement, one that no longer exists is added back, and everything
+        /// else (generated, KML, hand-drawn) is left alone. Planting.txt is not touched, so what is
+        /// already planted survives.
+        /// </summary>
+        private void ImportRecordedRows(string path)
+        {
+            List<OrchRow> saved;
+            try
+            {
+                saved = COrchard.LoadRowsFrom(System.IO.Path.GetDirectoryName(path),
+                                              System.IO.Path.GetFileName(path));
+            }
+            catch (Exception ex)
+            {
+                Log.EventWriter("Orchard ImportRecordedRows: " + ex);
+                lblActiveOp.Text = "Could not read that file";
+                return;
+            }
+
+            if (saved.Count == 0) { lblActiveOp.Text = "No rows in that file"; return; }
+
+            int replaced = 0, added = 0;
+            foreach (var r in saved)
+            {
+                int at = -1;
+                for (int i = 0; i < rows.Count; i++) if (rows[i].name == r.name) { at = i; break; }
+
+                if (at >= 0) { rows[at] = new OrchRow(r); replaced++; }
+                else { rows.Add(new OrchRow(r)); added++; }
+            }
+
+            ResetFilter();
+            midlines.Clear();
+            lblWarn.Text = "";
+            if (rows.Count > 0) { activeIdx = 0; SetMode(ViewMode.Browse); RefreshActiveName(); }
+            UpdateNavButtons();
+            lblActiveOp.Text = "Recorded rows: " + replaced + " restored, " + added + " added";
+            oglSelf.Invalidate();
+        }
+
         private List<List<vec2>> FieldBounds()
         {
             var b = new List<List<vec2>>();
