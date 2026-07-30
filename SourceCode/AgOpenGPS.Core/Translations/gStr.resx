@@ -2016,8 +2016,8 @@ USE AT OWN RISK.</value>
   <data name="gsOrchRowOffset" xml:space="preserve">
     <value>Tool offset from row (m)</value>
   </data>
-  <data name="gsOrchTreeSpaceSet" xml:space="preserve">
-    <value>Tree clearance (m)</value>
+  <data name="gsOrchTreeWidth" xml:space="preserve">
+    <value>Safe tree width (m)</value>
   </data>
   <data name="gsOrchSafeSpace" xml:space="preserve">
     <value>Safe space - opposite row (m)</value>

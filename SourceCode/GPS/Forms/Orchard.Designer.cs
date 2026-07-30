@@ -203,7 +203,7 @@ namespace AgOpenGPS
                 {
                     made = COrchard.BuildTracks(orchRows, pathMode, toolW,
                         ts.setTool_orchardWorkMode, ts.setTool_orchardSafeSpace,
-                        ts.setTool_orchardTreeSpace, ts.setTool_orchardRowOffset,
+                        ts.setTool_orchardTreeWidth, ts.setTool_orchardRowOffset,
                         ts.setTool_orchardCenterFirst,
                         tool.plantLateralOffset, tool.offset, out List<string> warns,
                         OrchardFieldBounds());
@@ -228,7 +228,7 @@ namespace AgOpenGPS
             {
                 double missing = COrchard.ToolTooWideBy(orchRows, toolW,
                     ts.setTool_orchardRowOffset, ts.setTool_orchardSafeSpace,
-                    ts.setTool_orchardTreeSpace, out int worst);
+                    ts.setTool_orchardTreeWidth, out int worst);
                 orchardWarn = missing > 0.01
                     ? "Tool too wide: -" + missing.ToString("N1") + " m"
                         + (worst > 0 ? " (inter-row " + worst + ")" : "")

@@ -49,7 +49,7 @@ namespace AgOpenGPS
                 cboOrchardMode.SelectedIndex = Math.Max(0, Math.Min(2,
                     Properties.ToolSettings.Default.setTool_orchardWorkMode));
                 nudOrchardRowOffset.Value = (decimal)Properties.ToolSettings.Default.setTool_orchardRowOffset;
-                nudOrchardTree.Value = (decimal)Properties.ToolSettings.Default.setTool_orchardTreeSpace;
+                nudOrchardTree.Value = (decimal)Properties.ToolSettings.Default.setTool_orchardTreeWidth;
                 nudOrchardSafe.Value = (decimal)Properties.ToolSettings.Default.setTool_orchardSafeSpace;
                 chkOrchardOnePass.Checked = Properties.ToolSettings.Default.setTool_orchardOnePass;
                 chkOrchardCenterFirst.Checked = Properties.ToolSettings.Default.setTool_orchardCenterFirst;
@@ -149,7 +149,7 @@ namespace AgOpenGPS
                 gStr.gsOrchWorkCenter, gStr.gsOrchWorkLeft, gStr.gsOrchWorkRight });
 
             lblOrchardRowOffset.Text = gStr.gsOrchRowOffset;
-            lblOrchardTree.Text = gStr.gsOrchTreeSpaceSet;
+            lblOrchardTree.Text = gStr.gsOrchTreeWidth;
             lblOrchardSafe.Text = gStr.gsOrchSafeSpace;
             chkOrchardCenterFirst.Text = gStr.gsOrchCenterFirst;
             lblPlantLateral.Text = gStr.gsOrchPlanterLateral;
@@ -228,7 +228,7 @@ namespace AgOpenGPS
                     Properties.ToolSettings.Default.setTool_orchardPathMode = cboOrchardPath.SelectedIndex;
                 Properties.ToolSettings.Default.setTool_orchardWorkMode = cboOrchardMode.SelectedIndex;
                 Properties.ToolSettings.Default.setTool_orchardRowOffset = (double)nudOrchardRowOffset.Value;
-                Properties.ToolSettings.Default.setTool_orchardTreeSpace = (double)nudOrchardTree.Value;
+                Properties.ToolSettings.Default.setTool_orchardTreeWidth = (double)nudOrchardTree.Value;
                 Properties.ToolSettings.Default.setTool_orchardSafeSpace = (double)nudOrchardSafe.Value;
                 Properties.ToolSettings.Default.setTool_orchardOnePass = chkOrchardOnePass.Checked;
                 Properties.ToolSettings.Default.setTool_orchardCenterFirst = chkOrchardCenterFirst.Checked;

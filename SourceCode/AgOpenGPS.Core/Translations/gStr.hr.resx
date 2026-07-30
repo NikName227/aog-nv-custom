@@ -1649,8 +1649,8 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsOrchRowOffset" xml:space="preserve">
     <value>Odmak stroja od reda (m)</value>
   </data>
-  <data name="gsOrchTreeSpaceSet" xml:space="preserve">
-    <value>Odmak od stabla (m)</value>
+  <data name="gsOrchTreeWidth" xml:space="preserve">
+    <value>Sigurna širina stabla (m)</value>
   </data>
   <data name="gsOrchSafeSpace" xml:space="preserve">
     <value>Sigurnosni odmak - suprotni red (m)</value>

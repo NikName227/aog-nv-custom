@@ -5214,9 +5214,9 @@ namespace AgOpenGPS.Core.Translations {
             }
         }
         
-        public static string gsOrchTreeSpaceSet {
+        public static string gsOrchTreeWidth {
             get {
-                return ResourceManager.GetString("gsOrchTreeSpaceSet", resourceCulture);
+                return ResourceManager.GetString("gsOrchTreeWidth", resourceCulture);
             }
         }
         

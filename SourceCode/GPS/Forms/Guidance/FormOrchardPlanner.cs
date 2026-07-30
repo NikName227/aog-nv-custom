@@ -1090,7 +1090,7 @@ namespace AgOpenGPS
             List<CTrk> passes = mf.tool.isToolOrchard
                 ? COrchard.BuildPasses(rows, toolW,
                     ts.setTool_orchardWorkMode, ts.setTool_orchardSafeSpace,
-                    ts.setTool_orchardTreeSpace, ts.setTool_orchardRowOffset,
+                    ts.setTool_orchardTreeWidth, ts.setTool_orchardRowOffset,
                     ts.setTool_orchardOnePass, ts.setTool_orchardCenterFirst,
                     out List<string> warns)
                 : COrchard.BuildPasses(rows, toolW, 0, 0, 0, 0, true, true, out warns);

@@ -387,10 +387,11 @@ namespace AgOpenGPS
         // (passes start at that side's row). The working belt of an inter-row =
         // rowGap - 2×rowOffset (setting 6); pass count = ceil(belt / toolWidth),
         // onePass forces a single center pass (spraying). Hard limits: the tool edge
-        // keeps treeSpace from either row line; in L/R mode the pass line keeps
-        // safeSpace from the OPPOSITE row. Violations drop the pass + a warning.
+        // keeps half of treeWidth from either row line (treeWidth = the whole unworked band
+        // around a row, SIM 0730); in L/R mode the pass line keeps safeSpace from the OPPOSITE
+        // row. Violations drop the pass + a warning.
         public static List<CTrk> BuildPasses(List<OrchRow> rows, double toolWidth,
-            int workMode, double safeSpace, double treeSpace, double rowOffset,
+            int workMode, double safeSpace, double treeWidth, double rowOffset,
             bool onePass, bool centerFirst, out List<string> warnings)
         {
             warnings = new List<string>();
@@ -412,7 +413,8 @@ namespace AgOpenGPS
                 string interName = "Mid " + (i + 1);
 
                 // usable half-width: the tool edge must not reach into the tree line
-                double halfLimit = gap * 0.5 - treeSpace - toolWidth * 0.5;
+                //the tool edge must stay out of the unworked band: half of it per side
+                double halfLimit = gap * 0.5 - treeWidth * 0.5 - toolWidth * 0.5;
                 if (halfLimit < 0)
                 {
                     warnings.Add(interName + ": inter-row too narrow for the tool (gap "
@@ -536,17 +538,23 @@ namespace AgOpenGPS
         // bounds (t10 E) let the OUTER strips - between the boundary and the first / last row -
         // get their pass too; without a boundary they are simply skipped.
         public static List<CTrk> BuildTracks(List<OrchRow> rows, int pathMode, double toolWidth,
-            int workMode, double safeSpace, double treeSpace, double rowOffset, bool centerFirst,
+            int workMode, double safeSpace, double treeWidth, double rowOffset, bool centerFirst,
             double plantLateralOffset, double toolOffset, out List<string> warnings,
             List<List<vec2>> bounds = null)
         {
             if (pathMode == PathOnRow)
                 return BuildOnRowTracks(rows, toolWidth, plantLateralOffset, toolOffset, out warnings);
 
-            var passes = BuildPasses(rows, toolWidth, workMode, safeSpace, treeSpace, rowOffset,
+            //SIM 0730: working mode (centre / left / right) belongs to multi pass, and the
+            //Settings panel only shows it there. A value left over from an earlier profile must
+            //not silently drop one-pass lines through the L/R safe-space check, so anything but
+            //multi pass is driven down the middle.
+            if (pathMode != PathMultiPass) workMode = 0;
+
+            var passes = BuildPasses(rows, toolWidth, workMode, safeSpace, treeWidth, rowOffset,
                 pathMode == PathOnePass, centerFirst, out warnings);
 
-            AddOuterStripPasses(rows, bounds, toolWidth, treeSpace,
+            AddOuterStripPasses(rows, bounds, toolWidth, treeWidth,
                 pathMode == PathOnePass, passes, warnings);
 
             return passes;
@@ -562,7 +570,7 @@ namespace AgOpenGPS
         // The first row's strip is put in FRONT of the inter-row passes and the last row's strip
         // behind them, so the sequence still sweeps across the field in one direction.
         private static void AddOuterStripPasses(List<OrchRow> rows, List<List<vec2>> bounds,
-            double toolWidth, double treeSpace, bool onePass,
+            double toolWidth, double treeWidth, bool onePass,
             List<CTrk> passes, List<string> warnings)
         {
             if (rows == null || rows.Count < 2 || bounds == null || bounds.Count == 0) return;
@@ -580,7 +588,7 @@ namespace AgOpenGPS
                 double outward = -OffsetSignTowardB(row.curve, inner);
 
                 double free = OutwardFreeWidth(row.curve, bounds, outward,
-                    treeSpace + toolWidth * 3.0 + 1.0);
+                    treeWidth * 0.5 + toolWidth * 3.0 + 1.0);
                 string name = "edge " + (side + 1);
 
                 //how many passes fit between the tree line and the boundary
@@ -588,7 +596,7 @@ namespace AgOpenGPS
                 var offs = new List<double>();
                 while (true)
                 {
-                    double d = treeSpace + toolWidth * (n + 0.5);
+                    double d = treeWidth * 0.5 + toolWidth * (n + 0.5);
                     if (d + toolWidth * 0.5 > free) break;
                     offs.Add(d);
                     n++;
@@ -714,7 +722,7 @@ namespace AgOpenGPS
         // Safety check against driving into a tree row: the machine has to fit into the
         // inter-row once the offsets are taken off it.
         //     width > gap - rowOffset - safeSpace        (the rule from the feedback)
-        //     width > gap - 2*treeSpace                  (the hard limit BuildPasses uses
+        //     width > gap - treeWidth                    (the hard limit BuildPasses uses
         //                                                 to drop a pass - kept so the alert
         //                                                 can never stay silent while passes
         //                                                 are being dropped)
@@ -722,7 +730,7 @@ namespace AgOpenGPS
         // (on row) is not checked: the trees are not in the ground yet, and the machine
         // straddles the row instead of passing between two of them.
         public static double ToolTooWideBy(List<OrchRow> rows, double toolWidth,
-            double rowOffset, double safeSpace, double treeSpace, out int worstInterRow)
+            double rowOffset, double safeSpace, double treeWidth, out int worstInterRow)
         {
             worstInterRow = -1;
             double worst = 0;
@@ -735,7 +743,7 @@ namespace AgOpenGPS
                 if (BuildMidline(sorted[i], sorted[i + 1], out double gap) == null) continue;
 
                 double missing = Math.Max(toolWidth - (gap - rowOffset - safeSpace),
-                                          toolWidth - (gap - 2.0 * treeSpace));
+                                          toolWidth - (gap - treeWidth));
                 if (missing > worst) { worst = missing; worstInterRow = i + 1; }
             }
             return worst;
