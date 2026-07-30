@@ -419,6 +419,10 @@ namespace AgOpenGPS
                     //F50: the tree rows themselves - very thin, they are geometry, not a path
                     if (orchRows.Count > 0) DrawOrchardRows();
 
+                    //F50 t10: every derived pass, so the driver sees the lines that exist
+                    //instead of AOG's tool-width guide lines
+                    if (trk.IsOrchardAutoOn) DrawOrchardPasses();
+
                     //F50 planting: where every seedling goes, and what is already planted
                     if (planting.IsOn) DrawPlantSpots();
 
@@ -2163,6 +2167,26 @@ namespace AgOpenGPS
                 if (c.Count < 2) continue;
                 GL.Begin(PrimitiveType.LineStrip);
                 for (int p = 0; p < c.Count; p++) GL.Vertex3(c[p].easting, c[p].northing, 0);
+                GL.End();
+            }
+        }
+
+        //F50 t10: the derived passes (violet). These are the only pass lines in orchard mode -
+        //what is drawn is exactly what can be driven, one per inter-row / per row. The ACTIVE
+        //one is left out, DrawCurve already draws it brighter and on top.
+        private void DrawOrchardPasses()
+        {
+            GL.LineWidth(2);
+            GL.Color4(0.72f, 0.45f, 0.95f, 0.85f);
+            for (int i = 0; i < trk.gArr.Count; i++)
+            {
+                if (!trk.gArr[i].isOrchardDerived || !trk.gArr[i].isVisible) continue;
+                if (i == trk.idx) continue;
+
+                var pts = trk.gArr[i].curvePts;
+                if (pts.Count < 2) continue;
+                GL.Begin(PrimitiveType.LineStrip);
+                for (int p = 0; p < pts.Count; p++) GL.Vertex3(pts[p].easting, pts[p].northing, 0);
                 GL.End();
             }
         }

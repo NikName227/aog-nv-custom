@@ -23,6 +23,30 @@ namespace AgOpenGPS
 
         public bool isAutoTrack = false, isAutoSnapToPivot = false, isAutoSnapped;
 
+        /// <summary>
+        /// NV custom F50 (t10): the driver picked the single "Orchard" entry in the track list
+        /// instead of one line. While it is on, the orchard automatics run - the derived pass is
+        /// driven as ONE fixed line (no width multiples), the nearest derived line is selected by
+        /// itself, and AOG's side guide lines are off. Picking any hand-made line turns it off and
+        /// gives fully stock behaviour, which is what the work AROUND the orchard needs.
+        /// </summary>
+        public bool isOrchardAuto;
+
+        /// <summary>Orchard automatics are on AND there is something derived to drive.</summary>
+        public bool IsOrchardAutoOn
+        {
+            get
+            {
+                if (!isOrchardAuto) return false;
+                for (int i = 0; i < gArr.Count; i++) if (gArr[i].isOrchardDerived) return true;
+                return false;
+            }
+        }
+
+        /// <summary>Is the active track a derived orchard pass?</summary>
+        public bool IsActiveOrchardPass
+            => idx > -1 && idx < gArr.Count && gArr[idx].isOrchardDerived;
+
         public CTrack(FormGPS _f)
         {
             //constructor
@@ -127,12 +151,15 @@ namespace AgOpenGPS
             return trak;
         }
 
-        //F50: orchard passes are FIXED reference lines (trees do not move) - the
-        //"Row ..." name marks them so no track-file format change is needed
+        //F50: orchard passes are FIXED reference lines (trees do not move), so nudging them
+        //makes no sense. Since t10 the marker is the derived flag itself - the old check on
+        //the "Row " name prefix stopped matching when the derived tracks were renamed to
+        //"Orch ..." (name check kept as the fallback for tracks read from an older field file
+        //before the first rebuild).
         public bool IsFixedTrack(int i)
         {
             return i > -1 && i < gArr.Count
-                && gArr[i].name.StartsWith("Row ", System.StringComparison.Ordinal);
+                && (gArr[i].isOrchardDerived || COrchard.IsDerivedName(gArr[i].name));
         }
 
         public void NudgeTrack(double dist)
