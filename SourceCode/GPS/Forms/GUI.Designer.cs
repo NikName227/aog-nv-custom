@@ -889,7 +889,7 @@ namespace AgOpenGPS
                 if (trk.idx > -1 && trk.gArr.Count > 0 && !ct.isContourBtnOn)
                 {
                     lblNumCu.Visible = true;
-                    lblNumCu.Text = (trk.idx + 1).ToString() + "/" + trk.gArr.Count.ToString();
+                    lblNumCu.Text = trk.DisplayCounterText;   //F50 t10: orchard = one line
                 }
                 else
                 {

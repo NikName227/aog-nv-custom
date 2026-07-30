@@ -1,4 +1,5 @@
 using AgLibrary.Logging;
+using AgOpenGPS.Core.Translations;
 using System;
 using System.Collections.Generic;
 
@@ -42,6 +43,54 @@ namespace AgOpenGPS
         /// inter-rows.
         /// </summary>
         private const double OrchardSwitchHysteresis = 0.5;
+
+        /// <summary>
+        /// Step the guidance line selection the way the driver sees it (SIM 0730): the whole
+        /// orchard is ONE stop, so the cycle buttons move between "Orchard" and the hand-made
+        /// lines instead of walking through every inter-row pass. Landing on the orchard turns
+        /// the automatics on and takes the NEAREST pass, exactly like picking it in the list.
+        ///
+        /// Returns false when this field has no derived path - then the stock cycling runs.
+        /// </summary>
+        public bool OrchardCycleTracks(int dir, out string label)
+        {
+            label = null;
+            if (trk?.gArr == null || !trk.HasOrchardDerived) return false;
+
+            //what the driver can pick: -1 = the orchard, otherwise a hand-made line
+            var items = new List<int>();
+            bool anyDerivedVisible = false;
+            for (int i = 0; i < trk.gArr.Count; i++)
+                if (trk.gArr[i].isOrchardDerived && trk.gArr[i].isVisible) { anyDerivedVisible = true; break; }
+
+            if (anyDerivedVisible) items.Add(-1);
+            for (int i = 0; i < trk.gArr.Count; i++)
+                if (!trk.gArr[i].isOrchardDerived && trk.gArr[i].isVisible) items.Add(i);
+
+            if (items.Count == 0) return true;   //handled: nothing to step onto
+
+            int cur = (trk.isOrchardAuto && anyDerivedVisible) ? 0 : items.IndexOf(trk.idx);
+            if (cur < 0) cur = 0;
+
+            int next = ((cur + dir) % items.Count + items.Count) % items.Count;
+
+            if (items[next] == -1)
+            {
+                trk.isOrchardAuto = true;
+                OrchardPickNearestPass(true);
+                label = gStr.gsOrchard;
+            }
+            else
+            {
+                trk.isOrchardAuto = false;
+                trk.idx = items[next];
+                label = trk.gArr[trk.idx].name;
+            }
+
+            curve.isCurveValid = false;
+            ABLine.isABValid = false;
+            return true;
+        }
 
         /// <summary>
         /// Field boundary rings (outer first, then the islands) for the path geometry - the outer

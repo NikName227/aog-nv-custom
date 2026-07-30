@@ -47,6 +47,65 @@ namespace AgOpenGPS
         public bool IsActiveOrchardPass
             => idx > -1 && idx < gArr.Count && gArr[idx].isOrchardDerived;
 
+        // ── What the driver is shown (F50 t10, SIM 0730) ──────────────────────────
+        // The orchard is ONE item everywhere in the UI, not one per inter-row: one row in the
+        // track list, one step for the cycle buttons, and one line in the counter. So a field
+        // with an orchard and no hand-made line reads 1/1, and 1/2 once a manual AB line is
+        // added - never 1/24.
+
+        /// <summary>Number of items the driver can pick: the orchard counts as one.</summary>
+        public int DisplayCount
+        {
+            get
+            {
+                int n = 0;
+                bool anyDerived = false;
+                for (int i = 0; i < gArr.Count; i++)
+                {
+                    if (gArr[i].isOrchardDerived) anyDerived = true;
+                    else n++;
+                }
+                return n + (anyDerived ? 1 : 0);
+            }
+        }
+
+        /// <summary>1-based position of the active item in that same list; 0 = nothing active.</summary>
+        public int DisplayIndex
+        {
+            get
+            {
+                if (idx < 0 || idx >= gArr.Count) return 0;
+
+                bool anyDerived = false;
+                for (int i = 0; i < gArr.Count; i++) if (gArr[i].isOrchardDerived) { anyDerived = true; break; }
+
+                //the orchard sits first, as in the track list
+                if (gArr[idx].isOrchardDerived) return 1;
+
+                int n = anyDerived ? 1 : 0;
+                for (int i = 0; i < gArr.Count; i++)
+                {
+                    if (gArr[i].isOrchardDerived) continue;
+                    n++;
+                    if (i == idx) return n;
+                }
+                return n;
+            }
+        }
+
+        /// <summary>"1/2" for the counter label - the orchard as a single line.</summary>
+        public string DisplayCounterText => DisplayIndex + "/" + DisplayCount;
+
+        /// <summary>Does this field have a derived orchard path at all?</summary>
+        public bool HasOrchardDerived
+        {
+            get
+            {
+                for (int i = 0; i < gArr.Count; i++) if (gArr[i].isOrchardDerived) return true;
+                return false;
+            }
+        }
+
         public CTrack(FormGPS _f)
         {
             //constructor

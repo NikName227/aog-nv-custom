@@ -1090,7 +1090,13 @@ namespace AgOpenGPS
 
             int ptCount = mf.trk.gArr[mf.trk.idx].curvePts.Count;
 
-            if (mf.trk.gArr[mf.trk.idx].mode != TrackMode.waterPivot)
+            //F50 t10 (SIM 0730): on a derived orchard pass the reference line is NOT drawn. AOG's
+            //reference is the edge of pass 0, so on an orchard pass it lands half a tool width
+            //off the driven line - right along the tractor's flank, dashed, looking like a line
+            //to follow. The pass itself (violet) and the guidance line are what count here.
+            bool isOrchardPass = mf.trk.gArr[mf.trk.idx].isOrchardDerived && mf.trk.isOrchardAuto;
+
+            if (mf.trk.gArr[mf.trk.idx].mode != TrackMode.waterPivot && !isOrchardPass)
             {
                 if (mf.trk.gArr[mf.trk.idx].curvePts == null || mf.trk.gArr[mf.trk.idx].curvePts.Count == 0) return;
 

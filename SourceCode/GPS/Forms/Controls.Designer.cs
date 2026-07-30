@@ -315,6 +315,28 @@ namespace AgOpenGPS
             trk.isAutoTrack = false;
             btnAutoTrack.Image = Resources.AutoTrackOff;
 
+            //F50 t10 (SIM 0730): in an orchard the whole path is one stop - "Orchard" then the
+            //hand-made lines - instead of 24 inter-row passes to click through
+            if (OrchardCycleTracks(1, out string orchName))
+            {
+                guideLineCounter = 20;
+                lblGuidanceLine.Visible = true;
+                lblGuidanceLine.Text = orchName ?? "";
+
+                if (isBtnAutoSteerOn)
+                {
+                    btnAutoSteer.PerformClick();
+                    TimedMessageBox(2000, gStr.gsGuidanceStopped, "Track Changed");
+                }
+                if (yt.isYouTurnBtnOn) btnAutoYouTurn.PerformClick();
+
+                lblNumCu.Text = trk.DisplayCounterText;
+                twoSecondCounter = 100;
+                ABLine.isABValid = false;
+                curve.isCurveValid = false;
+                return;
+            }
+
             if (trk.gArr.Count > 1)
             {
                 while (true)
@@ -339,7 +361,7 @@ namespace AgOpenGPS
 
                 if (yt.isYouTurnBtnOn) btnAutoYouTurn.PerformClick();
 
-                lblNumCu.Text = (trk.idx + 1).ToString() + "/" + trk.gArr.Count.ToString();
+                lblNumCu.Text = trk.DisplayCounterText;   //F50 t10: orchard = one line
             }
 
             twoSecondCounter = 100;
@@ -358,6 +380,26 @@ namespace AgOpenGPS
 
             trk.isAutoTrack = false;
             btnAutoTrack.Image = Resources.AutoTrackOff;
+
+            //F50 t10 (SIM 0730): same single stop for the orchard, backwards
+            if (OrchardCycleTracks(-1, out string orchName))
+            {
+                guideLineCounter = 20;
+                lblGuidanceLine.Visible = true;
+                lblGuidanceLine.Text = orchName ?? "";
+
+                if (isBtnAutoSteerOn)
+                {
+                    btnAutoSteer.PerformClick();
+                    TimedMessageBox(2000, gStr.gsGuidanceStopped, "Track Changed");
+                }
+
+                lblNumCu.Text = trk.DisplayCounterText;
+                ABLine.isABValid = false;
+                curve.isCurveValid = false;
+                twoSecondCounter = 100;
+                return;
+            }
 
             if (trk.gArr.Count > 1)
             {
@@ -381,7 +423,7 @@ namespace AgOpenGPS
                     TimedMessageBox(2000, gStr.gsGuidanceStopped, "Track Changed");
                 }
 
-                lblNumCu.Text = (trk.idx + 1).ToString() + "/" + trk.gArr.Count.ToString();
+                lblNumCu.Text = trk.DisplayCounterText;   //F50 t10: orchard = one line
             }
 
             ABLine.isABValid = false;
