@@ -125,7 +125,6 @@ namespace AgOpenGPS
             btnGenLine.Text = gStr.gsOrchGenLine;
             btnGenerate.Text = gStr.gsOrchGenerate;
             btnGenClose.Text = gStr.gsOrchClose;
-            lblFilterCap.Text = gStr.gsOrchFilterCap;
             lblThin.Text = gStr.gsOrchThin;
             lblSmooth.Text = gStr.gsOrchSmoothLbl;
             btnFilterApply.Text = gStr.gsOrchFilterApply;

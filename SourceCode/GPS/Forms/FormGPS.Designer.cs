@@ -1918,7 +1918,10 @@ namespace AgOpenGPS
             // with the field - so it belongs next to turn lines, not in the AB-line flyout)
             //
             this.orchardToolStripMenuItem.Font = new System.Drawing.Font("Tahoma", 26.25F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.orchardToolStripMenuItem.Image = global::AgOpenGPS.Properties.Resources.Orchard;
+            //the resource is 128 px while the rest of this menu is 64 - unscaled it stretched
+            //the whole submenu, so it goes in at the size the other items use
+            this.orchardToolStripMenuItem.Image = new System.Drawing.Bitmap(
+                global::AgOpenGPS.Properties.Resources.Orchard, new System.Drawing.Size(64, 64));
             this.orchardToolStripMenuItem.ImageScaling = System.Windows.Forms.ToolStripItemImageScaling.None;
             this.orchardToolStripMenuItem.Name = "orchardToolStripMenuItem";
             this.orchardToolStripMenuItem.Size = new System.Drawing.Size(445, 70);
