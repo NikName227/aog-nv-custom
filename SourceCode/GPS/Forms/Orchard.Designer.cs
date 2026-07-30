@@ -43,6 +43,23 @@ namespace AgOpenGPS
         /// </summary>
         private const double OrchardSwitchHysteresis = 0.5;
 
+        /// <summary>
+        /// Field boundary rings (outer first, then the islands) for the path geometry - the outer
+        /// strip pass needs to know where the field ends. null when no boundary is defined.
+        /// </summary>
+        private List<List<vec2>> OrchardFieldBounds()
+        {
+            if (bnd?.bndList == null || bnd.bndList.Count == 0) return null;
+
+            var b = new List<List<vec2>>();
+            for (int i = 0; i < bnd.bndList.Count; i++)
+            {
+                var ring = bnd.bndList[i].fenceLineEar;
+                if (ring != null && ring.Count >= 3) b.Add(new List<vec2>(ring));
+            }
+            return b.Count == 0 ? null : b;
+        }
+
         /// <summary>Shortest distance from the pivot to a track's line, in metres.</summary>
         private double OrchardPassDistance(CTrk t)
         {
@@ -138,7 +155,8 @@ namespace AgOpenGPS
                         ts.setTool_orchardWorkMode, ts.setTool_orchardSafeSpace,
                         ts.setTool_orchardTreeSpace, ts.setTool_orchardRowOffset,
                         ts.setTool_orchardCenterFirst,
-                        tool.plantLateralOffset, tool.offset, out List<string> warns);
+                        tool.plantLateralOffset, tool.offset, out List<string> warns,
+                        OrchardFieldBounds());
 
                     if (warns.Count > 0)
                         Log.EventWriter("Orchard path (" + why + "): " + warns.Count

@@ -95,9 +95,8 @@ namespace AgOpenGPS
             // --- Planting job (F50): seedling spots + what is already in the ground ---
             planting.Load(dir);
 
-            // --- Orchard rows (F50): the definition of the orchard. The driving path is
-            // derived from them, so it is rebuilt here instead of being read from file.
-            OrchardLoadRows(dir);
+            // (F50: the orchard rows are read further down - the derived path needs the
+            //  boundary for the outer strip passes, and the boundary loads later)
 
             // --- Sections into triStrip + area ---
             if (TryLoad("Sections.txt", LoadCriticality.Optional, () => SectionsFiles.Load(dir), out var sections))
@@ -153,6 +152,12 @@ namespace AgOpenGPS
                 CalculateMinMax();
                 bnd.BuildTurnLines();
             }
+
+            // --- Orchard rows (F50): the definition of the orchard. The driving path is derived
+            // from them plus the implement settings, so it is rebuilt here instead of being read
+            // from a file. AFTER the boundary on purpose: the outer strip pass (boundary <-> first
+            // and last row) can only be placed once the field edge is known.
+            OrchardLoadRows(dir);
 
             // --- Turn limit lines + pass plan (NV custom, needs boundaries loaded
             // first). F06 feature lock: without the turnapp unlock the files are

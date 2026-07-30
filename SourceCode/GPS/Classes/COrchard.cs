@@ -533,15 +533,131 @@ namespace AgOpenGPS
 
         // ── Path from rows + implement (SIM 0729 t3/t5) ───────────────────
         // One entry point for all three modes. Everything it returns is a DERIVED track.
+        // bounds (t10 E) let the OUTER strips - between the boundary and the first / last row -
+        // get their pass too; without a boundary they are simply skipped.
         public static List<CTrk> BuildTracks(List<OrchRow> rows, int pathMode, double toolWidth,
             int workMode, double safeSpace, double treeSpace, double rowOffset, bool centerFirst,
-            double plantLateralOffset, double toolOffset, out List<string> warnings)
+            double plantLateralOffset, double toolOffset, out List<string> warnings,
+            List<List<vec2>> bounds = null)
         {
             if (pathMode == PathOnRow)
                 return BuildOnRowTracks(rows, toolWidth, plantLateralOffset, toolOffset, out warnings);
 
-            return BuildPasses(rows, toolWidth, workMode, safeSpace, treeSpace, rowOffset,
+            var passes = BuildPasses(rows, toolWidth, workMode, safeSpace, treeSpace, rowOffset,
                 pathMode == PathOnePass, centerFirst, out warnings);
+
+            AddOuterStripPasses(rows, bounds, toolWidth, treeSpace,
+                pathMode == PathOnePass, passes, warnings);
+
+            return passes;
+        }
+
+        // ── Outer strips: boundary <-> first / last row (t10 E) ───────────
+        // The inter-row loop only works between two rows, so the ground between the boundary and
+        // the outermost rows had no pass at all. Decision 2026-07-30: the pass runs PARALLEL to
+        // the outer row (constant offset, same clearance rules), and where the machine does not
+        // fit there is simply no pass plus a warning - a skewed boundary is worked with the
+        // driver's own Smart AB lines, not with a converging line nobody can follow.
+        //
+        // The first row's strip is put in FRONT of the inter-row passes and the last row's strip
+        // behind them, so the sequence still sweeps across the field in one direction.
+        private static void AddOuterStripPasses(List<OrchRow> rows, List<List<vec2>> bounds,
+            double toolWidth, double treeSpace, bool onePass,
+            List<CTrk> passes, List<string> warnings)
+        {
+            if (rows == null || rows.Count < 2 || bounds == null || bounds.Count == 0) return;
+            if (toolWidth < 0.1) return;
+
+            var sorted = SortRowsTransverse(rows);
+
+            for (int side = 0; side < 2; side++)
+            {
+                OrchRow row = side == 0 ? sorted[0] : sorted[sorted.Count - 1];
+                OrchRow inner = side == 0 ? sorted[1] : sorted[sorted.Count - 2];
+                if (row.curve.Count < 2 || inner.curve.Count < 2) continue;
+
+                //outward = away from the neighbouring row
+                double outward = -OffsetSignTowardB(row.curve, inner);
+
+                double free = OutwardFreeWidth(row.curve, bounds, outward,
+                    treeSpace + toolWidth * 3.0 + 1.0);
+                string name = "edge " + (side + 1);
+
+                //how many passes fit between the tree line and the boundary
+                int n = 0;
+                var offs = new List<double>();
+                while (true)
+                {
+                    double d = treeSpace + toolWidth * (n + 0.5);
+                    if (d + toolWidth * 0.5 > free) break;
+                    offs.Add(d);
+                    n++;
+                    if (onePass || n > 20) break;
+                }
+
+                if (offs.Count == 0)
+                {
+                    warnings.Add("Orch " + name + ": strip too narrow for the tool ("
+                        + free.ToString("N1") + " m)");
+                    continue;
+                }
+
+                var made = new List<CTrk>();
+                for (int k = 0; k < offs.Count; k++)
+                {
+                    var line = OffsetCurve(row.curve, outward * offs[k]);
+                    if (line.Count < 2) continue;
+                    CABCurve.CalculateHeadings(ref line);
+                    line = OffsetCurve(line, -0.5 * toolWidth);
+
+                    double head = line[line.Count / 2].heading;
+                    if (head < 0) head += glm.twoPI;
+
+                    ExtendEnds(line, ExtendMeters);
+                    CABCurve.CalculateHeadings(ref line);
+
+                    var t = new CTrk { mode = TrackMode.Curve, heading = head, isVisible = true };
+                    t.isOrchardDerived = true;
+                    t.ptA = new vec2(line[0].easting, line[0].northing);
+                    t.ptB = new vec2(line[line.Count - 1].easting, line[line.Count - 1].northing);
+                    t.name = DerivedPrefix + name + (offs.Count > 1 ? " p" + (k + 1) : "");
+                    foreach (vec3 p in line) t.curvePts.Add(p);
+                    made.Add(t);
+                }
+
+                if (side == 0) passes.InsertRange(0, made);
+                else passes.AddRange(made);
+            }
+        }
+
+        // How far the field reaches outward from a row before the boundary, in metres: march out
+        // perpendicular from points along the row and keep the WORST (narrowest) place. The ends
+        // are left out of the sample - there the nearest boundary is the headland, not the strip.
+        private static double OutwardFreeWidth(List<vec3> curve, List<List<vec2>> bounds,
+            double outward, double maxLook)
+        {
+            const double step = 0.25;
+            int from = curve.Count / 10, to = curve.Count - curve.Count / 10;
+            if (to - from < 2) { from = 0; to = curve.Count; }
+
+            double worst = maxLook;
+            for (int i = from; i < to; i += 3)
+            {
+                double rx = Math.Sin(curve[i].heading + glm.PIBy2) * outward;
+                double ry = Math.Cos(curve[i].heading + glm.PIBy2) * outward;
+
+                double d = 0;
+                while (d + step <= worst)
+                {
+                    var p = new vec2(curve[i].easting + rx * (d + step),
+                                     curve[i].northing + ry * (d + step));
+                    if (!IsInsideField(p, bounds)) break;
+                    d += step;
+                }
+                if (d < worst) worst = d;
+                if (worst < step) return 0;
+            }
+            return worst;
         }
 
         // ── On row (planting): the line IS the row ────────────────────────
