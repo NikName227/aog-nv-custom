@@ -2118,4 +2118,22 @@ USE AT OWN RISK.</value>
   <data name="gsOrchPassCountMin" xml:space="preserve">
     <value>passes >= 3</value>
   </data>
+  <data name="gsOrchTree" xml:space="preserve">
+    <value>Tree</value>
+  </data>
+  <data name="gsOrchDeleteLastTree" xml:space="preserve">
+    <value>Delete last tree</value>
+  </data>
+  <data name="gsOrchTreeMinDist" xml:space="preserve">
+    <value>Min tree spacing (m)</value>
+  </data>
+  <data name="gsOrchKeyTrigger" xml:space="preserve">
+    <value>Key trigger</value>
+  </data>
+  <data name="gsOrchPressKey" xml:space="preserve">
+    <value>press a key...</value>
+  </data>
+  <data name="gsOrchRefLong" xml:space="preserve">
+    <value>fwd/back from axle</value>
+  </data>
 </root>

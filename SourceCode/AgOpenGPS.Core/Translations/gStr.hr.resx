@@ -1751,4 +1751,22 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsOrchPassCountMin" xml:space="preserve">
     <value>broj prolaza >= 3</value>
   </data>
+  <data name="gsOrchTree" xml:space="preserve">
+    <value>Stablo</value>
+  </data>
+  <data name="gsOrchDeleteLastTree" xml:space="preserve">
+    <value>Obriši zadnje stablo</value>
+  </data>
+  <data name="gsOrchTreeMinDist" xml:space="preserve">
+    <value>Min razmak stabala (m)</value>
+  </data>
+  <data name="gsOrchKeyTrigger" xml:space="preserve">
+    <value>Tipka okidač</value>
+  </data>
+  <data name="gsOrchPressKey" xml:space="preserve">
+    <value>pritisni tipku...</value>
+  </data>
+  <data name="gsOrchRefLong" xml:space="preserve">
+    <value>naprijed/nazad od osovine</value>
+  </data>
 </root>

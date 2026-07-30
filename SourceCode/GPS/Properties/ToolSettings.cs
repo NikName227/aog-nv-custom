@@ -42,6 +42,18 @@ namespace AgOpenGPS.Properties
         // Multi pass only: how many passes per inter-row. 0 = work it out from the tool
         // width; >= 3 = exactly that many, whatever the width and the overlap. 1 and 2 are
         // refused by the UI - they would be the one-pass and two-pass modes.
+        // Orchard window reference point (SIM 0730): where the thing that MEASURES sits -
+        // a pole on the front, the recorder's own offset - relative to the tractor. Lateral is
+        // + to the right of travel, longitudinal + forward from the rear axle. Deliberately not
+        // the implement geometry: mapping an orchard with a pole must not mean rewriting the
+        // implement profile (which would change coverage and the planting path).
+        public double setTool_orchardRefLateral = 2.0;
+        public double setTool_orchardRefLong = 0;
+
+        // Marking trees while recording: a press closer than this to the last tree is ignored,
+        // so a double tap does not put two trees on one trunk.
+        public double setTool_orchardTreeMinDist = 1.0;
+
         public int setTool_orchardPassCount = 0;
         public int setTool_orchardWorkMode = 0;        // 0 = center, 1 = left, 2 = right (multi pass only)
         // Full width of the band around a row line that is NOT worked (SIM 0730: measured

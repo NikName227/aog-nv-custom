@@ -102,7 +102,7 @@ namespace AgOpenGPS
             this.rbtnFixedRear = new System.Windows.Forms.RadioButton();
             this.rbtnFront = new System.Windows.Forms.RadioButton();
             this.rbtnTrailing = new System.Windows.Forms.RadioButton();
-            this.rbtnOrchard = new System.Windows.Forms.RadioButton();
+            this.rbtnOrchard = new System.Windows.Forms.CheckBox();
             this.pnlOrchardSet = new System.Windows.Forms.Panel();
             this.lblOrchardPath = new System.Windows.Forms.Label();
             this.cboOrchardPath = new System.Windows.Forms.ComboBox();
@@ -1729,7 +1729,6 @@ namespace AgOpenGPS
             // labelBoxAttachmentStyle
             // 
             this.labelBoxAttachmentStyle.BackgroundImageLayout = System.Windows.Forms.ImageLayout.None;
-            this.labelBoxAttachmentStyle.Controls.Add(this.pnlOrchardSet);
             this.labelBoxAttachmentStyle.Controls.Add(this.pboxConfigHarvester);
             this.labelBoxAttachmentStyle.Controls.Add(this.rbtnTBT);
             this.labelBoxAttachmentStyle.Controls.Add(this.rbtnFixedRear);
@@ -1824,6 +1823,8 @@ namespace AgOpenGPS
             this.rbtnOrchard.FlatAppearance.BorderSize = 1;
             this.rbtnOrchard.FlatAppearance.CheckedBackColor = System.Drawing.Color.LightGreen;
             this.rbtnOrchard.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.rbtnOrchard.Appearance = System.Windows.Forms.Appearance.Button;
+            this.rbtnOrchard.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
             this.rbtnOrchard.Font = new System.Drawing.Font("Tahoma", 14.25F, System.Drawing.FontStyle.Bold);
             this.rbtnOrchard.Location = new System.Drawing.Point(206, 446);
             this.rbtnOrchard.Name = "rbtnOrchard";
@@ -1838,9 +1839,9 @@ namespace AgOpenGPS
             // pnlOrchardSet (orchard processing settings; interactive image = later design pass)
             //
             this.pnlOrchardSet.BackColor = System.Drawing.Color.WhiteSmoke;
-            this.pnlOrchardSet.Location = new System.Drawing.Point(16, 48);
+            this.pnlOrchardSet.Location = new System.Drawing.Point(10, 246);
             this.pnlOrchardSet.Name = "pnlOrchardSet";
-            this.pnlOrchardSet.Size = new System.Drawing.Size(695, 394);
+            this.pnlOrchardSet.Size = new System.Drawing.Size(840, 330);
             this.pnlOrchardSet.Visible = false;
             //SIM 0729 t3: how the AB lines follow the rows. This is the top-level choice -
             //the fields below it belong to one mode each and are shown accordingly
@@ -1921,6 +1922,7 @@ namespace AgOpenGPS
             // tabTHitch
             //
             this.tabTHitch.BackColor = System.Drawing.Color.WhiteSmoke;
+            this.tabTHitch.Controls.Add(this.pnlOrchardSet);
             this.tabTHitch.Controls.Add(this.label112);
             this.tabTHitch.Controls.Add(this.labelTractorUnits);
             this.tabTHitch.Controls.Add(this.nudTrailingHitchLength);
@@ -8930,7 +8932,7 @@ namespace AgOpenGPS
         private System.Windows.Forms.RadioButton rbtnFront;
         private System.Windows.Forms.RadioButton rbtnTrailing;
         //F50 orchard tool type + its processing settings (design/image pass comes later)
-        private System.Windows.Forms.RadioButton rbtnOrchard;
+        private System.Windows.Forms.CheckBox rbtnOrchard;
         private System.Windows.Forms.Panel pnlOrchardSet;
         private System.Windows.Forms.Label lblOrchardPath;
         private System.Windows.Forms.ComboBox cboOrchardPath;

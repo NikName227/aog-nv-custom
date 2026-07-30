@@ -55,20 +55,12 @@ namespace AgOpenGPS
                 chkOrchardCenterFirst.Checked = Properties.ToolSettings.Default.setTool_orchardCenterFirst;
                 ApplyOrchardPathUI();
 
-                //seed the toggle state for this visit (see rbtnOrchard_Click)
-                orchardWasChecked = Properties.ToolSettings.Default.setTool_isToolOrchard
+                //SIM 0730: orchard is a MODE, not a fifth implement type - the checkbox rides on
+                //top of whatever type is selected, so the type stays whatever it was last set to
+                rbtnOrchard.Checked = Properties.ToolSettings.Default.setTool_isToolOrchard
                     && CFeatureLock.IsOn(CFeatureLock.FeatureOrchard);
 
-                if (Properties.ToolSettings.Default.setTool_isToolOrchard
-                    && CFeatureLock.IsOn(CFeatureLock.FeatureOrchard))
-                {
-                    rbtnOrchard.Checked = true;
-                    rbtnTBT.Checked = false;
-                    rbtnTrailing.Checked = false;
-                    rbtnFixedRear.Checked = false;
-                    rbtnFront.Checked = false;
-                }
-                else if (Properties.ToolSettings.Default.setTool_isToolFront)
+                if (Properties.ToolSettings.Default.setTool_isToolFront)
                 {
                     rbtnTBT.Checked = false;
                     rbtnTrailing.Checked = false;
@@ -241,34 +233,15 @@ namespace AgOpenGPS
             }
         }
 
-        //F50: the settings panel covers the hitch-type pictures while Orchard is chosen
+        //F50 (SIM 0730): the orchard checkbox no longer takes part in the implement TYPE - it
+        //only says whether the orchard mode is on. Its settings live on the Hitch tab, next to
+        //the hitch geometry they depend on.
         private void rbtnOrchard_CheckedChanged(object sender, EventArgs e)
         {
-            pnlOrchardSet.Visible = rbtnOrchard.Checked;
-            if (rbtnOrchard.Checked)
-            {
-                pnlOrchardSet.BringToFront();
-                //and lay the rows out now that the panel is really on screen
-                ApplyOrchardPathUI();
-            }
+            ApplyHitchTabLayout();
         }
 
-        //field 2026-07-16: the settings panel covers the other four type buttons, so
-        //a checked Orchard had no way OUT - clicking the green button again now
-        //toggles the mode off (back to rear-fixed, the geometry orchard rides on).
-        //NOTE: CheckedChanged fires BEFORE Click, so this flag is maintained ONLY
-        //here and on tab enter - it holds the state from before the current click.
-        private bool orchardWasChecked;
-
-        private void rbtnOrchard_Click(object sender, EventArgs e)
-        {
-            if (orchardWasChecked && rbtnOrchard.Checked)
-            {
-                rbtnOrchard.Checked = false;
-                rbtnFixedRear.Checked = true;
-            }
-            orchardWasChecked = rbtnOrchard.Checked;
-        }
+        private void rbtnOrchard_Click(object sender, EventArgs e) { }
 
         private void tabTConfig_Leave(object sender, EventArgs e)
         {
@@ -285,15 +258,9 @@ namespace AgOpenGPS
                 Properties.ToolSettings.Default.setTool_orchardOnePass = chkOrchardOnePass.Checked;
                 Properties.ToolSettings.Default.setTool_orchardCenterFirst = chkOrchardCenterFirst.Checked;
 
-                if (rbtnOrchard.Checked)
-                {
-                    //orchard rides on a rear-fixed geometry for guidance purposes
-                    Properties.ToolSettings.Default.setTool_isToolFront = false;
-                    Properties.ToolSettings.Default.setTool_isToolTBT = false;
-                    Properties.ToolSettings.Default.setTool_isToolTrailing = false;
-                    Properties.ToolSettings.Default.setTool_isToolRearFixed = true;
-                }
-                else if (rbtnFront.Checked)
+                //SIM 0730: the orchard checkbox does NOT decide the implement type any more -
+                //the last chosen type is kept and used (a front-mounted pole or planter included)
+                if (rbtnFront.Checked)
                 {
                     Properties.ToolSettings.Default.setTool_isToolFront = true;
                     Properties.ToolSettings.Default.setTool_isToolTBT = false;
@@ -353,8 +320,35 @@ namespace AgOpenGPS
 
         #region  Hitch
 
+        //F50 (SIM 0730): with orchard on, the hitch picture shrinks and the orchard settings sit
+        //underneath it - the two belong together (the hitch geometry is what the orchard measures
+        //from), and the implement-type page stays free of them.
+        private void ApplyHitchTabLayout()
+        {
+            bool orch = rbtnOrchard.Checked && CFeatureLock.IsOn(CFeatureLock.FeatureOrchard);
+
+            picboxToolHitch.Size = orch
+                ? new Size(838, 220)
+                : new Size(838, 407);
+
+            int nudY = orch ? 228 : 407;
+            nudDrawbarLength.Location = new Point(nudDrawbarLength.Location.X, nudY);
+            nudTrailingHitchLength.Location = new Point(nudTrailingHitchLength.Location.X, nudY);
+            nudTankHitch.Location = new Point(nudTankHitch.Location.X, nudY);
+            labelTractorUnits.Location = new Point(labelTractorUnits.Location.X, nudY + 69);
+            label112.Location = new Point(label112.Location.X, nudY + 88);
+
+            pnlOrchardSet.Visible = orch;
+            if (orch)
+            {
+                pnlOrchardSet.BringToFront();
+                ApplyOrchardPathUI();
+            }
+        }
+
         private void tabTHitch_Enter(object sender, EventArgs e)
         {
+            ApplyHitchTabLayout();
             if (mf.vehicle.VehicleConfig.Type != VehicleType.Harvester)
             {
                 //fixed -hitch only on vehicle

@@ -60,6 +60,9 @@ namespace AgOpenGPS.Properties
         public bool setMenu_isLightbarNotSteerBar = false;
         public bool setDisplay_isDayMode = true;
         public bool setDisplay_isStartFullScreen = false;
+        //F50: keyboard key that marks a tree while recording a row (0 = none). A plugged-in
+        //keypad is easier to hit than the screen while driving.
+        public int setDisplay_orchardTreeKey = 0;
         public bool setDisplay_isKeyboardOn = true;
         public bool setDisplay_isVehicleImage = true;
         public bool setDisplay_isTextureOn = true;
