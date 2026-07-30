@@ -45,7 +45,7 @@ namespace AgOpenGPS
                 LocalizeOrchardPanel();
 
                 //F50: orchard settings ride on the implement profile
-                cboOrchardPath.SelectedIndex = COrchard.ResolvePathMode();
+                cboOrchardPath.SelectedIndex = OrchardModeToRow(COrchard.ResolvePathMode());
                 cboOrchardMode.SelectedIndex = Math.Max(0, Math.Min(2,
                     Properties.ToolSettings.Default.setTool_orchardWorkMode));
                 nudOrchardRowOffset.Value = (decimal)Properties.ToolSettings.Default.setTool_orchardRowOffset;
@@ -134,6 +134,24 @@ namespace AgOpenGPS
             ((NudlessNumericUpDown)sender).ShowKeypad(this);
         }
 
+        //F50 (SIM 0730): the list reads one pass -> two pass -> multi pass -> planting, which is
+        //not the order the modes were added in. The stored numbers must not move (they live in
+        //setTool_orchardPathMode), so only the DISPLAY order is defined here and everything maps
+        //through it - a future reshuffle is this one array.
+        private static readonly int[] orchardPathOrder =
+        {
+            COrchard.PathOnePass, COrchard.PathTwoPass, COrchard.PathMultiPass, COrchard.PathOnRow
+        };
+
+        private static int OrchardModeToRow(int mode)
+        {
+            for (int i = 0; i < orchardPathOrder.Length; i++) if (orchardPathOrder[i] == mode) return i;
+            return 0;
+        }
+
+        private static int OrchardRowToMode(int row)
+            => (row >= 0 && row < orchardPathOrder.Length) ? orchardPathOrder[row] : COrchard.PathOnePass;
+
         private void cboOrchardPath_SelectedIndexChanged(object sender, EventArgs e) => ApplyOrchardPathUI();
 
         //F50 (SIM 0730): the panel was hard-coded English. The combo items are rebuilt rather
@@ -147,9 +165,14 @@ namespace AgOpenGPS
 
             lblOrchardPath.Text = gStr.gsOrchPathMode;
             cboOrchardPath.Items.Clear();
-            cboOrchardPath.Items.AddRange(new object[] {
-                gStr.gsOrchPathOnePass, gStr.gsOrchPathMultiPass, gStr.gsOrchPathOnRow,
-                gStr.gsOrchPathTwoPass });
+            foreach (int m in orchardPathOrder)
+            {
+                cboOrchardPath.Items.Add(
+                    m == COrchard.PathOnePass ? gStr.gsOrchPathOnePass :
+                    m == COrchard.PathTwoPass ? gStr.gsOrchPathTwoPass :
+                    m == COrchard.PathMultiPass ? gStr.gsOrchPathMultiPass :
+                                                  gStr.gsOrchPathOnRow);
+            }
 
             lblOrchardMode.Text = gStr.gsOrchWorkMode;
             cboOrchardMode.Items.Clear();
@@ -166,8 +189,9 @@ namespace AgOpenGPS
 
         private void ApplyOrchardPathUI()
         {
-            int mode = cboOrchardPath.SelectedIndex;
-            if (mode < 0) mode = COrchard.PathOnePass;
+            int mode = cboOrchardPath.SelectedIndex < 0
+                ? COrchard.PathOnePass
+                : OrchardRowToMode(cboOrchardPath.SelectedIndex);
 
             bool multi = mode == COrchard.PathMultiPass;
             bool onRow = mode == COrchard.PathOnRow;
@@ -237,7 +261,8 @@ namespace AgOpenGPS
                 //F50: orchard settings are saved regardless of the chosen type
                 Properties.ToolSettings.Default.setTool_isToolOrchard = rbtnOrchard.Checked;
                 if (cboOrchardPath.SelectedIndex >= 0)
-                    Properties.ToolSettings.Default.setTool_orchardPathMode = cboOrchardPath.SelectedIndex;
+                    Properties.ToolSettings.Default.setTool_orchardPathMode =
+                        OrchardRowToMode(cboOrchardPath.SelectedIndex);
                 Properties.ToolSettings.Default.setTool_orchardWorkMode = cboOrchardMode.SelectedIndex;
                 Properties.ToolSettings.Default.setTool_orchardRowOffset = (double)nudOrchardRowOffset.Value;
                 Properties.ToolSettings.Default.setTool_orchardTreeWidth = (double)nudOrchardTree.Value;

@@ -138,21 +138,23 @@ namespace AgOpenGPS
                 flp1.Controls[1].Visible = isBnd && !isEasyDriveMode;
 
                 flp1.Controls[2].Visible = true;
-                //F06: orchard launcher (Controls[3]) only when the feature is unlocked
-                flp1.Controls[3].Visible = CFeatureLock.IsOn(CFeatureLock.FeatureOrchard);
+
+                //F50 (SIM 0730): the orchard launcher moved OUT of this flyout into the Field
+                //tools menu (it defines the field, not an AB line), so every index below shifted
+                //down by one - this list is positional, it has to be renumbered with it.
 
                 //+AB and Build tracks (list) - always available, like stock
+                flp1.Controls[3].Visible = true;
                 flp1.Controls[4].Visible = true;
-                flp1.Controls[5].Visible = true;
 
                 //off button
-                flp1.Controls[6].Visible = tracksVisible > 0;
+                flp1.Controls[5].Visible = tracksVisible > 0;
 
                 //auto snap to pivot
-                flp1.Controls[7].Visible = tracksVisible > 0;
+                flp1.Controls[6].Visible = tracksVisible > 0;
 
                 //ref nudge
-                flp1.Controls[8].Visible = tracksVisible > 0;
+                flp1.Controls[7].Visible = tracksVisible > 0;
 
                 for (int i = 0; i < flp1.Controls.Count; i++)
                 {

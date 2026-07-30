@@ -386,7 +386,9 @@ namespace AgOpenGPS
             //encrypted per-install config unlocks them (basic vs advanced user)
             CFeatureLock.Load();
             mapAppToolStripMenu.Visible = CFeatureLock.IsOn(CFeatureLock.FeatureGeoportal);
-            btnOrchard.Visible = CFeatureLock.IsOn(CFeatureLock.FeatureOrchard);
+            //F50: the planner lives in the Field tools menu (it defines the FIELD), the old
+            //flyout button is gone
+            orchardToolStripMenuItem.Visible = CFeatureLock.IsOn(CFeatureLock.FeatureOrchard);
             //F07 Integration Test — add the Wizards item only when the config unlocks it
             if (CFeatureLock.IsOn(CFeatureLock.FeatureIntegrationTest))
             {
@@ -1237,7 +1239,7 @@ namespace AgOpenGPS
             btnTrack.Enabled = true;
             btnABDraw.Enabled = true;
             btnSmartAB.Enabled = true;
-            btnOrchard.Enabled = true;
+            orchardToolStripMenuItem.Enabled = true;
             btnCycleLines.Image = Properties.Resources.ABLineCycle;
             btnCycleLinesBk.Image = Properties.Resources.ABLineCycleBk;
 
@@ -1443,7 +1445,7 @@ namespace AgOpenGPS
             ct.isContourOn = false;
 
             btnSmartAB.Enabled = false;
-            btnOrchard.Enabled = false;
+            orchardToolStripMenuItem.Enabled = false;
             btnABDraw.Enabled = false;
             btnCycleLines.Image = Properties.Resources.ABLineCycle;
             //btnCycleLines.Enabled = false;

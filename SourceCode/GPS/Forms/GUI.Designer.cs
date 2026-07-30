@@ -574,6 +574,9 @@ namespace AgOpenGPS
 
             isDirectionMarkers = Properties.ToolSettings.Default.setTool_isDirectionMarkers;
 
+            //F50: the orchard planner sits in the Field tools menu now
+            orchardToolStripMenuItem.Text = gStr.gsOrchard;
+
             isHeadlandDistanceOn = Settings.Default.isHeadlandDistanceOn;
 
             panelNavigation.Location = new System.Drawing.Point(90, 100);
