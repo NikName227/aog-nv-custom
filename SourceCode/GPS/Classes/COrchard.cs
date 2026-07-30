@@ -94,6 +94,17 @@ namespace AgOpenGPS
             => name != null && (name.StartsWith(DerivedPrefix) || name.StartsWith(LegacyDerivedPrefix));
 
         /// <summary>
+        /// The inter-row (or row) number carried in a derived pass name - "Orch Mid 3 p2" -> 3,
+        /// "Orch row 5" -> 5. Used as the plan's zone, which is what colours the passes.
+        /// </summary>
+        public static int ZoneFromDerivedName(string name)
+        {
+            if (name == null) return 1;
+            string[] parts = name.Split(' ');
+            return parts.Length > 2 && int.TryParse(parts[2], out int z) ? z : 1;
+        }
+
+        /// <summary>
         /// The saved path mode, migrating an install that only knows the old one-pass flag
         /// (checked = one pass, unchecked = multi pass). Runs once and writes the result back.
         /// </summary>

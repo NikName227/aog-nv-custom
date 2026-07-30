@@ -163,6 +163,11 @@ namespace AgOpenGPS
             {
                 tnl.ApplyLoaded(TurnLinesFiles.Load(dir));
                 plan.ApplyLoaded(TurnPlanFiles.Load(dir, tool.width - tool.overlap));
+
+                //F50 t10 D: the orchard rows were read before this (the path is derived from
+                //them), so the plan that just came off disk is checked against the passes that
+                //actually exist now - it is kept when it matches, regenerated when it does not.
+                OrchardSyncPlan(false);
             }
             else
             {

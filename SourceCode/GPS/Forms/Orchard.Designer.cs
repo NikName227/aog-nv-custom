@@ -187,6 +187,74 @@ namespace AgOpenGPS
             // an older field still has the old "Make path" tracks in its file - now that they
             // are gone from the list, write the file so they do not come back
             if (droppedFromFile && isJobStarted) FileSaveTracks();
+
+            //t10 D: an orchard always has a plan - it is what defines the work
+            OrchardSyncPlan(false);
+        }
+
+        /// <summary>
+        /// Does the plan already describe exactly these derived passes, in this order? Then it
+        /// is left alone - regenerating on every rebuild would throw away which passes are
+        /// already worked.
+        /// </summary>
+        private bool OrchardPlanCovers(List<CTrk> derived)
+        {
+            int i = 0;
+            foreach (var p in plan.entries)
+            {
+                if (!COrchard.IsDerivedName(p.trackName)) continue;
+                if (i >= derived.Count || p.trackName != derived[i].name) return false;
+                i++;
+            }
+            return i == derived.Count;
+        }
+
+        /// <summary>
+        /// Keep the field plan in step with the derived passes (t10 D).
+        ///
+        /// Two levels of rule, as agreed: the LOCAL one (which pass inside an inter-row comes
+        /// first - centre then the sides, or the other way round) is already carried by the
+        /// order COrchard.BuildPasses produces from the implement settings; this method hands
+        /// that order to F05, which turns it into the complete field sequence with the turns and
+        /// the record of what is done. So the local plan shapes the passes, the field plan
+        /// drives them.
+        ///
+        /// The plan is saved per working width (TurnPlan_W&lt;width&gt;.txt), so going back to the
+        /// same machine brings its own plan back. If the saved plan no longer matches the passes
+        /// - another width, another path mode - it is REGENERATED rather than mapped onto lines
+        /// it was never made for. Manual passes (a skewed boundary, the ground around the
+        /// orchard) are carried over.
+        /// </summary>
+        public void OrchardSyncPlan(bool force)
+        {
+            if (!CFeatureLock.IsOn(CFeatureLock.FeatureOrchard)) return;
+            if (trk?.gArr == null) return;
+
+            var derived = new List<CTrk>();
+            for (int i = 0; i < trk.gArr.Count; i++)
+                if (trk.gArr[i].isOrchardDerived) derived.Add(trk.gArr[i]);
+
+            if (derived.Count == 0) return;
+            if (!force && OrchardPlanCovers(derived)) return;
+
+            //the driver's own passes stay in the plan
+            var manual = new List<CPlanEntry>();
+            foreach (var p in plan.entries)
+                if (p.IsManual && !COrchard.IsDerivedName(p.trackName)) manual.Add(p);
+
+            var zones = new List<int>();
+            for (int i = 0; i < derived.Count; i++)
+                zones.Add(COrchard.ZoneFromDerivedName(derived[i].name));
+
+            plan.GenerateOrchard(derived, zones);
+
+            int order = plan.entries.Count;
+            foreach (var p in manual) { p.order = ++order; plan.entries.Add(p); }
+
+            plan.RebuildGeometry();
+            plan.InvalidateRun();
+
+            if (isJobStarted) FileSaveTurnPlan();
         }
     }
 }

@@ -1861,16 +1861,9 @@ namespace AgOpenGPS
             }
             mf.trk.idx = mf.trk.gArr.IndexOf(passes[0]);   // first pass
 
-            // zone (color) = inter-row number from the pass name "Orch Mid N [pM]"
-            var zones = new List<int>();
-            foreach (var t in passes)
-            {
-                string[] parts = t.name.Split(' ');
-                zones.Add(parts.Length > 2 && int.TryParse(parts[2], out int z) ? z : 1);
-            }
-
-            mf.plan.GenerateOrchard(passes, zones);
-            mf.FileSaveTurnPlan();
+            //t10 D: one place builds the plan from the passes (zones = inter-row numbers, local
+            //pass order kept, manual passes carried over, saved per working width)
+            mf.OrchardSyncPlan(true);
 
             DrawPlanOverlay();
             UpdatePlanInfo();
