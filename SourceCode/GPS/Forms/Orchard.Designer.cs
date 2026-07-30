@@ -40,9 +40,10 @@ namespace AgOpenGPS
         /// <summary>
         /// How much closer another pass has to be before the active one is given up (m).
         /// Without it the choice would flicker while driving along the edge between two
-        /// inter-rows.
+        /// inter-rows. SIM 0730: raised from 0.5 to 1.0 m - half a metre still reacted to
+        /// ordinary steering corrections inside a row.
         /// </summary>
-        private const double OrchardSwitchHysteresis = 0.5;
+        private const double OrchardSwitchHysteresis = 1.0;
 
         /// <summary>
         /// Step the guidance line selection the way the driver sees it (SIM 0730): the whole

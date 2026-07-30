@@ -108,20 +108,14 @@ namespace AgOpenGPS
             double fe = Math.Sin(h), fn = Math.Cos(h);   // forward unit vector
             bool driving = mf.avgSpeed > MinSpeedKmh && !mf.isReverse;
 
-            // the drop point passed the target -> that seedling is in the ground.
-            // Cross-track error does NOT matter here: the driver aims down the row, and
-            // a spot that is only approximately hit is still the one being planted.
+            // SIM 0730: driving past a spot no longer marks it planted. Geometry cannot know
+            // whether a seedling actually went into the ground - a skipped spot, a hand refill,
+            // a pass driven twice - and a wrong mark is worse than no mark. The call stays with
+            // the driver (MarkTargetPlanted), the HUD keeps showing how far the next spot is.
             if (targetIdx >= 0)
             {
                 PlantSpot t = spots[targetIdx];
-                if (t.planted) targetIdx = -1;
-                else if (driving && Along(t.pos, fe, fn) < 0)
-                {
-                    t.planted = true;
-                    PlantedCount++;
-                    dirty = true;
-                    targetIdx = -1;
-                }
+                if (t.planted || (driving && Along(t.pos, fe, fn) < 0)) targetIdx = -1;
             }
 
             if (targetIdx < 0) targetIdx = FindNextAhead(fe, fn);

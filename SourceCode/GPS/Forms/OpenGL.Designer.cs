@@ -419,9 +419,9 @@ namespace AgOpenGPS
                     //F50: the tree rows themselves - very thin, they are geometry, not a path
                     if (orchRows.Count > 0) DrawOrchardRows();
 
-                    //F50 t10: every derived pass, so the driver sees the lines that exist
-                    //instead of AOG's tool-width guide lines
-                    if (trk.IsOrchardAutoOn) DrawOrchardPasses();
+                    //F50 (SIM 0730): the inactive passes are NOT drawn. The row map already
+                    //shows where the machine can go, so a fan of pale violet lines on top of it
+                    //adds nothing - only the line being driven is drawn (DrawCurve).
 
                     //F50 planting: where every seedling goes, and what is already planted
                     if (planting.IsOn) DrawPlantSpots();
@@ -2171,36 +2171,19 @@ namespace AgOpenGPS
             }
         }
 
-        //F50 t10: the derived passes (violet). These are the only pass lines in orchard mode -
-        //what is drawn is exactly what can be driven, one per inter-row / per row. The ACTIVE
-        //one is left out, DrawCurve already draws it brighter and on top.
-        private void DrawOrchardPasses()
-        {
-            GL.LineWidth(2);
-            GL.Color4(0.72f, 0.45f, 0.95f, 0.85f);
-            for (int i = 0; i < trk.gArr.Count; i++)
-            {
-                if (!trk.gArr[i].isOrchardDerived || !trk.gArr[i].isVisible) continue;
-                if (i == trk.idx) continue;
-
-                var pts = trk.gArr[i].curvePts;
-                if (pts.Count < 2) continue;
-                GL.Begin(PrimitiveType.LineStrip);
-                for (int p = 0; p < pts.Count; p++) GL.Vertex3(pts[p].easting, pts[p].northing, 0);
-                GL.End();
-            }
-        }
-
-        //F50 planting: the planned seedling spots. Planted ones go green so a glance at
-        //the map shows how far the job got; the one being driven at is ringed.
+        //F50 planting: the planned seedling spots.
+        //SIM 0730: ONE colour for every tree, always. Whether a tree is in the ground is
+        //something the driver sees out of the window, and deciding it from the geometry is the
+        //kind of call that should stay with the driver (see CPlanting.Update) - a dot that
+        //changes colour on its own only invites trusting it. Worked ground is what the field
+        //marking is for.
         private void DrawPlantSpots()
         {
             GL.PointSize(6f);
+            GL.Color3(0.85f, 0.7f, 0.25f);
             GL.Begin(PrimitiveType.Points);
             foreach (var s in planting.spots)
             {
-                if (s.planted) GL.Color3(0.25f, 0.85f, 0.3f);
-                else GL.Color3(0.85f, 0.7f, 0.25f);
                 GL.Vertex3(s.pos.easting, s.pos.northing, 0);
             }
             GL.End();
@@ -2239,8 +2222,13 @@ namespace AgOpenGPS
             else GL.Color4(0.60f, 0.90f, 0.95f, 0.92f);
             font.DrawText(rx - 40, 82, dist, 1.5);
 
+            //SIM 0730: nothing marks a spot planted by itself any more, so the readout is the
+            //planned total (with the count of hand-marked ones only once there are any)
             GL.Color4(0.92f, 0.92f, 0.92f, 0.85f);
-            font.DrawText(rx - 40, 130, planting.PlantedCount + "/" + planting.spots.Count, 0.9);
+            string count = planting.PlantedCount > 0
+                ? planting.PlantedCount + "/" + planting.spots.Count
+                : planting.spots.Count.ToString();
+            font.DrawText(rx - 40, 130, count, 0.9);
         }
 
         private void DrawFlags()
