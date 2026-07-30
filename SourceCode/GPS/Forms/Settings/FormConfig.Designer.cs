@@ -116,8 +116,6 @@ namespace AgOpenGPS
             this.nudOrchardSafe = new AgOpenGPS.NudlessNumericUpDown();
             this.chkOrchardOnePass = new System.Windows.Forms.CheckBox();
             this.chkOrchardCenterFirst = new System.Windows.Forms.CheckBox();
-            this.lblPlantLateral = new System.Windows.Forms.Label();
-            this.nudPlantLateral = new AgOpenGPS.NudlessNumericUpDown();
             this.lblPlantBehind = new System.Windows.Forms.Label();
             this.nudPlantBehind = new AgOpenGPS.NudlessNumericUpDown();
             this.tabTHitch = new System.Windows.Forms.TabPage();
@@ -1916,18 +1914,6 @@ namespace AgOpenGPS
             this.chkOrchardCenterFirst.Text = "Center pass first (odd pass count)";
             //planter geometry (F50 planting): the seedling drop point, used by the
             //"next tree" HUD and the planted marking - guidance still steers the pivot
-            this.lblPlantLateral.Font = new System.Drawing.Font("Tahoma", 12F);
-            this.lblPlantLateral.Location = new System.Drawing.Point(20, 310);
-            this.lblPlantLateral.Size = new System.Drawing.Size(300, 26);
-            this.lblPlantLateral.Text = "Planter offset - right + / left - (m)";
-            this.nudPlantLateral.DecimalPlaces = 2;
-            this.nudPlantLateral.Font = new System.Drawing.Font("Tahoma", 12F);
-            this.nudPlantLateral.Increment = new decimal(new int[] { 5, 0, 0, 131072 });
-            this.nudPlantLateral.Location = new System.Drawing.Point(340, 306);
-            this.nudPlantLateral.Minimum = new decimal(new int[] { 10, 0, 0, -2147483648 });
-            this.nudPlantLateral.Maximum = new decimal(new int[] { 10, 0, 0, 0 });
-            this.nudPlantLateral.Size = new System.Drawing.Size(120, 30);
-            this.nudPlantLateral.Click += new System.EventHandler(this.nudOrchard_Click);
             this.lblPlantBehind.Font = new System.Drawing.Font("Tahoma", 12F);
             this.lblPlantBehind.Location = new System.Drawing.Point(20, 352);
             this.lblPlantBehind.Size = new System.Drawing.Size(300, 26);
@@ -1951,8 +1937,6 @@ namespace AgOpenGPS
             this.pnlOrchardSet.Controls.Add(this.nudOrchardSafe);
             this.pnlOrchardSet.Controls.Add(this.chkOrchardOnePass);
             this.pnlOrchardSet.Controls.Add(this.chkOrchardCenterFirst);
-            this.pnlOrchardSet.Controls.Add(this.lblPlantLateral);
-            this.pnlOrchardSet.Controls.Add(this.nudPlantLateral);
             this.pnlOrchardSet.Controls.Add(this.lblPlantBehind);
             this.pnlOrchardSet.Controls.Add(this.nudPlantBehind);
             //
@@ -8983,8 +8967,6 @@ namespace AgOpenGPS
         private System.Windows.Forms.CheckBox chkOrchardOnePass;
         private System.Windows.Forms.CheckBox chkOrchardCenterFirst;
         //F50 planting: planter geometry (seedling drop point)
-        private System.Windows.Forms.Label lblPlantLateral;
-        private AgOpenGPS.NudlessNumericUpDown nudPlantLateral;
         private System.Windows.Forms.Label lblPlantBehind;
         private AgOpenGPS.NudlessNumericUpDown nudPlantBehind;
         private NudlessNumericUpDown nudAntennaHeight;

@@ -5232,13 +5232,7 @@ namespace AgOpenGPS.Core.Translations {
             }
         }
         
-        public static string gsOrchPlanterLateral {
-            get {
-                return ResourceManager.GetString("gsOrchPlanterLateral", resourceCulture);
-            }
-        }
-        
-        public static string gsOrchPlanterBehind {
+public static string gsOrchPlanterBehind {
             get {
                 return ResourceManager.GetString("gsOrchPlanterBehind", resourceCulture);
             }

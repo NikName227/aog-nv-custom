@@ -99,7 +99,9 @@ namespace AgOpenGPS
             vec3 piv = mf.pivotAxlePos;
             double h = piv.heading;
             double back = mf.tool.plantDistBehindAxle;
-            double lat = mf.tool.plantLateralOffset;
+            //SIM 0730: the planter is the implement, so its lateral position is AOG's tool
+            //offset - in the vehicle frame, where it does not flip with the driving direction
+            double lat = mf.tool.offset;
 
             PlantPoint = new vec2(
                 piv.easting - Math.Sin(h) * back + Math.Sin(h + glm.PIBy2) * lat,

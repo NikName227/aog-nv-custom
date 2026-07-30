@@ -1658,10 +1658,7 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsOrchCenterFirst" xml:space="preserve">
     <value>Prvo srednji prolaz (neparan broj prolaza)</value>
   </data>
-  <data name="gsOrchPlanterLateral" xml:space="preserve">
-    <value>Odmak sadilice - desno + / lijevo - (m)</value>
-  </data>
-  <data name="gsOrchPlanterBehind" xml:space="preserve">
+<data name="gsOrchPlanterBehind" xml:space="preserve">
     <value>Sadilica iza zadnje osovine (m)</value>
   </data>
   <data name="gsOrchName" xml:space="preserve">

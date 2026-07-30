@@ -249,8 +249,7 @@ namespace AgOpenGPS
                     made = COrchard.BuildTracks(orchRows, pathMode, toolW,
                         ts.setTool_orchardWorkMode, ts.setTool_orchardSafeSpace,
                         ts.setTool_orchardTreeWidth, ts.setTool_orchardRowOffset,
-                        ts.setTool_orchardCenterFirst,
-                        tool.plantLateralOffset, tool.offset, out List<string> warns,
+                        ts.setTool_orchardCenterFirst, out List<string> warns,
                         OrchardFieldBounds());
 
                     if (warns.Count > 0)

@@ -36,7 +36,7 @@ namespace AgOpenGPS
 
         //F50 planting: planter geometry - where the seedling actually lands relative to
         //the tractor (lateral from the driving line, and behind the rear axle)
-        public double plantLateralOffset, plantDistBehindAxle;
+        public double plantDistBehindAxle;
 
         //F50 (SIM 0729): how the AB lines follow the rows - COrchard.PathOnePass /
         //PathMultiPass / PathOnRow
@@ -93,7 +93,6 @@ namespace AgOpenGPS
             isToolOrchard = Properties.ToolSettings.Default.setTool_isToolOrchard
                 && CFeatureLock.IsOn(CFeatureLock.FeatureOrchard);
 
-            plantLateralOffset = Properties.ToolSettings.Default.setTool_plantLateralOffset;
             plantDistBehindAxle = Properties.ToolSettings.Default.setTool_plantDistBehindAxle;
             orchardPathMode = COrchard.ResolvePathMode();
 

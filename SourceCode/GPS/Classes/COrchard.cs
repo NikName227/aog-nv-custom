@@ -540,11 +540,10 @@ namespace AgOpenGPS
         // get their pass too; without a boundary they are simply skipped.
         public static List<CTrk> BuildTracks(List<OrchRow> rows, int pathMode, double toolWidth,
             int workMode, double safeSpace, double treeWidth, double rowOffset, bool centerFirst,
-            double plantLateralOffset, double toolOffset, out List<string> warnings,
-            List<List<vec2>> bounds = null)
+            out List<string> warnings, List<List<vec2>> bounds = null)
         {
             if (pathMode == PathOnRow)
-                return BuildOnRowTracks(rows, toolWidth, plantLateralOffset, toolOffset, out warnings);
+                return BuildOnRowTracks(rows, toolWidth, out warnings);
 
             //two pass and multi pass are the same layout, only the pass count differs
             //(SIM 0730). centerFirst = do the middle before the two row passes.
@@ -801,28 +800,27 @@ namespace AgOpenGPS
         }
 
         // ── On row (planting): the line IS the row ────────────────────────
-        // Planting a new orchard means driving ALONG the defined rows so the planter drops
-        // each seedling exactly where the row says. Geometry, right of the track heading
-        // positive throughout:
-        //   pivot path = track reference + 0.5*width - tool.offset   (AOG's own convention:
-        //                the reference is the EDGE of pass 0, see CABCurve distAway)
-        //   drop point = pivot path + planter lateral offset         (CPlanting geometry)
-        // Setting drop point = row gives the reference used below. With planter offset 0 and
-        // no implement offset the reference is simply the row shifted half a width, i.e. the
-        // tractor drives the row itself.
-        //
-        // Known limit (deliberate, offset 0 is the normal setup): a NON-zero planter offset
-        // is mirrored if the row is driven in the opposite direction, exactly like AOG's own
-        // tool offset. The track is built for the row's own direction.
+        // Planting a new orchard means driving ALONG the defined rows so the planter drops each
+        // seedling exactly where the row says. The planter IS the implement (its working width,
+        // and its lateral mounting as AOG's tool offset), so the geometry is the plain AOG one,
+        // right of the track heading positive:
+        //   pivot path  = reference + 0.5*width - tool.offset   (AOG's convention: the reference
+        //                 is the EDGE of pass 0, see CABCurve distAway)
+        //   implement   = pivot + tool.offset = reference + 0.5*width
+        // The implement therefore lands on reference + half a width whatever the offset is - AOG
+        // compensates it, and flips that compensation when the row is driven the other way.
+        // So the track is simply the row shifted half a width, and nothing here has to know about
+        // the mounting side (SIM 0730: an F50 planter-offset of its own would double-count it and
+        // would not survive driving the row in reverse).
         public static List<CTrk> BuildOnRowTracks(List<OrchRow> rows, double toolWidth,
-            double plantLateralOffset, double toolOffset, out List<string> warnings)
+            out List<string> warnings)
         {
             warnings = new List<string>();
             var result = new List<CTrk>();
             if (rows == null || rows.Count == 0) return result;
             if (toolWidth < 0.1) { warnings.Add("No tool width"); return result; }
 
-            double off = -0.5 * toolWidth + toolOffset - plantLateralOffset;
+            double off = -0.5 * toolWidth;   //the planter sits on the row, AOG does the rest
 
             var sorted = SortRowsTransverse(rows);
             for (int i = 0; i < sorted.Count; i++)

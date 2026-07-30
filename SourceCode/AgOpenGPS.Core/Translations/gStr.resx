@@ -2025,10 +2025,7 @@ USE AT OWN RISK.</value>
   <data name="gsOrchCenterFirst" xml:space="preserve">
     <value>Center pass first (odd pass count)</value>
   </data>
-  <data name="gsOrchPlanterLateral" xml:space="preserve">
-    <value>Planter offset - right + / left - (m)</value>
-  </data>
-  <data name="gsOrchPlanterBehind" xml:space="preserve">
+<data name="gsOrchPlanterBehind" xml:space="preserve">
     <value>Planter behind rear axle (m)</value>
   </data>
   <data name="gsOrchName" xml:space="preserve">

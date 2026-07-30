@@ -53,8 +53,6 @@ namespace AgOpenGPS
                 nudOrchardSafe.Value = (decimal)Properties.ToolSettings.Default.setTool_orchardSafeSpace;
                 chkOrchardOnePass.Checked = Properties.ToolSettings.Default.setTool_orchardOnePass;
                 chkOrchardCenterFirst.Checked = Properties.ToolSettings.Default.setTool_orchardCenterFirst;
-                nudPlantLateral.Value = NudClamp(nudPlantLateral,
-                    (decimal)Properties.ToolSettings.Default.setTool_plantLateralOffset);
                 nudPlantBehind.Value = NudClamp(nudPlantBehind,
                     (decimal)Properties.ToolSettings.Default.setTool_plantDistBehindAxle);
                 ApplyOrchardPathUI();
@@ -183,7 +181,6 @@ namespace AgOpenGPS
             lblOrchardTree.Text = gStr.gsOrchTreeWidth;
             lblOrchardSafe.Text = gStr.gsOrchSafeSpace;
             chkOrchardCenterFirst.Text = gStr.gsOrchCenterFirst;
-            lblPlantLateral.Text = gStr.gsOrchPlanterLateral;
             lblPlantBehind.Text = gStr.gsOrchPlanterBehind;
         }
 
@@ -207,7 +204,6 @@ namespace AgOpenGPS
             lblOrchardSafe.Visible = nudOrchardSafe.Visible = multi;
             chkOrchardCenterFirst.Visible = multi;
             lblOrchardTree.Visible = nudOrchardTree.Visible = between;
-            lblPlantLateral.Visible = nudPlantLateral.Visible = onRow;
             lblPlantBehind.Visible = nudPlantBehind.Visible = onRow;
             //superseded by the path mode; kept only so old profiles still migrate
             chkOrchardOnePass.Visible = false;
@@ -218,7 +214,6 @@ namespace AgOpenGPS
             PackOrchardRow(lblOrchardTree, nudOrchardTree, ref y);
             PackOrchardRow(lblOrchardSafe, nudOrchardSafe, ref y);
             PackOrchardRow(chkOrchardCenterFirst, null, ref y);
-            PackOrchardRow(lblPlantLateral, nudPlantLateral, ref y);
             PackOrchardRow(lblPlantBehind, nudPlantBehind, ref y);
         }
 
@@ -269,7 +264,6 @@ namespace AgOpenGPS
                 Properties.ToolSettings.Default.setTool_orchardSafeSpace = (double)nudOrchardSafe.Value;
                 Properties.ToolSettings.Default.setTool_orchardOnePass = chkOrchardOnePass.Checked;
                 Properties.ToolSettings.Default.setTool_orchardCenterFirst = chkOrchardCenterFirst.Checked;
-                Properties.ToolSettings.Default.setTool_plantLateralOffset = (double)nudPlantLateral.Value;
                 Properties.ToolSettings.Default.setTool_plantDistBehindAxle = (double)nudPlantBehind.Value;
 
                 if (rbtnOrchard.Checked)
@@ -323,7 +317,6 @@ namespace AgOpenGPS
             mf.tool.isToolTBT = Properties.ToolSettings.Default.setTool_isToolTBT;
             mf.tool.isToolFrontFixed = Properties.ToolSettings.Default.setTool_isToolFront;
             mf.tool.isToolOrchard = Properties.ToolSettings.Default.setTool_isToolOrchard;
-            mf.tool.plantLateralOffset = Properties.ToolSettings.Default.setTool_plantLateralOffset;
             mf.tool.plantDistBehindAxle = Properties.ToolSettings.Default.setTool_plantDistBehindAxle;
             mf.tool.orchardPathMode = Properties.ToolSettings.Default.setTool_orchardPathMode;
 

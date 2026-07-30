@@ -52,7 +52,6 @@ namespace AgOpenGPS.Properties
         // Planter geometry (F50 planting): where the seedling actually lands, relative
         // to the tractor. Guidance still steers the pivot - only the "next tree" HUD and
         // the planted marking use this point.
-        public double setTool_plantLateralOffset = 0;    // m, + = right of the driving direction
         public double setTool_plantDistBehindAxle = 1.0; // m behind the rear axle
         public bool setTool_isSectionsNotZones = true;
         public bool setTool_isSectionOffWhenOut = true;
