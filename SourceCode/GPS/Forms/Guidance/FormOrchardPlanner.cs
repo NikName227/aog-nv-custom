@@ -394,6 +394,16 @@ namespace AgOpenGPS
                 GL.End();
             }
 
+            //SIM 0730: a cross line across the row, three dot-widths long, so a tree is not
+            //mistaken for one of the white control points a recording leaves behind
+            for (int i = 0; i < rows.Count; i++)
+            {
+                if (rows[i].trees.Count == 0) continue;
+                bool hot = i == hotRow;
+                DrawTreeCrosses(rows[i], hot ? 8.0 : 5.0,
+                    hot ? new float[] { 1.0f, 0.65f, 0.25f } : new float[] { 0.55f, 0.35f, 0.15f });
+            }
+
             if (hotRow >= 0 && rows[hotRow].trees.Count > 0)
             {
                 GL.Color3(1.0f, 0.65f, 0.25f);
@@ -533,6 +543,24 @@ namespace AgOpenGPS
 
             lblActiveOp.Text = "Filtered: " + had + " -> " + now + " points";
             oglSelf.Invalidate();
+        }
+
+        //cross line across the row at every tree of that row; 3x the dot diameter
+        private void DrawTreeCrosses(OrchRow row, double dotPx, float[] rgb)
+        {
+            double half = 1.5 * dotPx * MetersPerPixel();
+            var d = row.Dir();
+            double px = -d.northing * half, py = d.easting * half;
+
+            GL.LineWidth(2);
+            GL.Color3(rgb[0], rgb[1], rgb[2]);
+            GL.Begin(PrimitiveType.Lines);
+            foreach (var t in row.trees)
+            {
+                GL.Vertex3(t.easting - px, t.northing - py, 0);
+                GL.Vertex3(t.easting + px, t.northing + py, 0);
+            }
+            GL.End();
         }
 
         // Control-point markers. Selected = green, first = cyan, last = orange, others white.
@@ -914,7 +942,9 @@ namespace AgOpenGPS
             if (recLastE != double.MaxValue)
             {
                 double de = e - recLastE, dn = n - recLastN;
-                if (de * de + dn * dn < 1.0) return;   // need >= 1 m of travel
+                //SIM 0730: half the sampling density - a metre apart was denser than the row
+                //shape needs and only made the filter work harder
+                if (de * de + dn * dn < 4.0) return;   // need >= 2 m of travel
             }
             recLastE = e; recLastN = n;
 

@@ -28,11 +28,6 @@ namespace AgOpenGPS
             try { orchRows.AddRange(COrchard.LoadRows(fieldDir)); }
             catch (Exception ex) { Log.EventWriter("Orchard LoadRows: " + ex); }
 
-            //SIM 0730: the "next tree" readout works in every orchard mode, so the tree
-            //positions of the rows are handed to the runtime even without a planting job
-            planting.rowTrees.Clear();
-            for (int i = 0; i < orchRows.Count; i++) planting.rowTrees.AddRange(orchRows[i].trees);
-
             //t10 G: a field with orchard rows opens in orchard mode - the driver should not have
             //to pick anything to get the passes that belong to this orchard
             trk.isOrchardAuto = orchRows.Count > 0;
@@ -344,8 +339,20 @@ namespace AgOpenGPS
             // are gone from the list, write the file so they do not come back
             if (droppedFromFile && isJobStarted) FileSaveTracks();
 
+            //SIM 0730: hand the tree positions to the runtime on EVERY change, not only when
+            //the field is opened - rows mapped or edited in the planner have to show up in the
+            //readout (and on the map) straight away, without closing the field
+            OrchardSyncTrees();
+
             //t10 D: an orchard always has a plan - it is what defines the work
             OrchardSyncPlan(false);
+        }
+
+        /// <summary>Tree positions of the rows, for the readout and for the map.</summary>
+        public void OrchardSyncTrees()
+        {
+            planting.rowTrees.Clear();
+            for (int i = 0; i < orchRows.Count; i++) planting.rowTrees.AddRange(orchRows[i].trees);
         }
 
         /// <summary>

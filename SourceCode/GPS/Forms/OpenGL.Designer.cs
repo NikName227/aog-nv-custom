@@ -423,6 +423,10 @@ namespace AgOpenGPS
                     //shows where the machine can go, so a fan of pale violet lines on top of it
                     //adds nothing - only the line being driven is drawn (DrawCurve).
 
+                    //F50 (SIM 0730): the trees of the orchard rows - a mapped orchard has to be
+                    //visible on the main map too, not only inside the planner
+                    if (orchRows.Count > 0) DrawOrchardTrees();
+
                     //F50 planting: where every seedling goes, and what is already planted
                     if (planting.IsOn) DrawPlantSpots();
 
@@ -2169,6 +2173,35 @@ namespace AgOpenGPS
                 for (int p = 0; p < c.Count; p++) GL.Vertex3(c[p].easting, c[p].northing, 0);
                 GL.End();
             }
+        }
+
+        //F50 (SIM 0730): trees that belong to the rows (mapped by driving, imported from KML).
+        //Each one is a dot plus a cross line across the row, three dot-widths long, so a tree
+        //cannot be confused with anything else on the map.
+        private void DrawOrchardTrees()
+        {
+            const double halfCross = 0.5;   // metres either side - about three dot widths
+
+            GL.Color3(0.85f, 0.6f, 0.2f);
+            GL.PointSize(6f);
+            GL.Begin(PrimitiveType.Points);
+            for (int i = 0; i < orchRows.Count; i++)
+                foreach (var t in orchRows[i].trees) GL.Vertex3(t.easting, t.northing, 0);
+            GL.End();
+
+            GL.LineWidth(2);
+            GL.Begin(PrimitiveType.Lines);
+            for (int i = 0; i < orchRows.Count; i++)
+            {
+                var d = orchRows[i].Dir();
+                double px = -d.northing * halfCross, py = d.easting * halfCross;   // across the row
+                foreach (var t in orchRows[i].trees)
+                {
+                    GL.Vertex3(t.easting - px, t.northing - py, 0);
+                    GL.Vertex3(t.easting + px, t.northing + py, 0);
+                }
+            }
+            GL.End();
         }
 
         //F50 planting: the planned seedling spots.
