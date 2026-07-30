@@ -686,6 +686,11 @@ namespace AgOpenGPS
 
             for (int i = 0; i < trk.gArr.Count; i++)
             {
+                //F50 (SIM 0730): the orchard passes are derived from the rows and the implement
+                //and are rebuilt on every change - they belong in Orchard.kml, not in a file
+                //meant to describe what the field HAS
+                if (trk.gArr[i].isOrchardDerived) continue;
+
                 linePts = "";
                 kml.WriteStartElement("Placemark");
                 kml.WriteElementString("visibility", "0");

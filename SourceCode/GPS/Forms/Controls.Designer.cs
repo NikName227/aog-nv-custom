@@ -918,6 +918,12 @@ namespace AgOpenGPS
                 try { ExportFieldAs_KML(); }
                 catch (Exception ex) { Log.EventWriter($"WARNING: KML export failed: {ex}"); }
 
+                //F50 (SIM 0730): the orchard as its own file - boundary, headland, rows, trees.
+                //Written here so it is always in step with the field, and closing the program
+                //closes the field, which is the other moment it has to be fresh.
+                try { ExportOrchardAs_KML(); }
+                catch (Exception ex) { Log.EventWriter($"WARNING: Orchard KML export failed: {ex}"); }
+
                 //ExportFieldAs_ISOXMLv3(); NOTE: This is very very slow, commented out until we have a field exporter
 
                 try { ExportFieldAs_ISOXMLv4(); }
