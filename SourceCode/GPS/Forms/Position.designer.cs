@@ -817,6 +817,14 @@ namespace AgOpenGPS
             }
             else
             {
+                //F50 t10 B: in orchard mode the passes are fixed single lines, so moving to the
+                //next inter-row means SELECTING the next line. Same gate as AOG's own auto
+                //track: only with autosteer off, and never while a turn is running - a plan
+                //turn does its own crossing (CYouTurn -> plan.TryNextTargetCross), and nothing
+                //here may yank the line out from under an engaged guidance.
+                if (trk.isOrchardAuto && !isBtnAutoSteerOn && !yt.isYouTurnTriggered)
+                    OrchardPickNearestPass(false);
+
                 //auto track routine
                 if (trk.isAutoTrack && !isBtnAutoSteerOn && trk.autoTrack3SecTimer >= 1)
                 {
