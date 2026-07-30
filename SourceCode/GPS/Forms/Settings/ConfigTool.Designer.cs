@@ -127,6 +127,13 @@ namespace AgOpenGPS
         //only that mode's fields are on screen - a planter offset means nothing when the
         //machine is driving between the rows, and vice versa. The visible rows are packed
         //from the top so there are no holes left by the hidden ones.
+        //F50 (SIM 0730): touch input - the orchard fields open the on-screen keypad like every
+        //other Settings field does (stock AOG pattern: NudlessNumericUpDown + ShowKeypad).
+        private void nudOrchard_Click(object sender, EventArgs e)
+        {
+            ((NudlessNumericUpDown)sender).ShowKeypad(this);
+        }
+
         private void cboOrchardPath_SelectedIndexChanged(object sender, EventArgs e) => ApplyOrchardPathUI();
 
         //F50 (SIM 0730): the panel was hard-coded English. The combo items are rebuilt rather
@@ -141,7 +148,8 @@ namespace AgOpenGPS
             lblOrchardPath.Text = gStr.gsOrchPathMode;
             cboOrchardPath.Items.Clear();
             cboOrchardPath.Items.AddRange(new object[] {
-                gStr.gsOrchPathOnePass, gStr.gsOrchPathMultiPass, gStr.gsOrchPathOnRow });
+                gStr.gsOrchPathOnePass, gStr.gsOrchPathMultiPass, gStr.gsOrchPathOnRow,
+                gStr.gsOrchPathTwoPass });
 
             lblOrchardMode.Text = gStr.gsOrchWorkMode;
             cboOrchardMode.Items.Clear();
@@ -163,10 +171,14 @@ namespace AgOpenGPS
 
             bool multi = mode == COrchard.PathMultiPass;
             bool onRow = mode == COrchard.PathOnRow;
-            //between the rows (one or many passes) the clearance to the tree line applies
+            bool twoPass = mode == COrchard.PathTwoPass;
+            //between the rows (one, two or many passes) the clearance to the tree line applies
             bool between = !onRow;
 
-            lblOrchardMode.Visible = cboOrchardMode.Visible = multi;
+            //two pass: the working-mode box is the side the implement is mounted on, and it is
+            //the only setting that mode needs besides the safe tree width
+            lblOrchardMode.Visible = cboOrchardMode.Visible = multi || twoPass;
+            lblOrchardMode.Text = twoPass ? gStr.gsOrchImplementSide : gStr.gsOrchWorkMode;
             lblOrchardRowOffset.Visible = nudOrchardRowOffset.Visible = multi;
             lblOrchardSafe.Visible = nudOrchardSafe.Visible = multi;
             chkOrchardCenterFirst.Visible = multi;

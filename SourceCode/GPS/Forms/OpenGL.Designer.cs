@@ -2197,14 +2197,17 @@ namespace AgOpenGPS
         }
 
         //F50 (SIM 0729 t8): safety alert - the implement is wider than the inter-row allows
-        //once the row offset and the clearance on the far side are taken off it. Red, top
-        //centre, with how many metres are missing in the worst inter-row. Set by
-        //OrchardRebuildTracks, so it appears the moment the machine or a setting changes.
+        //once the row offset and the clearance on the far side are taken off it. Red, with how
+        //many metres are missing in the worst inter-row. Set by OrchardRebuildTracks, so it
+        //appears the moment the machine or a setting changes.
+        //SIM 0730: moved to the LEFT side of the HUD (it sat top centre, where it competed with
+        //the pass/track readouts).
         private void DrawOrchardWarn()
         {
-            int cx = oglMain.Width / 2;
+            //x = 0 is the middle of the HUD (GL.Ortho(-W/2 .. +W/2)), so this is 30 px in from the
+            //left edge; y is below the cross-track readout that lives in the top-left corner
             GL.Color4(1.0f, 0.15f, 0.15f, 0.95f);
-            font.DrawText(cx - 150, 46, orchardWarn, 1.1);
+            font.DrawText(-oglMain.Width / 2 + 30, 110, orchardWarn, 1.1);
         }
 
         //F50 planting HUD: metres to the next seedling (one decimal) + job progress.

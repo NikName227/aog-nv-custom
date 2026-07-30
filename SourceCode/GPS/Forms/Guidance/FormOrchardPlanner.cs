@@ -134,6 +134,12 @@ namespace AgOpenGPS
             tboxName.Click += (s, e) => tboxName.ShowKeyboard(this);
         }
 
+        //F50 (SIM 0730): every number field in this window opens the on-screen keypad
+        private void nudOrchard_Click(object sender, EventArgs e)
+        {
+            ((NudlessNumericUpDown)sender).ShowKeypad(this);
+        }
+
         private string FieldDir() => mf?.AppCore?.ActiveField?.FieldDirectory?.FullName;
 
         // ── Window controls + layout ──────────────────────────────────────

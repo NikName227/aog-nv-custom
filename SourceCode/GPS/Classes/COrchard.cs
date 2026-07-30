@@ -78,6 +78,7 @@ namespace AgOpenGPS
         public const int PathOnePass = 0;    // one line down the middle of each inter-row
         public const int PathMultiPass = 1;  // several passes per inter-row (to be re-specced)
         public const int PathOnRow = 2;      // the line IS the row + planter offset (planting)
+        public const int PathTwoPass = 3;    // exactly two passes, one hugging each tree line
 
         /// <summary>
         /// Every track that this class generates carries this name prefix. The path is a
@@ -111,7 +112,7 @@ namespace AgOpenGPS
         public static int ResolvePathMode()
         {
             var ts = Properties.ToolSettings.Default;
-            if (ts.setTool_orchardPathMode < 0 || ts.setTool_orchardPathMode > PathOnRow)
+            if (ts.setTool_orchardPathMode < 0 || ts.setTool_orchardPathMode > PathTwoPass)
             {
                 ts.setTool_orchardPathMode = ts.setTool_orchardOnePass ? PathOnePass : PathMultiPass;
                 try { ts.Save(); } catch { /* a read-only profile is not worth a crash */ }
@@ -545,10 +546,19 @@ namespace AgOpenGPS
             if (pathMode == PathOnRow)
                 return BuildOnRowTracks(rows, toolWidth, plantLateralOffset, toolOffset, out warnings);
 
-            //SIM 0730: working mode (centre / left / right) belongs to multi pass, and the
-            //Settings panel only shows it there. A value left over from an earlier profile must
-            //not silently drop one-pass lines through the L/R safe-space check, so anything but
-            //multi pass is driven down the middle.
+            if (pathMode == PathTwoPass)
+            {
+                var two = BuildTwoPassTracks(rows, toolWidth, treeWidth, out warnings);
+                //the outer rows get their one strip along the boundary side as well
+                AddOuterStripPasses(rows, bounds, toolWidth, treeWidth, true, two, warnings);
+                return two;
+            }
+
+            //SIM 0730: working mode (centre / left / right) belongs to multi pass (and to two
+            //pass, where it means the side the implement is mounted on), and the Settings panel
+            //only shows it there. A value left over from an earlier profile must not silently
+            //drop one-pass lines through the L/R safe-space check, so anything else is driven
+            //down the middle.
             if (pathMode != PathMultiPass) workMode = 0;
 
             var passes = BuildPasses(rows, toolWidth, workMode, safeSpace, treeWidth, rowOffset,
@@ -666,6 +676,82 @@ namespace AgOpenGPS
                 if (worst < step) return 0;
             }
             return worst;
+        }
+
+        // ── Two passes beside the trees (SIM 0730) ────────────────────────
+        // A side-mounted implement (mulcher, mower, trimmer) has to go down each inter-row
+        // TWICE, working along one tree line each time. So: exactly two passes per inter-row,
+        // whatever the tool width, each one hugging its own row - the middle of a wide inter-row
+        // is left unworked on purpose, that is what this mode is for.
+        //
+        // Strip beside a row: its inner edge keeps half the safe tree width off the row line, so
+        // the strip centre sits at treeWidth/2 + toolWidth/2 from the row. The track reference is
+        // then half a tool width further (AOG's edge convention, as everywhere else here).
+        //
+        // The mounting side (working mode) does NOT move these strips - it decides which
+        // DIRECTION each pass is driven so the implement faces its own trees. That direction is
+        // carried by the plan (CPlanEntry.isSameWay, which alternates between consecutive
+        // entries - exactly the down-and-back a side implement needs), and AOG's own tool-offset
+        // compensation shifts the tractor, not the strip, when the direction flips.
+        public static List<CTrk> BuildTwoPassTracks(List<OrchRow> rows, double toolWidth,
+            double treeWidth, out List<string> warnings)
+        {
+            warnings = new List<string>();
+            var result = new List<CTrk>();
+            if (rows == null || rows.Count < 2) return result;
+            if (toolWidth < 0.1) { warnings.Add("No tool width"); return result; }
+
+            double d = treeWidth * 0.5 + toolWidth * 0.5;   // row line -> strip centre
+            var sorted = SortRowsTransverse(rows);
+
+            for (int i = 0; i < sorted.Count - 1; i++)
+            {
+                var a = sorted[i];
+                var b = sorted[i + 1];
+                if (a.curve.Count < 2 || b.curve.Count < 2) continue;
+
+                if (BuildMidline(a, b, out double gap) == null) continue;
+
+                string interName = "Mid " + (i + 1);
+
+                //the machine has to fit beside a row at all - same rule as everywhere:
+                //row spacing >= tool width + safe tree width
+                if (gap - treeWidth - toolWidth < -0.001)
+                {
+                    warnings.Add("Orch " + interName + ": inter-row too narrow for the tool (gap "
+                        + gap.ToString("N1") + " m)");
+                    continue;
+                }
+
+                //pass 1 along row a, pass 2 along row b - each offset INTO the inter-row
+                for (int k = 0; k < 2; k++)
+                {
+                    OrchRow from = k == 0 ? a : b;
+                    OrchRow toward = k == 0 ? b : a;
+
+                    double sign = OffsetSignTowardB(from.curve, toward);
+
+                    var line = OffsetCurve(from.curve, sign * d);
+                    if (line.Count < 2) continue;
+                    CABCurve.CalculateHeadings(ref line);
+                    line = OffsetCurve(line, -0.5 * toolWidth);
+
+                    double head = line[line.Count / 2].heading;
+                    if (head < 0) head += glm.twoPI;
+
+                    ExtendEnds(line, ExtendMeters);
+                    CABCurve.CalculateHeadings(ref line);
+
+                    var t = new CTrk { mode = TrackMode.Curve, heading = head, isVisible = true };
+                    t.isOrchardDerived = true;
+                    t.ptA = new vec2(line[0].easting, line[0].northing);
+                    t.ptB = new vec2(line[line.Count - 1].easting, line[line.Count - 1].northing);
+                    t.name = DerivedPrefix + interName + " p" + (k + 1);
+                    foreach (vec3 p in line) t.curvePts.Add(p);
+                    result.Add(t);
+                }
+            }
+            return result;
         }
 
         // ── On row (planting): the line IS the row ────────────────────────

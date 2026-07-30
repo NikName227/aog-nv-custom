@@ -55,13 +55,13 @@ namespace AgOpenGPS
             this.pnlGen = new System.Windows.Forms.Panel();
             this.lblGenCap = new System.Windows.Forms.Label();
             this.lblGenRowSpace = new System.Windows.Forms.Label();
-            this.nudGenRowSpace = new System.Windows.Forms.NumericUpDown();
+            this.nudGenRowSpace = new AgOpenGPS.NudlessNumericUpDown();
             this.lblGenTreeSpace = new System.Windows.Forms.Label();
-            this.nudGenTreeSpace = new System.Windows.Forms.NumericUpDown();
+            this.nudGenTreeSpace = new AgOpenGPS.NudlessNumericUpDown();
             this.lblGenHeadland = new System.Windows.Forms.Label();
-            this.nudGenHeadland = new System.Windows.Forms.NumericUpDown();
+            this.nudGenHeadland = new AgOpenGPS.NudlessNumericUpDown();
             this.lblGenSetback = new System.Windows.Forms.Label();
-            this.nudGenSetback = new System.Windows.Forms.NumericUpDown();
+            this.nudGenSetback = new AgOpenGPS.NudlessNumericUpDown();
             this.chkGenStagger = new System.Windows.Forms.CheckBox();
             this.btnGenLine = new System.Windows.Forms.Button();
             this.btnGenerate = new System.Windows.Forms.Button();
@@ -439,7 +439,7 @@ namespace AgOpenGPS
             // safe distance from the tree line / slope)
             //
             this.btnRecordRow = new System.Windows.Forms.Button();
-            this.nudRecOffset = new System.Windows.Forms.NumericUpDown();
+            this.nudRecOffset = new AgOpenGPS.NudlessNumericUpDown();
             this.btnRecSide = new System.Windows.Forms.Button();
             this.btnRecordRow.BackColor = System.Drawing.Color.MistyRose;
             this.btnRecordRow.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
@@ -457,6 +457,7 @@ namespace AgOpenGPS
             this.nudRecOffset.Maximum = new decimal(new int[] { 10, 0, 0, 0 });
             this.nudRecOffset.Name = "nudRecOffset";
             this.nudRecOffset.Size = new System.Drawing.Size(70, 32);
+            this.nudRecOffset.Click += new System.EventHandler(this.nudOrchard_Click);
             this.nudRecOffset.Value = new decimal(new int[] { 2, 0, 0, 0 });
             this.btnRecSide.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnRecSide.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
@@ -616,6 +617,7 @@ namespace AgOpenGPS
             this.nudGenRowSpace.Minimum = new decimal(new int[] { 5, 0, 0, 65536 });
             this.nudGenRowSpace.Name = "nudGenRowSpace";
             this.nudGenRowSpace.Size = new System.Drawing.Size(118, 28);
+            this.nudGenRowSpace.Click += new System.EventHandler(this.nudOrchard_Click);
             this.nudGenRowSpace.Value = new decimal(new int[] { 4, 0, 0, 0 });
             this.lblGenTreeSpace.Font = new System.Drawing.Font("Tahoma", 9.75F);
             this.lblGenTreeSpace.Location = new System.Drawing.Point(6, 60);
@@ -630,6 +632,7 @@ namespace AgOpenGPS
             this.nudGenTreeSpace.Minimum = new decimal(new int[] { 3, 0, 0, 65536 });
             this.nudGenTreeSpace.Name = "nudGenTreeSpace";
             this.nudGenTreeSpace.Size = new System.Drawing.Size(118, 28);
+            this.nudGenTreeSpace.Click += new System.EventHandler(this.nudOrchard_Click);
             this.nudGenTreeSpace.Value = new decimal(new int[] { 3, 0, 0, 0 });
             this.lblGenHeadland.Font = new System.Drawing.Font("Tahoma", 9.75F);
             this.lblGenHeadland.Location = new System.Drawing.Point(6, 90);
@@ -643,6 +646,7 @@ namespace AgOpenGPS
             this.nudGenHeadland.Maximum = new decimal(new int[] { 50, 0, 0, 0 });
             this.nudGenHeadland.Name = "nudGenHeadland";
             this.nudGenHeadland.Size = new System.Drawing.Size(118, 28);
+            this.nudGenHeadland.Click += new System.EventHandler(this.nudOrchard_Click);
             this.nudGenHeadland.Value = new decimal(new int[] { 6, 0, 0, 0 });
             this.lblGenSetback.Font = new System.Drawing.Font("Tahoma", 9.75F);
             this.lblGenSetback.Location = new System.Drawing.Point(6, 120);
@@ -656,6 +660,7 @@ namespace AgOpenGPS
             this.nudGenSetback.Maximum = new decimal(new int[] { 50, 0, 0, 0 });
             this.nudGenSetback.Name = "nudGenSetback";
             this.nudGenSetback.Size = new System.Drawing.Size(118, 28);
+            this.nudGenSetback.Click += new System.EventHandler(this.nudOrchard_Click);
             this.nudGenSetback.Value = new decimal(new int[] { 2, 0, 0, 0 });
             this.chkGenStagger.Font = new System.Drawing.Font("Tahoma", 9.75F);
             this.chkGenStagger.Location = new System.Drawing.Point(6, 150);
@@ -798,7 +803,7 @@ namespace AgOpenGPS
         private System.Windows.Forms.Button btnImportKml;
         private System.Windows.Forms.Button btnMakePath;
         private System.Windows.Forms.Button btnRecordRow;
-        private System.Windows.Forms.NumericUpDown nudRecOffset;
+        private AgOpenGPS.NudlessNumericUpDown nudRecOffset;
         private System.Windows.Forms.Button btnRecSide;
         private System.Windows.Forms.Label lblWarn;
         private System.Windows.Forms.Button btnNewRow;
@@ -814,13 +819,13 @@ namespace AgOpenGPS
         private System.Windows.Forms.Panel pnlGen;
         private System.Windows.Forms.Label lblGenCap;
         private System.Windows.Forms.Label lblGenRowSpace;
-        private System.Windows.Forms.NumericUpDown nudGenRowSpace;
+        private AgOpenGPS.NudlessNumericUpDown nudGenRowSpace;
         private System.Windows.Forms.Label lblGenTreeSpace;
-        private System.Windows.Forms.NumericUpDown nudGenTreeSpace;
+        private AgOpenGPS.NudlessNumericUpDown nudGenTreeSpace;
         private System.Windows.Forms.Label lblGenHeadland;
-        private System.Windows.Forms.NumericUpDown nudGenHeadland;
+        private AgOpenGPS.NudlessNumericUpDown nudGenHeadland;
         private System.Windows.Forms.Label lblGenSetback;
-        private System.Windows.Forms.NumericUpDown nudGenSetback;
+        private AgOpenGPS.NudlessNumericUpDown nudGenSetback;
         private System.Windows.Forms.CheckBox chkGenStagger;
         private System.Windows.Forms.Button btnGenLine;
         private System.Windows.Forms.Button btnGenerate;

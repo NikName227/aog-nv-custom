@@ -2103,4 +2103,10 @@ USE AT OWN RISK.</value>
   <data name="gsOrchClose" xml:space="preserve">
     <value>Close</value>
   </data>
+  <data name="gsOrchPathTwoPass" xml:space="preserve">
+    <value>Two passes (beside the trees)</value>
+  </data>
+  <data name="gsOrchImplementSide" xml:space="preserve">
+    <value>Implement side</value>
+  </data>
 </root>

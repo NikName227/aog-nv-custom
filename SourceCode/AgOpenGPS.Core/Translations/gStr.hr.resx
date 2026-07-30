@@ -1736,4 +1736,10 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsOrchClose" xml:space="preserve">
     <value>Zatvori</value>
   </data>
+  <data name="gsOrchPathTwoPass" xml:space="preserve">
+    <value>Dva prolaza (kraj stabala)</value>
+  </data>
+  <data name="gsOrchImplementSide" xml:space="preserve">
+    <value>Strana stroja</value>
+  </data>
 </root>

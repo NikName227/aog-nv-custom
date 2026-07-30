@@ -5388,5 +5388,17 @@ namespace AgOpenGPS.Core.Translations {
             }
         }
         
+        public static string gsOrchPathTwoPass {
+            get {
+                return ResourceManager.GetString("gsOrchPathTwoPass", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchImplementSide {
+            get {
+                return ResourceManager.GetString("gsOrchImplementSide", resourceCulture);
+            }
+        }
+        
 }
 }
