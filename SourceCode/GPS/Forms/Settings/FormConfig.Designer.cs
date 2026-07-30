@@ -1839,9 +1839,9 @@ namespace AgOpenGPS
             // pnlOrchardSet (orchard processing settings; interactive image = later design pass)
             //
             this.pnlOrchardSet.BackColor = System.Drawing.Color.WhiteSmoke;
-            this.pnlOrchardSet.Location = new System.Drawing.Point(10, 246);
+            this.pnlOrchardSet.Location = new System.Drawing.Point(10, 332);
             this.pnlOrchardSet.Name = "pnlOrchardSet";
-            this.pnlOrchardSet.Size = new System.Drawing.Size(840, 330);
+            this.pnlOrchardSet.Size = new System.Drawing.Size(840, 248);
             this.pnlOrchardSet.Visible = false;
             //SIM 0729 t3: how the AB lines follow the rows. This is the top-level choice -
             //the fields below it belong to one mode each and are shown accordingly

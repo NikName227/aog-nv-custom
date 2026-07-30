@@ -151,6 +151,10 @@ namespace AgOpenGPS
             if (orchardPanelLocalized) return;
             orchardPanelLocalized = true;
 
+            //the panel lives on the Hitch tab under the picture and its value, so it is laid
+            //out compactly: path mode on top, the mode's own rows below it
+            lblOrchardPath.Location = new Point(20, 12);
+            cboOrchardPath.Location = new Point(340, 8);
             lblOrchardPath.Text = gStr.gsOrchPathMode;
             cboOrchardPath.Items.Clear();
             foreach (int m in orchardPathOrder)
@@ -195,7 +199,7 @@ namespace AgOpenGPS
             //reports a control inside a hidden panel as invisible, and this runs from
             //tabTConfig_Enter BEFORE the panel is shown. Reading it there left every row on its
             //designer position, which is why "Implement side" only appeared on a second pick.
-            int y = 74;
+            int y = 52;
             PackOrchardRow(side, lblOrchardMode, cboOrchardMode, ref y);
             PackOrchardRow(multi, lblOrchardPassCount, nudOrchardPassCount, ref y, lblOrchardPassWarn);
             PackOrchardRow(between, lblOrchardTree, nudOrchardTree, ref y);
@@ -213,7 +217,7 @@ namespace AgOpenGPS
             label.Location = new Point(label.Location.X, y + 4);
             if (field != null) field.Location = new Point(field.Location.X, y);
             if (extra != null) extra.Location = new Point(extra.Location.X, y + 4);
-            y += 50;
+            y += 38;
         }
 
         //F50 (SIM 0730): 1 and 2 passes ARE the one-pass and two-pass modes, so they are refused
@@ -327,11 +331,13 @@ namespace AgOpenGPS
         {
             bool orch = rbtnOrchard.Checked && CFeatureLock.IsOn(CFeatureLock.FeatureOrchard);
 
-            picboxToolHitch.Size = orch
-                ? new Size(838, 220)
-                : new Size(838, 407);
+            //SIM 0730 markup: shrink the picture in BOTH directions (height alone left it
+            //stretched), and keep the hitch VALUE clear of the orchard rows - it sits right under
+            //the picture, so the panel starts below it.
+            picboxToolHitch.Location = orch ? new Point(210, 8) : new Point(13, 12);
+            picboxToolHitch.Size = orch ? new Size(420, 204) : new Size(838, 407);
 
-            int nudY = orch ? 228 : 407;
+            int nudY = orch ? 218 : 407;
             nudDrawbarLength.Location = new Point(nudDrawbarLength.Location.X, nudY);
             nudTrailingHitchLength.Location = new Point(nudTrailingHitchLength.Location.X, nudY);
             nudTankHitch.Location = new Point(nudTankHitch.Location.X, nudY);
