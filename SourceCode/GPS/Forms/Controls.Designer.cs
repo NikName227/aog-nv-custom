@@ -213,6 +213,17 @@ namespace AgOpenGPS
             }
             else
             {
+                //F50 (2026-08-01): in an orchard autosteer only runs on a real RTK fix. Without
+                //this the gate would be a revolving door - it drops autosteer when the fix goes,
+                //and the driver presses the button straight back on with no fix, which is exactly
+                //the state the gate exists to prevent. Refuse to arm instead.
+                if (OrchardSteerGateOn && pn.fixQuality != 4)
+                {
+                    Log.EventWriter("Orchard: autosteer refused, no RTK fix (quality " + pn.fixQuality + ")");
+                    TimedMessageBox(3000, gStr.gsOrchard, gStr.gsOrchNoFixNoSteer);
+                    return;
+                }
+
                 if (ct.isContourBtnOn | trk.idx > -1)
                 {
                     isBtnAutoSteerOn = true;

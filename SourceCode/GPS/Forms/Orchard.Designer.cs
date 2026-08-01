@@ -54,6 +54,227 @@ namespace AgOpenGPS
             => (tool.width > 0.1 ? tool.width : 3.0) * 0.5;
 
         /// <summary>
+        /// NV custom F50 (2026-08-01): how long the steer angle is held after the RTK fix goes,
+        /// before autosteer is dropped. Long enough that a fix flickering under a tree crown does
+        /// not hand the wheel back for nothing, short enough that the machine has not travelled far
+        /// enough for the returning fix to arrive as a jerk.
+        /// </summary>
+        private const int OrchardFixFreezeMs = 500;
+
+        /// <summary>Orchard mode is on and the feature is unlocked.</summary>
+        private bool OrchardModeOn
+            => tool.isToolOrchard && CFeatureLock.IsOn(CFeatureLock.FeatureOrchard);
+
+        /// <summary>
+        /// The RTK gate applies. AOG's own simulator is excluded because it cycles fixQuality 2..6
+        /// once a second, so a fix is "lost" four seconds in five and the gate would fire on every
+        /// simulated run. A real fix - a receiver, or the external simulator feeding real GGA - is
+        /// judged on its merits. Note this exempts the FIX rules only: the steering cap has nothing
+        /// to do with fix quality and stays live in the simulator, which is where it gets tested.
+        /// </summary>
+        private bool OrchardSteerGateOn => OrchardModeOn && !timerSim.Enabled;
+
+        /// <summary>
+        /// NV custom F50 (2026-08-01): RTK fix gate for orchard work. In a field a lost fix is a
+        /// nuisance; between two rows of trees it is a hazard, because the position jumps, guidance
+        /// answers with a hard correction and the machine swerves into a trunk. So the wheel is
+        /// never allowed to follow a bad fix: the angle FREEZES at what it was the moment before,
+        /// and if the fix has not come back within OrchardFixFreezeMs autosteer is dropped with an
+        /// alarm. RTK float (5) counts as lost, same as the rest of AOG treats it.
+        ///
+        /// This is unconditional in orchard mode - it does not ask the stock "Is RTK" / "RTK kill
+        /// autosteer" checkboxes, which are off by default and only ever fired once, on the edge.
+        ///
+        /// Runs per GPS sentence, deliberately NOT from the draw loop like the stock alarm: a
+        /// safety check that stops when rendering stops is not a safety check.
+        /// </summary>
+        private void OrchardFixGate()
+        {
+            if (!OrchardSteerGateOn) { orchardFixLostUtc = DateTime.MinValue; return; }
+
+            if (pn.fixQuality == 4)
+            {
+                if (orchardFixLostUtc != DateTime.MinValue)
+                {
+                    Log.EventWriter("Orchard: RTK fix back inside the freeze window, steering resumed");
+                    orchardFixLostUtc = DateTime.MinValue;
+                }
+                return;
+            }
+
+            //nothing to hold if the driver is steering
+            if (!isBtnAutoSteerOn) { orchardFixLostUtc = DateTime.MinValue; return; }
+
+            if (orchardFixLostUtc == DateTime.MinValue)
+            {
+                orchardFixLostUtc = DateTime.UtcNow;
+                orchardFrozenSteerAngle = guidanceLineSteerAngle;
+                Log.EventWriter("Orchard: RTK fix lost (quality " + pn.fixQuality + "), steer frozen at "
+                    + (orchardFrozenSteerAngle * 0.01).ToString("N1") + " deg");
+            }
+
+            if ((DateTime.UtcNow - orchardFixLostUtc).TotalMilliseconds < OrchardFixFreezeMs)
+            {
+                //hold the last good angle - do NOT steer to a position we no longer trust
+                guidanceLineSteerAngle = orchardFrozenSteerAngle;
+                return;
+            }
+
+            //the window is up and the fix is still gone - give the wheel back, loudly
+            btnAutoSteer.PerformClick();
+            sounds.sndRTKAlarm.Play();
+            Log.EventWriter("Orchard: autosteer OFF, no RTK fix after " + OrchardFixFreezeMs + " ms");
+            TimedMessageBox(3000, gStr.gsOrchard, gStr.gsOrchNoFixSteerOff);
+            orchardFixLostUtc = DateTime.MinValue;
+        }
+
+        /// <summary>
+        /// NV custom F50 (2026-08-01): the two steer-limit boundaries, entry first. Derived from
+        /// the rows on every rebuild, never saved, not editable - so the dotted pair drawn in the
+        /// planner and the zone the limit tests are the same object. null = no zone.
+        /// </summary>
+        public List<List<vec2>> orchardLimitBounds;
+
+        //latched so the cap does not chatter on and off while driving along a boundary
+        private bool orchardInLimitZone;
+        private const double LimitZoneHysteresis = 0.5;
+
+        //clamp episode, summarised into one log line per pass instead of one per tick - the
+        //event log is trimmed to 100 lines at startup and a chatty check would eat all of it
+        private string orchardClampPass = "";
+        private int orchardClampHits;
+        private double orchardClampPeakDeg;
+        private DateTime orchardClampSince = DateTime.MinValue;
+        private double orchardClampSeconds;
+
+        /// <summary>
+        /// Signed distance from a point to the nearest segment of a polyline; the sign says which
+        /// side. Only the sign is compared against a reference, so its absolute meaning is free.
+        /// </summary>
+        private static double SignedSideDistance(List<vec2> line, double e, double n)
+        {
+            double bestD = double.MaxValue, best = 0;
+            for (int i = 1; i < line.Count; i++)
+            {
+                double ax = line[i - 1].easting, ay = line[i - 1].northing;
+                double dx = line[i].easting - ax, dy = line[i].northing - ay;
+                double len2 = dx * dx + dy * dy;
+                if (len2 < 1e-9) continue;
+
+                double t = ((e - ax) * dx + (n - ay) * dy) / len2;
+                if (t < 0) t = 0; else if (t > 1) t = 1;
+                double px = ax + dx * t, py = ay + dy * t;
+                double d = (e - px) * (e - px) + (n - py) * (n - py);
+                if (d >= bestD) continue;
+
+                bestD = d;
+                best = (dx * (n - ay) - dy * (e - ax)) / Math.Sqrt(len2);
+            }
+            return best;
+        }
+
+        /// <summary>
+        /// Is the vehicle between the two boundaries? Each boundary is judged against the OTHER
+        /// one's midpoint, which is inside the orchard by construction - so no separate notion of
+        /// "inward" is needed and a skewed pair still reads correctly.
+        /// </summary>
+        private bool OrchardInLimitZoneNow()
+        {
+            var b = orchardLimitBounds;
+            if (b == null || b.Count != 2) return false;
+
+            double dA = SignedSideDistance(b[0], pivotAxlePos.easting, pivotAxlePos.northing);
+            double dB = SignedSideDistance(b[1], pivotAxlePos.easting, pivotAxlePos.northing);
+
+            vec2 mA = b[0][b[0].Count / 2];
+            vec2 mB = b[1][b[1].Count / 2];
+            double rA = SignedSideDistance(b[0], mB.easting, mB.northing);
+            double rB = SignedSideDistance(b[1], mA.easting, mA.northing);
+
+            //inside means on the same side of each boundary as the far boundary is
+            double inA = dA * Math.Sign(rA);
+            double inB = dB * Math.Sign(rB);
+
+            if (orchardInLimitZone)
+                orchardInLimitZone = inA > -LimitZoneHysteresis && inB > -LimitZoneHysteresis;
+            else
+                orchardInLimitZone = inA > LimitZoneHysteresis && inB > LimitZoneHysteresis;
+
+            return orchardInLimitZone;
+        }
+
+        /// <summary>
+        /// NV custom F50 (2026-08-01): cap the commanded steer angle while the machine is between
+        /// the trees. A GPS wobble there must not turn into a big wheel angle - the row is only as
+        /// wide as the gap between two trunks. Outside the zone (the last 10 m at either end, where
+        /// the machine lines itself up and turns) there is no cap at all.
+        ///
+        /// Applied at the single point where the angle reaches the PGN, so it also covers a turn
+        /// that YouTurn is steering. Setting the parameter to 0 turns the cap off.
+        /// </summary>
+        private void OrchardClampSteerAngle()
+        {
+            if (!OrchardModeOn || !isBtnAutoSteerOn || !trk.IsActiveOrchardPass
+                || !OrchardInLimitZoneNow())
+            {
+                OrchardFlushClampLog();
+                return;
+            }
+
+            double cap = Properties.ToolSettings.Default.setTool_orchardMaxSteerAngle;
+            if (cap < 0.5) return;      // 0 = no cap
+
+            string pass = trk.gArr[trk.idx].name;
+            if (pass != orchardClampPass) OrchardFlushClampLog();
+            orchardClampPass = pass;
+
+            short lim = (short)(cap * 100.0);
+            if (guidanceLineSteerAngle <= lim && guidanceLineSteerAngle >= -lim)
+            {
+                //back inside the cap - the episode, if any, has ended
+                if (orchardClampSince != DateTime.MinValue)
+                {
+                    orchardClampSeconds += (DateTime.UtcNow - orchardClampSince).TotalSeconds;
+                    orchardClampSince = DateTime.MinValue;
+                }
+                return;
+            }
+
+            double asked = Math.Abs(guidanceLineSteerAngle) * 0.01;
+            if (asked > orchardClampPeakDeg) orchardClampPeakDeg = asked;
+
+            if (orchardClampSince == DateTime.MinValue)
+            {
+                orchardClampSince = DateTime.UtcNow;
+                orchardClampHits++;
+            }
+
+            guidanceLineSteerAngle = guidanceLineSteerAngle > 0 ? lim : (short)-lim;
+        }
+
+        /// <summary>One line per pass, written when the pass or the zone is left.</summary>
+        private void OrchardFlushClampLog()
+        {
+            if (orchardClampSince != DateTime.MinValue)
+            {
+                orchardClampSeconds += (DateTime.UtcNow - orchardClampSince).TotalSeconds;
+                orchardClampSince = DateTime.MinValue;
+            }
+
+            if (orchardClampHits > 0)
+            {
+                Log.EventWriter("Orchard limit on " + orchardClampPass + ": capped "
+                    + orchardClampHits + "x, " + orchardClampSeconds.ToString("N1")
+                    + " s, guidance asked up to " + orchardClampPeakDeg.ToString("N1") + " deg");
+            }
+
+            orchardClampPass = "";
+            orchardClampHits = 0;
+            orchardClampPeakDeg = 0;
+            orchardClampSeconds = 0;
+        }
+
+        /// <summary>
         /// Step the guidance line selection the way the driver sees it (SIM 0730): the whole
         /// orchard is ONE stop, so the cycle buttons move between "Orchard" and the hand-made
         /// lines instead of walking through every inter-row pass. Landing on the orchard turns
@@ -295,6 +516,12 @@ namespace AgOpenGPS
             var ts = Properties.ToolSettings.Default;
             int pathMode = COrchard.ResolvePathMode();
             double toolW = tool.width > 0.1 ? tool.width : 3.0;
+
+            //F50 (2026-08-01): the steer-limit zone is derived from the rows like everything else
+            //here, so it can never drift out of step with what the planner draws
+            try { orchardLimitBounds = COrchard.BuildLimitBounds(orchRows); }
+            catch (Exception ex) { orchardLimitBounds = null; Log.EventWriter("Orchard limit bounds: " + ex); }
+            orchardInLimitZone = false;
 
             List<CTrk> made = new List<CTrk>();
             if (orchRows.Count > 0)

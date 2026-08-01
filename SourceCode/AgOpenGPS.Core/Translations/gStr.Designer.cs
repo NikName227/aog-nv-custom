@@ -5213,6 +5213,24 @@ public static string gsOrchTreeWidth {
                 return ResourceManager.GetString("gsOrchTreeWidth", resourceCulture);
             }
         }
+
+public static string gsOrchMaxSteerAngle {
+            get {
+                return ResourceManager.GetString("gsOrchMaxSteerAngle", resourceCulture);
+            }
+        }
+
+public static string gsOrchNoFixSteerOff {
+            get {
+                return ResourceManager.GetString("gsOrchNoFixSteerOff", resourceCulture);
+            }
+        }
+
+public static string gsOrchNoFixNoSteer {
+            get {
+                return ResourceManager.GetString("gsOrchNoFixNoSteer", resourceCulture);
+            }
+        }
         
 public static string gsOrchCenterFirst {
             get {

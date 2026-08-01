@@ -2016,6 +2016,15 @@ USE AT OWN RISK.</value>
 <data name="gsOrchTreeWidth" xml:space="preserve">
     <value>Safe tree width (m)</value>
   </data>
+  <data name="gsOrchMaxSteerAngle" xml:space="preserve">
+    <value>Max steer angle in row (deg, 0 = off)</value>
+  </data>
+  <data name="gsOrchNoFixSteerOff" xml:space="preserve">
+    <value>AutoSteer OFF - no RTK fix</value>
+  </data>
+  <data name="gsOrchNoFixNoSteer" xml:space="preserve">
+    <value>AutoSteer needs an RTK fix in the orchard</value>
+  </data>
 <data name="gsOrchCenterFirst" xml:space="preserve">
     <value>Center pass first (odd pass count)</value>
   </data>

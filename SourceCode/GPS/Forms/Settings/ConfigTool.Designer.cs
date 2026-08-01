@@ -50,6 +50,8 @@ namespace AgOpenGPS
                 //F50: orchard settings ride on the implement profile
                 cboOrchardPath.SelectedIndex = OrchardModeToRow(COrchard.ResolvePathMode());
                 nudOrchardTree.Value = (decimal)Properties.ToolSettings.Default.setTool_orchardTreeWidth;
+                nudOrchardMaxAngle.Value = NudClamp(nudOrchardMaxAngle,
+                    (decimal)Properties.ToolSettings.Default.setTool_orchardMaxSteerAngle);
                 nudOrchardPassCount.Value = NudClamp(nudOrchardPassCount,
                     Properties.ToolSettings.Default.setTool_orchardPassCount);
                 chkOrchardOnePass.Checked = Properties.ToolSettings.Default.setTool_orchardOnePass;
@@ -181,6 +183,7 @@ namespace AgOpenGPS
 
             lblOrchardTree.Text = gStr.gsOrchTreeWidth;
             lblOrchardPassCount.Text = gStr.gsOrchPassCount;
+            lblOrchardMaxAngle.Text = gStr.gsOrchMaxSteerAngle;
         }
 
         private void ApplyOrchardPathUI()
@@ -210,6 +213,9 @@ namespace AgOpenGPS
             PackOrchardRow(side, lblOrchardMode, null, ref y);
             PackOrchardRow(multi, lblOrchardPassCount, nudOrchardPassCount, ref y, lblOrchardPassWarn);
             PackOrchardRow(between, lblOrchardTree, nudOrchardTree, ref y);
+            //the steering cap applies whenever the machine drives a derived pass, so it is on the
+            //panel for every path mode (F50 2026-08-01)
+            PackOrchardRow(true, lblOrchardMaxAngle, nudOrchardMaxAngle, ref y);
         }
 
         //F50 fix 2026-08-01: the implement side as the orchard rules see it - the SIGN of the tool
@@ -278,6 +284,7 @@ namespace AgOpenGPS
                 //setVehicle_toolOffset (F50 fix 2026-08-01). The old value stays in the profile so
                 //an install that rolls back keeps what it had.
                 Properties.ToolSettings.Default.setTool_orchardTreeWidth = (double)nudOrchardTree.Value;
+                Properties.ToolSettings.Default.setTool_orchardMaxSteerAngle = (double)nudOrchardMaxAngle.Value;
                 Properties.ToolSettings.Default.setTool_orchardPassCount = (int)nudOrchardPassCount.Value;
                 Properties.ToolSettings.Default.setTool_orchardOnePass = chkOrchardOnePass.Checked;
                 //setTool_orchardCenterFirst is NOT written any more - it left this panel, but the

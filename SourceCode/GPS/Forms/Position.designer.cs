@@ -878,6 +878,13 @@ namespace AgOpenGPS
                 isobus.SetActualSpeed(currentSpeed);
                 isobus.SetTotalDistance((int)(fd.distanceUser * 1000)); // convert from meter to mm
 
+                //F50 (2026-08-01): orchard safety, before the status byte is decided so that
+                //dropping autosteer here reaches the module in this same cycle rather than the
+                //next one. The gate may freeze guidanceLineSteerAngle or switch autosteer off;
+                //the clamp keeps the commanded angle small while driving between the trees.
+                OrchardFixGate();
+                OrchardClampSteerAngle();
+
                 if (!isBtnAutoSteerOn) //32020 means auto steer is off
                 {
                     guidanceLineDistanceOff = 32020;

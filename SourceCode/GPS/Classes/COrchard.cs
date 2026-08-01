@@ -893,6 +893,124 @@ namespace AgOpenGPS
             return tracks;
         }
 
+        // ── Steer limit zone (2026-08-01) ─────────────────────────────────
+        // Between the trees the machine must never answer a GPS wobble with a big steering angle,
+        // but at the row ends it needs full authority to line itself up and to turn. So the field
+        // gets a zone: inside it the commanded angle is capped, outside it is not.
+        //
+        // The zone is bounded by two lines, one at each end of the orchard. Each row contributes
+        // ONE point per end - walk LimitMarginMeters along that row from its end - and the points
+        // are ordered across the field and filtered, exactly like a row is. So the boundary follows
+        // the shape of the orchard end instead of straightening it, and rows of unequal length are
+        // not a special case: each brings its own point.
+        //
+        // Derived like everything else here: rebuilt whenever the rows change, never saved, not
+        // editable. What the planner draws IS what the limit uses, because it is one object.
+        public const double LimitMarginMeters = 10.0;
+
+        /// <summary>
+        /// The two zone boundaries, entry first. null when there is nothing sensible to bound -
+        /// fewer than two rows, or rows too short to give the zone any length at all.
+        /// </summary>
+        public static List<List<vec2>> BuildLimitBounds(List<OrchRow> rows)
+        {
+            if (rows == null || rows.Count < 2) return null;
+
+            //one common direction, so "the near end" means the same end on every row
+            vec2 main = MainDirection(rows);
+
+            var startPts = new List<vec2>();
+            var endPts = new List<vec2>();
+
+            foreach (var r in rows)
+            {
+                if (r.curve.Count < 2) continue;
+                //a row that cannot hold the margin at both ends would put the two boundaries the
+                //wrong way round - it simply does not take part in the zone
+                if (CurveLength(r.curve) < 2.0 * LimitMarginMeters) continue;
+
+                bool aligned = r.Dir().easting * main.easting + r.Dir().northing * main.northing >= 0;
+
+                vec2 a = WalkFromEnd(r.curve, LimitMarginMeters, fromStart: aligned);
+                vec2 b = WalkFromEnd(r.curve, LimitMarginMeters, fromStart: !aligned);
+                startPts.Add(a);
+                endPts.Add(b);
+            }
+
+            if (startPts.Count < 2) return null;
+
+            //ordered across the field and filtered, the same treatment a row gets
+            var s = FilterRowPoints(OrderEndToEnd(startPts), 0.5, 3);
+            var e = FilterRowPoints(OrderEndToEnd(endPts), 0.5, 3);
+            if (s.Count < 2 || e.Count < 2) return null;
+
+            return new List<List<vec2>> { s, e };
+        }
+
+        /// <summary>Orchard main direction: the row directions summed, each aligned to the first.</summary>
+        public static vec2 MainDirection(List<OrchRow> rows)
+        {
+            vec2 refDir = rows[0].Dir();
+            double sx = 0, sy = 0;
+            foreach (var r in rows)
+            {
+                vec2 d = r.Dir();
+                if (d.easting * refDir.easting + d.northing * refDir.northing < 0) { d.easting = -d.easting; d.northing = -d.northing; }
+                sx += d.easting; sy += d.northing;
+            }
+            double len = Math.Sqrt(sx * sx + sy * sy);
+            if (len < 0.001) return new vec2(0, 1);
+            return new vec2(sx / len, sy / len);
+        }
+
+        private static double CurveLength(List<vec3> c)
+        {
+            double s = 0;
+            for (int i = 1; i < c.Count; i++)
+            {
+                double de = c[i].easting - c[i - 1].easting;
+                double dn = c[i].northing - c[i - 1].northing;
+                s += Math.Sqrt(de * de + dn * dn);
+            }
+            return s;
+        }
+
+        /// <summary>Point `meters` along the curve from one of its ends.</summary>
+        private static vec2 WalkFromEnd(List<vec3> c, double meters, bool fromStart)
+        {
+            double s = 0;
+            if (fromStart)
+            {
+                for (int i = 1; i < c.Count; i++)
+                {
+                    double de = c[i].easting - c[i - 1].easting;
+                    double dn = c[i].northing - c[i - 1].northing;
+                    double d = Math.Sqrt(de * de + dn * dn);
+                    if (s + d >= meters)
+                    {
+                        double t = d < 0.001 ? 0 : (meters - s) / d;
+                        return new vec2(c[i - 1].easting + de * t, c[i - 1].northing + dn * t);
+                    }
+                    s += d;
+                }
+                return new vec2(c[c.Count - 1].easting, c[c.Count - 1].northing);
+            }
+
+            for (int i = c.Count - 2; i >= 0; i--)
+            {
+                double de = c[i].easting - c[i + 1].easting;
+                double dn = c[i].northing - c[i + 1].northing;
+                double d = Math.Sqrt(de * de + dn * dn);
+                if (s + d >= meters)
+                {
+                    double t = d < 0.001 ? 0 : (meters - s) / d;
+                    return new vec2(c[i + 1].easting + de * t, c[i + 1].northing + dn * t);
+                }
+                s += d;
+            }
+            return new vec2(c[0].easting, c[0].northing);
+        }
+
         // Sort rows across the field: project each row centroid onto the axis perpendicular to the
         // orchard's main direction. Consecutive rows in this order are neighbours.
         public static List<OrchRow> SortRowsTransverse(List<OrchRow> rows)

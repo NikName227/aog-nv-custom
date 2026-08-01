@@ -64,7 +64,16 @@ namespace AgOpenGPS.Properties
         // a one-sided margin). Half of it is the clearance the tool edge keeps from the row.
         public double setTool_orchardTreeWidth = 1.0;   // m, the whole unworked band
         public bool setTool_orchardOnePass = false;    // force 1 center pass per inter-row (spraying)
+        // Orders the pass BUILD (numbering, and the sequence handed to the field plan). Off the
+        // settings panel since 2026-08-01 - the driver picks a pass by steering onto it, so on
+        // screen it did nothing; the sequencing gets designed in the turn plan.
         public bool setTool_orchardCenterFirst = true; // odd passes: center first, then outward
+
+        // Largest steering angle allowed while the machine is between the trees (deg, 0 = no cap).
+        // A lost or wobbling fix must not turn into a big wheel angle in a row only as wide as the
+        // gap between two trunks. Lifted for the last 10 m at each row end, where the machine
+        // lines itself up and turns - see COrchard.BuildLimitBounds.
+        public double setTool_orchardMaxSteerAngle = 8.0;
 
         // Planter geometry (F50 planting): where the seedling actually lands, relative
         // to the tractor. Guidance still steers the pivot - only the "next tree" HUD and

@@ -283,6 +283,18 @@ namespace AgOpenGPS
         public string orchardWarn = "";
 
         /// <summary>
+        /// NV custom F50 (2026-08-01) - RTK gate state. In an orchard a lost fix is not a
+        /// nuisance but a hazard: the position jumps, guidance answers with a hard correction and
+        /// the machine swerves into a tree. While the fix is gone the steer angle is FROZEN at
+        /// what it was the moment before, for OrchardFixFreezeMs, and if the fix has not come back
+        /// by then autosteer is dropped. MinValue = the fix is good and nothing is frozen.
+        /// </summary>
+        public DateTime orchardFixLostUtc = DateTime.MinValue;
+
+        /// <summary>NV custom F50 - the steer angle held while the fix is gone (0.01 deg)</summary>
+        public short orchardFrozenSteerAngle;
+
+        /// <summary>
         /// Building a headland instance
         /// </summary>
         public CHeadLine hdl;

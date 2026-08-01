@@ -1649,6 +1649,15 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
 <data name="gsOrchTreeWidth" xml:space="preserve">
     <value>Sigurna širina stabla (m)</value>
   </data>
+  <data name="gsOrchMaxSteerAngle" xml:space="preserve">
+    <value>Najveći kut skretanja u redu (°, 0 = isklj.)</value>
+  </data>
+  <data name="gsOrchNoFixSteerOff" xml:space="preserve">
+    <value>Autosteer ISKLJUČEN - nema RTK fixa</value>
+  </data>
+  <data name="gsOrchNoFixNoSteer" xml:space="preserve">
+    <value>U voćnjaku autosteer radi samo uz RTK fix</value>
+  </data>
 <data name="gsOrchCenterFirst" xml:space="preserve">
     <value>Prvo srednji prolaz (neparan broj prolaza)</value>
   </data>

@@ -113,6 +113,8 @@ namespace AgOpenGPS
             this.cboOrchardMode = new System.Windows.Forms.ComboBox();
             this.lblOrchardTree = new System.Windows.Forms.Label();
             this.nudOrchardTree = new AgOpenGPS.NudlessNumericUpDown();
+            this.lblOrchardMaxAngle = new System.Windows.Forms.Label();
+            this.nudOrchardMaxAngle = new AgOpenGPS.NudlessNumericUpDown();
             this.chkOrchardOnePass = new System.Windows.Forms.CheckBox();
             this.chkOrchardCenterFirst = new System.Windows.Forms.CheckBox();
             this.tabTHitch = new System.Windows.Forms.TabPage();
@@ -1905,6 +1907,18 @@ namespace AgOpenGPS
             this.chkOrchardCenterFirst.Location = new System.Drawing.Point(20, 264);
             this.chkOrchardCenterFirst.Size = new System.Drawing.Size(440, 30);
             this.chkOrchardCenterFirst.Text = "Center pass first (odd pass count)";
+            //F50 (2026-08-01): steering cap between the trees, lifted at the row ends
+            this.lblOrchardMaxAngle.Font = new System.Drawing.Font("Tahoma", 12F);
+            this.lblOrchardMaxAngle.Location = new System.Drawing.Point(20, 174);
+            this.lblOrchardMaxAngle.Size = new System.Drawing.Size(300, 26);
+            this.lblOrchardMaxAngle.Text = "Max steer angle in row (deg)";
+            this.nudOrchardMaxAngle.DecimalPlaces = 1;
+            this.nudOrchardMaxAngle.Font = new System.Drawing.Font("Tahoma", 12F);
+            this.nudOrchardMaxAngle.Increment = new decimal(new int[] { 5, 0, 0, 65536 });
+            this.nudOrchardMaxAngle.Location = new System.Drawing.Point(340, 170);
+            this.nudOrchardMaxAngle.Maximum = new decimal(new int[] { 40, 0, 0, 0 });
+            this.nudOrchardMaxAngle.Size = new System.Drawing.Size(120, 30);
+            this.nudOrchardMaxAngle.Click += new System.EventHandler(this.nudOrchard_Click);
             //planter geometry (F50 planting): the seedling drop point, used by the
             //"next tree" HUD and the planted marking - guidance still steers the pivot
             this.pnlOrchardSet.Controls.Add(this.lblOrchardPath);
@@ -1918,6 +1932,8 @@ namespace AgOpenGPS
             this.pnlOrchardSet.Controls.Add(this.nudOrchardTree);
             this.pnlOrchardSet.Controls.Add(this.chkOrchardOnePass);
             this.pnlOrchardSet.Controls.Add(this.chkOrchardCenterFirst);
+            this.pnlOrchardSet.Controls.Add(this.lblOrchardMaxAngle);
+            this.pnlOrchardSet.Controls.Add(this.nudOrchardMaxAngle);
             //
             // tabTHitch
             //
@@ -8943,6 +8959,8 @@ namespace AgOpenGPS
         private System.Windows.Forms.ComboBox cboOrchardMode;
         private System.Windows.Forms.Label lblOrchardTree;
         private AgOpenGPS.NudlessNumericUpDown nudOrchardTree;
+        private System.Windows.Forms.Label lblOrchardMaxAngle;
+        private AgOpenGPS.NudlessNumericUpDown nudOrchardMaxAngle;
         private System.Windows.Forms.CheckBox chkOrchardOnePass;
         private System.Windows.Forms.CheckBox chkOrchardCenterFirst;
         //F50 planting: planter geometry (seedling drop point)
