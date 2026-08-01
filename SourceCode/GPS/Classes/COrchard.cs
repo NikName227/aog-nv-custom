@@ -893,188 +893,127 @@ namespace AgOpenGPS
             return tracks;
         }
 
-        // ── Steer limit zone (2026-08-01, third shape after SIM markup) ───
+        // ── Steer limit polygon (2026-08-01) ──────────────────────────────
         // Between the trees the machine must never answer a GPS wobble with a big steering angle,
-        // but where it turns it needs full authority. So the field gets a zone: inside it the
-        // commanded angle is capped, outside it is not.
+        // but where it turns it needs full authority. Inside this polygon the commanded angle is
+        // capped; outside it, it is not.
         //
-        // Two earlier shapes were wrong in instructive ways. A line threaded through one point per
-        // row wandered, because rows are not equally long. Moving the whole boundary inward fixed
-        // that but excluded the OUTERMOST rows from the zone - and those are rows with trees like
-        // any other, so they lost the protection they most needed.
+        // Three attempts at deriving that outline from the rows all failed, each in its own way,
+        // and all for the same reason: the shape depends on how the block is actually worked, and
+        // no amount of geometry knows that. A line threaded through per-row points wandered once it
+        // was smoothed. Moving the field boundary inward all round dropped the outermost rows out.
+        // Cutting the boundary square across the rows collapsed to nothing the moment one short row
+        // appeared - silently, taking the cap with it.
         //
-        // The machine turns at the row ENDS, not along the field's long sides. So the zone is the
-        // field boundary cut by two lines square across the rows: along the rows it follows the
-        // fence exactly, and at the ends it stops short of the last tree by LimitMarginMeters. The
-        // cuts run the full width, to the boundary on both sides.
-        //
-        // Derived like everything else here: rebuilt with the rows, never saved, not editable.
-        // What the planner draws IS what the limit tests, because it is one object.
-        public const double LimitMarginMeters = 10.0;
+        // So this one is DRAWN BY THE DRIVER. It starts as a rectangle with the whole field inside
+        // it, which means the cap is in force everywhere until someone decides otherwise, and the
+        // planner lets the points be dragged, added and deleted. Being the driver's own data it is
+        // saved beside the field and nothing regenerates it behind their back. To switch the cap
+        // off entirely the angle parameter goes to 0 - the polygon is not the off switch.
+        public const string LimitFile = "SteerLimit.txt";
 
-        /// <summary>The fence is reduced to about this many corners before it is cut.</summary>
-        private const int LimitZoneMaxPoints = 6;
+        /// <summary>A polygon needs four corners before it is worth calling one.</summary>
+        public const int LimitMinPoints = 4;
 
         /// <summary>
-        /// The steer-limit zone. null when it cannot be built - no boundary, no rows, or rows so
-        /// short that the two margins meet and leave nothing between them.
+        /// The starting polygon: an upright rectangle with the whole field comfortably inside it,
+        /// so the cap covers everything until the driver pulls the corners in. Falls back to the
+        /// rows when there is no boundary yet. null when there is nothing to measure at all.
         /// </summary>
-        /// <param name="fence">outer boundary ring</param>
-        public static List<vec2> BuildLimitZone(List<vec3> fence, List<OrchRow> rows)
+        public static List<vec2> DefaultLimitPoly(List<vec3> fence, List<OrchRow> rows)
         {
-            if (fence == null || fence.Count < 4 || rows == null || rows.Count < 2) return null;
+            double minE = double.MaxValue, maxE = double.MinValue;
+            double minN = double.MaxValue, maxN = double.MinValue;
+            bool any = false;
 
-            vec2 dir = MainDirection(rows);
-
-            //Where the planting starts and stops ALONG the rows. Taken conservatively: the zone
-            //begins after the last row to start and ends before the first row to finish, so on a
-            //short row the cap is already off while the machine is in the headland rather than
-            //still on while it turns. Every row counts here - unlike a measurement to the fence,
-            //an outer row's closeness to it means nothing along this axis.
-            double sStart = double.MinValue, sEnd = double.MaxValue;
-            int used = 0;
-            foreach (OrchRow r in rows)
-            {
-                if (r.curve.Count < 2) continue;
-
-                double lo = double.MaxValue, hi = double.MinValue;
-                if (r.trees.Count > 0)
+            if (fence != null)
+                foreach (vec3 p in fence)
                 {
-                    foreach (vec2 t in r.trees)
+                    if (p.easting < minE) minE = p.easting;
+                    if (p.easting > maxE) maxE = p.easting;
+                    if (p.northing < minN) minN = p.northing;
+                    if (p.northing > maxN) maxN = p.northing;
+                    any = true;
+                }
+
+            if (!any && rows != null)
+                foreach (OrchRow r in rows)
+                    foreach (vec3 p in r.curve)
                     {
-                        double s = t.easting * dir.easting + t.northing * dir.northing;
-                        if (s < lo) lo = s;
-                        if (s > hi) hi = s;
+                        if (p.easting < minE) minE = p.easting;
+                        if (p.easting > maxE) maxE = p.easting;
+                        if (p.northing < minN) minN = p.northing;
+                        if (p.northing > maxN) maxN = p.northing;
+                        any = true;
                     }
-                }
-                else
-                {
-                    foreach (vec3 c in r.curve)
-                    {
-                        double s = c.easting * dir.easting + c.northing * dir.northing;
-                        if (s < lo) lo = s;
-                        if (s > hi) hi = s;
-                    }
-                }
 
-                if (lo > sStart) sStart = lo;
-                if (hi < sEnd) sEnd = hi;
-                used++;
-            }
-            if (used < 2) return null;
+            if (!any) return null;
 
-            double near = sStart + LimitMarginMeters;
-            double far = sEnd - LimitMarginMeters;
-            if (far <= near) return null;      // rows too short to hold both margins
+            //a little air around it, so the corners are grabbable outside the field drawing
+            const double pad = 5.0;
+            minE -= pad; maxE += pad; minN -= pad; maxN += pad;
 
-            //cut the simplified fence with the two half planes
-            var poly = SimplifyClosed(RingToVec2(fence), LimitZoneMaxPoints);
-            poly = ClipHalfPlane(poly, dir.easting, dir.northing, near);
-            if (poly.Count < 3) return null;
-            poly = ClipHalfPlane(poly, -dir.easting, -dir.northing, -far);
-            return poly.Count < 3 ? null : poly;
+            return new List<vec2>
+            {
+                new vec2(minE, minN),
+                new vec2(maxE, minN),
+                new vec2(maxE, maxN),
+                new vec2(minE, maxN),
+            };
         }
 
-        private static List<vec2> RingToVec2(List<vec3> ring)
+        public static void SaveLimitPoly(string fieldDir, List<vec2> poly)
         {
-            var r = new List<vec2>(ring.Count);
-            foreach (vec3 p in ring) r.Add(new vec2(p.easting, p.northing));
-            return r;
-        }
+            if (string.IsNullOrEmpty(fieldDir)) return;
+            string path = Path.Combine(fieldDir, LimitFile);
 
-        /// <summary>
-        /// Sutherland-Hodgman against one half plane: keep everything with n.p >= d, cutting the
-        /// edges that cross it. The clip region is convex, so this is exact for a convex field; a
-        /// deeply concave one can be left joined by a hairline, which is harmless here - the zone
-        /// is only ever asked "is this point inside".
-        /// </summary>
-        private static List<vec2> ClipHalfPlane(List<vec2> poly, double nx, double ny, double d)
-        {
-            var res = new List<vec2>();
-            for (int i = 0; i < poly.Count; i++)
+            try
             {
-                vec2 a = poly[i];
-                vec2 b = poly[(i + 1) % poly.Count];
-                double da = nx * a.easting + ny * a.northing - d;
-                double db = nx * b.easting + ny * b.northing - d;
-
-                if (da >= 0) res.Add(a);
-                if ((da >= 0) != (db >= 0))
+                if (poly == null || poly.Count < LimitMinPoints)
                 {
-                    double t = da / (da - db);
-                    res.Add(new vec2(a.easting + (b.easting - a.easting) * t,
-                                     a.northing + (b.northing - a.northing) * t));
+                    if (File.Exists(path)) File.Delete(path);
+                    return;
+                }
+
+                using (var w = new StreamWriter(path, false))
+                {
+                    w.WriteLine("$SteerLimit");
+                    w.WriteLine(poly.Count.ToString(CultureInfo.InvariantCulture));
+                    foreach (vec2 p in poly)
+                        w.WriteLine(p.easting.ToString("N3", CultureInfo.InvariantCulture) + ","
+                                  + p.northing.ToString("N3", CultureInfo.InvariantCulture));
                 }
             }
-            return res;
+            catch (Exception ex) { Log.EventWriter("Orchard SaveLimitPoly: " + ex); }
         }
 
-        /// <summary>Orchard main direction: the row directions summed, each aligned to the first.</summary>
-        public static vec2 MainDirection(List<OrchRow> rows)
+        /// <summary>The saved polygon, or null when the field has none yet.</summary>
+        public static List<vec2> LoadLimitPoly(string fieldDir)
         {
-            vec2 refDir = rows[0].Dir();
-            double sx = 0, sy = 0;
-            foreach (OrchRow r in rows)
-            {
-                vec2 d = r.Dir();
-                if (d.easting * refDir.easting + d.northing * refDir.northing < 0) { d.easting = -d.easting; d.northing = -d.northing; }
-                sx += d.easting; sy += d.northing;
-            }
-            double len = Math.Sqrt(sx * sx + sy * sy);
-            if (len < 0.001) return new vec2(0, 1);
-            return new vec2(sx / len, sy / len);
-        }
+            if (string.IsNullOrEmpty(fieldDir)) return null;
+            string path = Path.Combine(fieldDir, LimitFile);
+            if (!File.Exists(path)) return null;
 
-        /// <summary>
-        /// Keep the corners, drop the rest: repeatedly remove the point whose absence changes the
-        /// ring least, until only `want` are left. A field boundary is a few straight runs, so what
-        /// survives is exactly those corners.
-        /// </summary>
-        private static List<vec2> SimplifyClosed(List<vec2> ring, int want)
-        {
-            if (want < 3) want = 3;
-
-            //a recorded fence has points every metre or two; near-coincident ones would survive as
-            //separate "corners" and eat the budget, so they go first
-            var pts = new List<vec2>();
-            foreach (vec2 p in ring)
+            try
             {
-                if (pts.Count > 0)
+                string[] L = File.ReadAllLines(path);
+                int i = 0;
+                if (i < L.Length && L[i].StartsWith("$SteerLimit")) i++;
+                if (i >= L.Length) return null;
+                if (!int.TryParse(L[i++], NumberStyles.Integer, CultureInfo.InvariantCulture, out int n)) return null;
+
+                var poly = new List<vec2>(n);
+                for (int k = 0; k < n && i < L.Length; k++, i++)
                 {
-                    double de = p.easting - pts[pts.Count - 1].easting;
-                    double dn = p.northing - pts[pts.Count - 1].northing;
-                    if (de * de + dn * dn < 0.25) continue;
+                    string[] w = L[i].Split(',');
+                    if (w.Length < 2) continue;
+                    if (double.TryParse(w[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double e)
+                        && double.TryParse(w[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double nn))
+                        poly.Add(new vec2(e, nn));
                 }
-                pts.Add(p);
+                return poly.Count >= LimitMinPoints ? poly : null;
             }
-            while (pts.Count > 3)
-            {
-                double de = pts[0].easting - pts[pts.Count - 1].easting;
-                double dn = pts[0].northing - pts[pts.Count - 1].northing;
-                if (de * de + dn * dn >= 0.25) break;
-                pts.RemoveAt(pts.Count - 1);
-            }
-
-            while (pts.Count > want)
-            {
-                int drop = -1;
-                double least = double.MaxValue;
-                for (int i = 0; i < pts.Count; i++)
-                {
-                    vec2 a = pts[(i - 1 + pts.Count) % pts.Count];
-                    vec2 b = pts[i];
-                    vec2 c = pts[(i + 1) % pts.Count];
-
-                    //twice the triangle area = how far b stands off the line a-c
-                    double area = Math.Abs((b.easting - a.easting) * (c.northing - a.northing)
-                                         - (c.easting - a.easting) * (b.northing - a.northing));
-                    if (area < least) { least = area; drop = i; }
-                }
-                if (drop < 0) break;
-                pts.RemoveAt(drop);
-            }
-
-            return pts;
+            catch (Exception ex) { Log.EventWriter("Orchard LoadLimitPoly: " + ex); return null; }
         }
 
         // Sort rows across the field: project each row centroid onto the axis perpendicular to the

@@ -1655,6 +1655,18 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsOrchMaxSteerAngleOff" xml:space="preserve">
     <value>0 = isključeno</value>
   </data>
+  <data name="gsOrchSteerLimitBtn" xml:space="preserve">
+    <value>Limit&#13;&#10;skretanja</value>
+  </data>
+  <data name="gsOrchSteerLimit" xml:space="preserve">
+    <value>Limit skretanja</value>
+  </data>
+  <data name="gsOrchLimitMinPoints" xml:space="preserve">
+    <value>Limit skretanja treba najmanje 4 točke</value>
+  </data>
+  <data name="gsOrchLimitNoField" xml:space="preserve">
+    <value>Nema granice polja ni redova za postavljanje limita</value>
+  </data>
   <data name="gsOrchNoFixSteerOff" xml:space="preserve">
     <value>Autosteer ISKLJUČEN - nema RTK fixa</value>
   </data>

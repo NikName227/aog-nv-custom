@@ -5226,6 +5226,30 @@ public static string gsOrchMaxSteerAngleOff {
             }
         }
 
+public static string gsOrchSteerLimitBtn {
+            get {
+                return ResourceManager.GetString("gsOrchSteerLimitBtn", resourceCulture);
+            }
+        }
+
+public static string gsOrchSteerLimit {
+            get {
+                return ResourceManager.GetString("gsOrchSteerLimit", resourceCulture);
+            }
+        }
+
+public static string gsOrchLimitMinPoints {
+            get {
+                return ResourceManager.GetString("gsOrchLimitMinPoints", resourceCulture);
+            }
+        }
+
+public static string gsOrchLimitNoField {
+            get {
+                return ResourceManager.GetString("gsOrchLimitNoField", resourceCulture);
+            }
+        }
+
 public static string gsOrchNoFixSteerOff {
             get {
                 return ResourceManager.GetString("gsOrchNoFixSteerOff", resourceCulture);

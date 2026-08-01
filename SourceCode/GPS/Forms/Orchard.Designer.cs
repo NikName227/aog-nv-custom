@@ -2,6 +2,7 @@
 using AgOpenGPS.Core.Translations;
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace AgOpenGPS
 {
@@ -129,14 +130,18 @@ namespace AgOpenGPS
         }
 
         /// <summary>
-        /// NV custom F50 (2026-08-01): the steer-limit zone - the field boundary cut square across
-        /// the rows, 10 m short of the last tree at each end. Along the rows it follows the fence,
-        /// so the outermost rows are inside it too; the cuts run the full width because that is
-        /// where the machine turns. Inside it the steer angle is capped. Derived on every rebuild,
-        /// never saved, not editable, so the dotted loop the planner draws and the zone the limit
-        /// tests are one object. null = no zone, which means no cap.
+        /// NV custom F50 (2026-08-01): the steer-limit polygon. Inside it the commanded steer angle
+        /// is capped; outside it - the headland, wherever the driver decided that is - it is not.
+        /// Unlike everything else in orchard mode this is NOT derived: three attempts at deriving
+        /// it from the rows each broke on a different real field, because the shape depends on how
+        /// the block is worked and geometry cannot know that. The driver draws it in the planner
+        /// and it is saved beside the field. It starts as a rectangle around the whole field, so
+        /// the cap is in force everywhere until someone narrows it.
         /// </summary>
-        public List<vec2> orchardLimitZone;
+        public List<vec2> orchardLimitPoly;
+
+        /// <summary>Planner has the polygon open for editing - the runtime leaves it alone.</summary>
+        public bool isOrchardLimitEditing;
 
         //clamp episode, summarised into one log line per pass instead of one per tick - the
         //event log is trimmed to 100 lines at startup and a chatty check would eat all of it
@@ -147,13 +152,55 @@ namespace AgOpenGPS
         private double orchardClampSeconds;
 
         /// <summary>
-        /// Is the machine inside the steer-limit zone? One point-in-polygon against the inset
-        /// boundary loop - the same call the rest of AOG uses for "am I in the field".
+        /// Is the machine inside the steer-limit polygon? The same point-in-polygon call the rest
+        /// of AOG uses for "am I in the field".
         /// </summary>
+        /// <summary>Debug HUD: the cap is in force right now (mode on, inside the polygon).</summary>
+        public bool OrchardLimitArmed
+            => OrchardModeOn && orchardInLimitLatch
+               && Properties.ToolSettings.Default.setTool_orchardMaxSteerAngle >= 0.5;
+
+        private bool orchardInLimitLatch;
+
         private bool OrchardInLimitZoneNow()
         {
-            var z = orchardLimitZone;
-            return z != null && z.Count >= 3 && z.IsPointInPolygon(pivotAxlePos);
+            var z = orchardLimitPoly;
+            orchardInLimitLatch = z != null && z.Count >= COrchard.LimitMinPoints
+                                  && z.IsPointInPolygon(pivotAxlePos);
+            return orchardInLimitLatch;
+        }
+
+        /// <summary>
+        /// Load the steer-limit polygon with the field, making the default one - the whole field
+        /// inside it - when the field has none yet. Not regenerated afterwards: once it exists it
+        /// is the driver's, and rebuilding rows must never quietly move it.
+        /// </summary>
+        public void OrchardLoadLimitPoly(string fieldDir)
+        {
+            orchardLimitPoly = null;
+            isOrchardLimitEditing = false;
+            if (!CFeatureLock.IsOn(CFeatureLock.FeatureOrchard)) return;
+
+            try
+            {
+                orchardLimitPoly = COrchard.LoadLimitPoly(fieldDir);
+                if (orchardLimitPoly != null) return;
+
+                orchardLimitPoly = COrchard.DefaultLimitPoly(
+                    bnd?.bndList?.Count > 0 ? bnd.bndList[0].fenceLine : null, orchRows);
+
+                if (orchardLimitPoly != null)
+                    Log.EventWriter("Orchard: steer limit polygon defaulted to the whole field");
+            }
+            catch (Exception ex) { Log.EventWriter("Orchard LoadLimitPoly: " + ex); }
+        }
+
+        public void OrchardSaveLimitPoly()
+        {
+            if (!isJobStarted) return;
+            COrchard.SaveLimitPoly(currentFieldDirectory.Length > 0
+                ? Path.Combine(RegistrySettings.fieldsDirectory, currentFieldDirectory) : "",
+                orchardLimitPoly);
         }
 
         /// <summary>
@@ -470,14 +517,9 @@ namespace AgOpenGPS
             int pathMode = COrchard.ResolvePathMode();
             double toolW = tool.width > 0.1 ? tool.width : 3.0;
 
-            //F50 (2026-08-01): the steer-limit zone is derived here with everything else, so it can
-            //never drift out of step with what the planner draws. No boundary = no zone = no cap.
-            try
-            {
-                orchardLimitZone = COrchard.BuildLimitZone(
-                    bnd?.bndList?.Count > 0 ? bnd.bndList[0].fenceLine : null, orchRows);
-            }
-            catch (Exception ex) { orchardLimitZone = null; Log.EventWriter("Orchard limit zone: " + ex); }
+            //F50 (2026-08-01): the steer-limit polygon is deliberately NOT rebuilt here. It is the
+            //driver's own drawing, loaded with the field once - regenerating it on a row change
+            //would move a safety boundary behind their back.
 
             List<CTrk> made = new List<CTrk>();
             if (orchRows.Count > 0)

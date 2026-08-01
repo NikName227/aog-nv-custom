@@ -159,6 +159,11 @@ namespace AgOpenGPS
             // and last row) can only be placed once the field edge is known.
             OrchardLoadRows(dir);
 
+            // --- Steer limit polygon (F50): the driver's own outline of where the steering cap
+            // applies. After the rows and the boundary, because a field that has none yet gets a
+            // default rectangle sized from them.
+            OrchardLoadLimitPoly(dir);
+
             // --- Turn limit lines + pass plan (NV custom, needs boundaries loaded
             // first). F06 feature lock: without the turnapp unlock the files are
             // left untouched on disk and the feature stays fully off (stock youturn).

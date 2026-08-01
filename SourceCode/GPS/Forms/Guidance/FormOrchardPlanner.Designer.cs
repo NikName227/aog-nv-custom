@@ -1,4 +1,4 @@
-namespace AgOpenGPS
+﻿namespace AgOpenGPS
 {
     partial class FormOrchardPlanner
     {
@@ -39,6 +39,7 @@ namespace AgOpenGPS
             this.btnPoint = new System.Windows.Forms.Button();
             this.lblPointMode = new System.Windows.Forms.Label();
             this.btnAddPoint = new System.Windows.Forms.CheckBox();
+            this.btnLimitEdit = new System.Windows.Forms.CheckBox();
             this.btnDeletePoint = new System.Windows.Forms.CheckBox();
             this.btnImportKml = new System.Windows.Forms.Button();
             this.btnMakePath = new System.Windows.Forms.Button();
@@ -378,6 +379,26 @@ namespace AgOpenGPS
             this.lblPointMode.Size = new System.Drawing.Size(200, 24);
             this.lblPointMode.TabIndex = 15;
             this.lblPointMode.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            //
+            // btnLimitEdit
+            //
+            //F50 (2026-08-01): opens the steer-limit polygon for editing. Sits directly above
+            //"Add point" and is deliberately narrower and smaller - it is set once per field,
+            //not a tool reached for on every pass.
+            this.btnLimitEdit.Appearance = System.Windows.Forms.Appearance.Button;
+            this.btnLimitEdit.AutoCheck = false;
+            this.btnLimitEdit.BackColor = System.Drawing.Color.AliceBlue;
+            this.btnLimitEdit.FlatAppearance.CheckedBackColor = System.Drawing.Color.Gold;
+            this.btnLimitEdit.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnLimitEdit.Font = new System.Drawing.Font("Tahoma", 8.25F, System.Drawing.FontStyle.Bold);
+            this.btnLimitEdit.Location = new System.Drawing.Point(684, 282);
+            this.btnLimitEdit.Name = "btnLimitEdit";
+            this.btnLimitEdit.Size = new System.Drawing.Size(110, 32);
+            this.btnLimitEdit.TabStop = false;
+            this.btnLimitEdit.Text = "Steer\r\nlimit";
+            this.btnLimitEdit.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.btnLimitEdit.UseVisualStyleBackColor = false;
+            this.btnLimitEdit.Click += new System.EventHandler(this.btnLimitEdit_Click);
             //
             // btnAddPoint
             //
@@ -763,6 +784,7 @@ namespace AgOpenGPS
             this.Controls.Add(this.btnNavRight);
             this.Controls.Add(this.btnNavDown);
             this.Controls.Add(this.lblPointMode);
+            this.Controls.Add(this.btnLimitEdit);
             this.Controls.Add(this.btnAddPoint);
             this.Controls.Add(this.btnDeletePoint);
             this.Controls.Add(this.btnImportKml);
@@ -994,6 +1016,7 @@ namespace AgOpenGPS
         private System.Windows.Forms.Button btnPoint;
         private System.Windows.Forms.Label lblPointMode;
         private System.Windows.Forms.CheckBox btnAddPoint;
+        private System.Windows.Forms.CheckBox btnLimitEdit;
         private System.Windows.Forms.CheckBox btnDeletePoint;
         private System.Windows.Forms.Button btnImportKml;
         private System.Windows.Forms.Button btnMakePath;

@@ -520,6 +520,7 @@ namespace AgOpenGPS
 
                     //F50 (SIM 0729 t8): the machine does not fit into the inter-row
                     if (orchardWarn.Length > 0) DrawOrchardWarn();
+                    if (OrchardDebugHud && tool.isToolOrchard) DrawOrchardLimitLamp();
 
                     if (bnd.bndList.Count > 0 && yt.isYouTurnBtnOn) DrawUTurnBtn();
 
@@ -2241,6 +2242,37 @@ namespace AgOpenGPS
             //left edge; y is below the cross-track readout that lives in the top-left corner
             GL.Color4(1.0f, 0.15f, 0.15f, 0.95f);
             font.DrawText(-oglMain.Width / 2 + 30, 110, orchardWarn, 1.1);
+        }
+
+        // ─── TEMPORARY, DEBUG ONLY (2026-08-01) ──────────────────────────────────────────
+        // Signal light for the steer cap, so the state can be read off the screen while testing:
+        //   grey  - not capping (orchard off, autosteer off, or outside the limit polygon)
+        //   green - inside the polygon, cap armed, guidance is asking for less than the limit
+        //   red   - the cap is actually cutting, with the angle guidance wanted beside it
+        // Agreed as a debug aid to be removed once the behaviour is confirmed in the field:
+        // delete this method, the constant, and the call in oglMain_Paint.
+        private const bool OrchardDebugHud = true;
+
+        private void DrawOrchardLimitLamp()
+        {
+            int x = -oglMain.Width / 2 + 30;
+            int y = 140;
+
+            bool armed = isBtnAutoSteerOn && trk.IsActiveOrchardPass && OrchardLimitArmed;
+            bool cutting = armed && orchardClampSince != DateTime.MinValue;
+
+            if (cutting) GL.Color4(1.0f, 0.25f, 0.25f, 0.95f);
+            else if (armed) GL.Color4(0.25f, 0.95f, 0.35f, 0.95f);
+            else GL.Color4(0.55f, 0.55f, 0.55f, 0.8f);
+
+            GL.PointSize(16f);
+            GL.Begin(PrimitiveType.Points);
+            GL.Vertex3(x, y, 0);
+            GL.End();
+
+            string txt = cutting ? "LIMIT " + orchardClampPeakDeg.ToString("N1") + "\u00b0"
+                       : armed ? "limit" : "-";
+            font.DrawText(x + 18, y - 10, txt, 0.9);
         }
 
         //F50 orchard HUD (SIM 0730). Two readouts, both live whenever the orchard automatics

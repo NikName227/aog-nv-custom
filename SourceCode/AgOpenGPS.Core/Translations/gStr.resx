@@ -2022,6 +2022,18 @@ USE AT OWN RISK.</value>
   <data name="gsOrchMaxSteerAngleOff" xml:space="preserve">
     <value>0 = off</value>
   </data>
+  <data name="gsOrchSteerLimitBtn" xml:space="preserve">
+    <value>Steer&#13;&#10;limit</value>
+  </data>
+  <data name="gsOrchSteerLimit" xml:space="preserve">
+    <value>Steer limit</value>
+  </data>
+  <data name="gsOrchLimitMinPoints" xml:space="preserve">
+    <value>A steer limit needs at least 4 points</value>
+  </data>
+  <data name="gsOrchLimitNoField" xml:space="preserve">
+    <value>No field boundary or rows to size the limit from</value>
+  </data>
   <data name="gsOrchNoFixSteerOff" xml:space="preserve">
     <value>AutoSteer OFF - no RTK fix</value>
   </data>

@@ -1,4 +1,4 @@
-using AgLibrary.Logging;
+﻿using AgLibrary.Logging;
 using AgOpenGPS.Controls;
 using AgOpenGPS.Core.DrawLib;
 using AgOpenGPS.Core.Models;
@@ -112,6 +112,7 @@ namespace AgOpenGPS
             btnMeasure.Text = gStr.gsOrchMeasure;
             btnAddPoint.Text = gStr.gsOrchAddPoint;
             btnDeletePoint.Text = gStr.gsOrchDeletePoint;
+            btnLimitEdit.Text = gStr.gsOrchSteerLimitBtn;
             btnImportKml.Text = gStr.gsOrchImportKml;
             btnRecordRow.Text = gStr.gsOrchRecordRow;
             //two-word captions, broken over two lines so the three buttons stay wide enough
@@ -261,7 +262,20 @@ namespace AgOpenGPS
             btnWinClose.BringToFront();
         }
 
-        private void FormOrchardPlanner_FormClosing(object sender, FormClosingEventArgs e) => redraw.Stop();
+        private void FormOrchardPlanner_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            redraw.Stop();
+
+            //F50: closing the window while the limit is open counts as finishing it - the edits are
+            //already in mf.orchardLimitPoly, so not writing them here would lose them silently
+            if (limitEditMode)
+            {
+                limitEditMode = false;
+                mf.isOrchardLimitEditing = false;
+                mf.OrchardSaveLimitPoly();
+                Log.EventWriter("Orchard: steer limit polygon saved on planner close");
+            }
+        }
 
         // ── GL setup / render ─────────────────────────────────────────────
         private void oglSelf_Load(object sender, EventArgs e)
@@ -324,7 +338,7 @@ namespace AgOpenGPS
             DrawTrees();
             DrawRows();
             DrawMidlines();
-            DrawLimitZone();
+            DrawLimitPoly();
             DrawRefLine();
             DrawFilterPreview();
             if (mode == ViewMode.Build) DrawPoints();
@@ -365,27 +379,37 @@ namespace AgOpenGPS
             }
         }
 
-        // F50 (2026-08-01): the steer-limit zone - the field boundary cut square across the rows,
-        // 10 m short of the last tree. Inside it the commanded steer angle is capped so a GPS
-        // wobble cannot swing the machine into a trunk; past the cuts, where it turns, it has full
-        // authority again. Drawn thin and dotted because it is a marker,
-        // not a line anyone drives; it is the same object the limit tests, so what is on screen
-        // is what is in force.
-        private void DrawLimitZone()
+        // F50 (2026-08-01): the steer-limit polygon. Inside it the commanded steer angle is
+        // capped, so a GPS wobble cannot swing the machine into a trunk; outside it, where it
+        // turns, it has full authority. Drawn dotted as a marker; while it is being edited the
+        // corners show as grabbable dots and the selected one is highlighted.
+        private void DrawLimitPoly()
         {
-            var z = mf.orchardLimitZone;
+            var z = LimitPoly;
             if (z == null || z.Count < 3) return;
 
             GL.Enable(EnableCap.LineStipple);
             GL.LineStipple(2, 0x5555);
-            GL.LineWidth(1);
-            GL.Color4(1.0f, 0.85f, 0.25f, 0.8f);
+            GL.LineWidth(limitEditMode ? 3 : 1);
+            if (limitEditMode) GL.Color4(1.0f, 0.55f, 0.10f, 0.95f);
+            else GL.Color4(1.0f, 0.85f, 0.25f, 0.65f);
 
             GL.Begin(PrimitiveType.LineLoop);
             foreach (var p in z) GL.Vertex3(p.easting, p.northing, 0);
             GL.End();
-
             GL.Disable(EnableCap.LineStipple);
+
+            if (!limitEditMode) return;
+
+            GL.PointSize(10f);
+            GL.Begin(PrimitiveType.Points);
+            for (int i = 0; i < z.Count; i++)
+            {
+                if (i == selLimit) GL.Color3(1.0f, 0.2f, 0.2f);
+                else GL.Color3(1.0f, 0.75f, 0.15f);
+                GL.Vertex3(z[i].easting, z[i].northing, 0);
+            }
+            GL.End();
         }
 
         // Planting reference line (cyan): the direction the generated rows follow.
@@ -664,6 +688,14 @@ namespace AgOpenGPS
             int mh = HitTestMeasure(e.X, e.Y);
             if (mh >= 0) { measureDrag = mh; return; }
 
+            if (limitEditMode)
+            {
+                int lh = HitTestLimit(e.X, e.Y);
+                if (lh >= 0 && !btnDeletePoint.Checked) { selLimit = lh; dragIndex = -3; return; }
+                panning = true; panStartSX = sX; panStartSY = sY;
+                return;
+            }
+
             if (treeEditMode)
             {
                 int th = HitTestTree(e.X, e.Y);
@@ -692,7 +724,17 @@ namespace AgOpenGPS
                 oglSelf.Invalidate();
                 return;
             }
-            if (dragIndex == -2 && treeEditMode)
+            if (dragIndex == -3 && limitEditMode)
+            {
+                var poly = LimitPoly;
+                if (poly != null && selLimit >= 0 && selLimit < poly.Count)
+                {
+                    moved = true;
+                    poly[selLimit] = ScreenToWorld(e.X, e.Y);
+                    oglSelf.Invalidate();
+                }
+            }
+            else if (dragIndex == -2 && treeEditMode)
             {
                 int t = TargetRow();
                 if (t >= 0 && selTree >= 0 && selTree < rows[t].trees.Count)
@@ -726,6 +768,37 @@ namespace AgOpenGPS
             if (measureDrag >= 0) { measureDrag = -1; moved = false; oglSelf.Invalidate(); return; }
 
             bool wasPointDrag = dragIndex >= 0 && moved;
+
+            if (limitEditMode)
+            {
+                var poly = LimitPoly;
+                if (!moved && poly != null)
+                {
+                    int lh = HitTestLimit(e.X, e.Y);
+                    if (btnDeletePoint.Checked && lh >= 0)
+                    {
+                        //a polygon stops being one below four corners
+                        if (poly.Count > COrchard.LimitMinPoints)
+                        {
+                            poly.RemoveAt(lh);
+                            selLimit = -1;
+                        }
+                        else mf.TimedMessageBox(2000, gStr.gsOrchard, gStr.gsOrchLimitMinPoints);
+                    }
+                    else if (AddActive)
+                    {
+                        InsertLimitPoint(ScreenToWorld(e.X, e.Y));
+                        ResetAddStage();
+                    }
+                    else if (lh >= 0) selLimit = lh;
+
+                    lblActiveOp.Text = gStr.gsOrchSteerLimit + " " + poly.Count;
+                }
+
+                dragIndex = -1; panning = false; moved = false;
+                oglSelf.Invalidate();
+                return;
+            }
 
             if (!moved && treeEditMode)
             {
@@ -782,6 +855,90 @@ namespace AgOpenGPS
         // tree editing (SIM 0730): the same point tools, aimed at the trees of the active row
         private bool treeEditMode;
         private int selTree = -1;
+
+        // F50 (2026-08-01) steer-limit editing: the same point tools again, this time aimed at the
+        // limit polygon. Unlike rows and trees this outline is not derived from anything - it is
+        // the driver's statement of where the steering cap applies - so it is edited here and
+        // saved, and nothing regenerates it.
+        private bool limitEditMode;
+        private int selLimit = -1;
+
+        private List<vec2> LimitPoly => mf.orchardLimitPoly;
+
+        private int HitTestLimit(int mx, int my)
+        {
+            var poly = LimitPoly;
+            if (poly == null) return -1;
+
+            for (int i = 0; i < poly.Count; i++)
+            {
+                var sp = WorldToScreen(poly[i]);
+                if (Math.Abs(sp.X - mx) < 18 && Math.Abs(sp.Y - my) < 18) return i;
+            }
+            return -1;
+        }
+
+        //F50: the polygon is a closed ring, so a new point belongs on the segment nearest the
+        //click - appending to the end would cross the shape over itself.
+        private void InsertLimitPoint(vec2 p)
+        {
+            var poly = LimitPoly;
+            if (poly == null || poly.Count < 2) return;
+
+            int best = 0;
+            double bestD = double.MaxValue;
+            for (int i = 0; i < poly.Count; i++)
+            {
+                vec2 a = poly[i], b = poly[(i + 1) % poly.Count];
+                double dx = b.easting - a.easting, dy = b.northing - a.northing;
+                double len2 = dx * dx + dy * dy;
+                double t = len2 < 1e-9 ? 0 : ((p.easting - a.easting) * dx + (p.northing - a.northing) * dy) / len2;
+                if (t < 0) t = 0; else if (t > 1) t = 1;
+                double ex = a.easting + dx * t - p.easting, en = a.northing + dy * t - p.northing;
+                double d = ex * ex + en * en;
+                if (d < bestD) { bestD = d; best = i; }
+            }
+            poly.Insert(best + 1, p);
+        }
+
+        private void btnLimitEdit_Click(object sender, EventArgs e)
+        {
+            if (limitEditMode)
+            {
+                //second click saves and leaves
+                limitEditMode = false;
+                selLimit = -1;
+                mf.isOrchardLimitEditing = false;
+                btnLimitEdit.Checked = false;
+                btnDeletePoint.Checked = false;
+                mf.OrchardSaveLimitPoly();
+                lblActiveOp.Text = "";
+                Log.EventWriter("Orchard: steer limit polygon saved, "
+                    + (LimitPoly == null ? 0 : LimitPoly.Count) + " points");
+                oglSelf.Invalidate();
+                return;
+            }
+
+            if (LimitPoly == null)
+            {
+                mf.orchardLimitPoly = COrchard.DefaultLimitPoly(
+                    mf.bnd?.bndList?.Count > 0 ? mf.bnd.bndList[0].fenceLine : null, rows);
+                if (LimitPoly == null)
+                {
+                    mf.TimedMessageBox(2500, gStr.gsOrchard, gStr.gsOrchLimitNoField);
+                    return;
+                }
+            }
+
+            limitEditMode = true;
+            mf.isOrchardLimitEditing = true;
+            btnLimitEdit.Checked = true;
+            //the row tools would fight over the same clicks
+            treeEditMode = false;
+            ResetAddStage();
+            lblActiveOp.Text = gStr.gsOrchSteerLimit;
+            oglSelf.Invalidate();
+        }
 
         // tree marking while recording (SIM 0730)
         private bool capturingKey;
@@ -890,6 +1047,7 @@ namespace AgOpenGPS
         {
             //while recording, the point/import/filter block gives way to the tree controls
             btnAddPoint.Visible = btnDeletePoint.Visible = !rec;
+            btnLimitEdit.Visible = !rec;
             btnImportKml.Visible = !rec;
             btnFilterApply.Visible = !rec;
             lblThin.Visible = btnThinDown.Visible = btnThinUp.Visible = lblThinVal.Visible = !rec;
