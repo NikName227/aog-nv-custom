@@ -792,8 +792,9 @@ namespace AgOpenGPS
                     }
                     else if (AddActive)
                     {
+                        //stays armed, like the row tool: the driver turns it off when they are
+                        //done, rather than pressing it again for every corner
                         InsertLimitPoint(ScreenToWorld(e.X, e.Y));
-                        ResetAddStage();
                     }
                     else if (lh >= 0) selLimit = lh;
 
