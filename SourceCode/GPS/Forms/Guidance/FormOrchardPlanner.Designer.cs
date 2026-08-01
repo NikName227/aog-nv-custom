@@ -299,7 +299,7 @@
             //
             this.lblMeasure.Font = new System.Drawing.Font("Tahoma", 11F, System.Drawing.FontStyle.Bold);
             this.lblMeasure.ForeColor = System.Drawing.Color.Firebrick;
-            this.lblMeasure.Location = new System.Drawing.Point(684, 260);
+            this.lblMeasure.Location = new System.Drawing.Point(684, 252);
             this.lblMeasure.Name = "lblMeasure";
             this.lblMeasure.Size = new System.Drawing.Size(104, 22);
             this.lblMeasure.TabIndex = 9;
@@ -391,11 +391,11 @@
             this.btnLimitEdit.FlatAppearance.CheckedBackColor = System.Drawing.Color.Gold;
             this.btnLimitEdit.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnLimitEdit.Font = new System.Drawing.Font("Tahoma", 8.25F, System.Drawing.FontStyle.Bold);
-            this.btnLimitEdit.Location = new System.Drawing.Point(684, 282);
+            this.btnLimitEdit.Location = new System.Drawing.Point(684, 276);
             this.btnLimitEdit.Name = "btnLimitEdit";
-            this.btnLimitEdit.Size = new System.Drawing.Size(110, 32);
+            this.btnLimitEdit.Size = new System.Drawing.Size(96, 38);
             this.btnLimitEdit.TabStop = false;
-            this.btnLimitEdit.Text = "Steer\r\nlimit";
+            this.btnLimitEdit.Text = "Limit zone\r\nsteering";
             this.btnLimitEdit.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
             this.btnLimitEdit.UseVisualStyleBackColor = false;
             this.btnLimitEdit.Click += new System.EventHandler(this.btnLimitEdit_Click);

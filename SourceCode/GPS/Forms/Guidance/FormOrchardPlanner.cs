@@ -690,9 +690,14 @@ namespace AgOpenGPS
 
             if (limitEditMode)
             {
+                //With "add" or "delete" armed the click is a COMMAND, not a drag - starting a pan
+                //here would set `moved` on the first pixel of travel and MouseUp, which only acts
+                //on a click that did not move, would then swallow it. Same guard the row tools use.
+                bool limitCmd = AddActive || btnDeletePoint.Checked;
+
                 int lh = HitTestLimit(e.X, e.Y);
-                if (lh >= 0 && !btnDeletePoint.Checked) { selLimit = lh; dragIndex = -3; return; }
-                panning = true; panStartSX = sX; panStartSY = sY;
+                if (lh >= 0 && !limitCmd) { selLimit = lh; dragIndex = -3; return; }
+                if (!limitCmd) { panning = true; panStartSX = sX; panStartSY = sY; }
                 return;
             }
 

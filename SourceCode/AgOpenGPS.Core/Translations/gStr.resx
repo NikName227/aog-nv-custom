@@ -2023,7 +2023,7 @@ USE AT OWN RISK.</value>
     <value>0 = off</value>
   </data>
   <data name="gsOrchSteerLimitBtn" xml:space="preserve">
-    <value>Steer&#13;&#10;limit</value>
+    <value>Limit zone&#13;&#10;steering</value>
   </data>
   <data name="gsOrchSteerLimit" xml:space="preserve">
     <value>Steer limit</value>

@@ -1656,7 +1656,7 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
     <value>0 = isključeno</value>
   </data>
   <data name="gsOrchSteerLimitBtn" xml:space="preserve">
-    <value>Limit&#13;&#10;skretanja</value>
+    <value>Zona limita&#13;&#10;skretanja</value>
   </data>
   <data name="gsOrchSteerLimit" xml:space="preserve">
     <value>Limit skretanja</value>
