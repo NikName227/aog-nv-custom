@@ -53,7 +53,6 @@ namespace AgOpenGPS
                 nudOrchardPassCount.Value = NudClamp(nudOrchardPassCount,
                     Properties.ToolSettings.Default.setTool_orchardPassCount);
                 chkOrchardOnePass.Checked = Properties.ToolSettings.Default.setTool_orchardOnePass;
-                chkOrchardCenterFirst.Checked = Properties.ToolSettings.Default.setTool_orchardCenterFirst;
                 ApplyOrchardPathUI();
 
                 //SIM 0730: orchard is a MODE, not a fifth implement type - the checkbox rides on
@@ -173,9 +172,15 @@ namespace AgOpenGPS
             cboOrchardMode.Visible = false;
             lblOrchardMode.Size = new Size(560, lblOrchardMode.Size.Height);
 
+            //F50 2026-08-01: "centre pass first" is off this panel. It ordered the BUILD of the
+            //passes (their numbering, and the sequence handed to the field plan) but the driver
+            //picks the pass by steering onto it - OrchardPickNearestPass takes the nearest one and
+            //never looks at that order - so on screen it did nothing. The stored value still feeds
+            //the build; the sequencing itself gets designed in the turn plan.
+            chkOrchardCenterFirst.Visible = false;
+
             lblOrchardTree.Text = gStr.gsOrchTreeWidth;
             lblOrchardPassCount.Text = gStr.gsOrchPassCount;
-            chkOrchardCenterFirst.Text = gStr.gsOrchCenterFirst;
         }
 
         private void ApplyOrchardPathUI()
@@ -205,7 +210,6 @@ namespace AgOpenGPS
             PackOrchardRow(side, lblOrchardMode, null, ref y);
             PackOrchardRow(multi, lblOrchardPassCount, nudOrchardPassCount, ref y, lblOrchardPassWarn);
             PackOrchardRow(between, lblOrchardTree, nudOrchardTree, ref y);
-            PackOrchardRow(multi, chkOrchardCenterFirst, null, ref y);
         }
 
         //F50 fix 2026-08-01: the implement side as the orchard rules see it - the SIGN of the tool
@@ -276,7 +280,9 @@ namespace AgOpenGPS
                 Properties.ToolSettings.Default.setTool_orchardTreeWidth = (double)nudOrchardTree.Value;
                 Properties.ToolSettings.Default.setTool_orchardPassCount = (int)nudOrchardPassCount.Value;
                 Properties.ToolSettings.Default.setTool_orchardOnePass = chkOrchardOnePass.Checked;
-                Properties.ToolSettings.Default.setTool_orchardCenterFirst = chkOrchardCenterFirst.Checked;
+                //setTool_orchardCenterFirst is NOT written any more - it left this panel, but the
+                //stored value keeps ordering the pass BUILD, so it must not be overwritten by a
+                //checkbox nobody can see (F50 2026-08-01).
 
                 //SIM 0730: the orchard checkbox does NOT decide the implement type any more -
                 //the last chosen type is kept and used (a front-mounted pole or planter included)

@@ -43,7 +43,15 @@ namespace AgOpenGPS
         /// inter-rows. SIM 0730: raised from 0.5 to 1.0 m - half a metre still reacted to
         /// ordinary steering corrections inside a row.
         /// </summary>
-        private const double OrchardSwitchHysteresis = 1.0;
+        /// F50 2026-08-01: this was a flat 1 m, set when an inter-row had ONE pass and the next
+        /// line was a whole row gap away. In multi pass the neighbouring pass sits at
+        /// (gap - treeWidth - toolWidth) / (n-1) - for a 4 m gap, 1 m tree band and a 1.5 m tool
+        /// that is 0.75 m at three passes, well inside a metre, so the selection flipped between
+        /// the middle and the side pass on the smallest movement. The passes are spaced by the
+        /// TOOL, so the hysteresis is too: half a tool width holds a pass on a narrow machine and
+        /// still lets a wide one change lines without a fight.
+        private double OrchardSwitchHysteresis
+            => (tool.width > 0.1 ? tool.width : 3.0) * 0.5;
 
         /// <summary>
         /// Step the guidance line selection the way the driver sees it (SIM 0730): the whole
