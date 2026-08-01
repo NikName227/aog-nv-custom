@@ -1128,7 +1128,7 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
     <value>Mašina levo</value>
   </data>
   <data name="gsToolOffset" xml:space="preserve">
-    <value>Pomeraj mašine</value>
+    <value>Pomak priključka</value>
   </data>
   <data name="gsToolRight" xml:space="preserve">
     <value>Mašina desno</value>
@@ -1593,7 +1593,7 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
     <value>Natrag</value>
   </data>
   <data name="gsResetPath" xml:space="preserve">
-    <value>Reset patha</value>
+    <value>Reset prolaza</value>
   </data>
   <data name="gsResetPathConfirm" xml:space="preserve">
     <value>Resetirati odrađene prolaze ovog plana? Geometrija plana ostaje.</value>
@@ -1623,7 +1623,7 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
     <value>Fiksni red voćnjaka - bez pomaka</value>
   </data>
   <data name="gsOrchPathMode" xml:space="preserve">
-    <value>Način patha</value>
+    <value>Način obrade</value>
   </data>
   <data name="gsOrchPathOnePass" xml:space="preserve">
     <value>Jedan prolaz (sredina međureda)</value>
