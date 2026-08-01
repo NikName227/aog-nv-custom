@@ -5220,6 +5220,12 @@ public static string gsOrchMaxSteerAngle {
             }
         }
 
+public static string gsOrchMaxSteerAngleOff {
+            get {
+                return ResourceManager.GetString("gsOrchMaxSteerAngleOff", resourceCulture);
+            }
+        }
+
 public static string gsOrchNoFixSteerOff {
             get {
                 return ResourceManager.GetString("gsOrchNoFixSteerOff", resourceCulture);

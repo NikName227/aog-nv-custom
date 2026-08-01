@@ -168,11 +168,11 @@ namespace AgOpenGPS
                                                   gStr.gsOrchPathOnRow);
             }
 
-            //F50 fix 2026-08-01: the implement side is no longer picked here - it is read from the
-            //Tool Offset submenu. The combo is gone and its label became the read-only echo of
-            //that value, so the driver sees what the orchard rules are using and where to change it.
+            //F50 2026-08-01: the implement side is off this panel altogether. It is read from the
+            //tool offset, and the Tool Offset submenu already shows it with an icon and a value -
+            //echoing it here was the same fact stated twice (SIM markup 15:22).
             cboOrchardMode.Visible = false;
-            lblOrchardMode.Size = new Size(560, lblOrchardMode.Size.Height);
+            lblOrchardMode.Visible = false;
 
             //F50 2026-08-01: "centre pass first" is off this panel. It ordered the BUILD of the
             //passes (their numbering, and the sequence handed to the field plan) but the driver
@@ -184,6 +184,7 @@ namespace AgOpenGPS
             lblOrchardTree.Text = gStr.gsOrchTreeWidth;
             lblOrchardPassCount.Text = gStr.gsOrchPassCount;
             lblOrchardMaxAngle.Text = gStr.gsOrchMaxSteerAngle;
+            lblOrchardMaxAngleHint.Text = gStr.gsOrchMaxSteerAngleOff;
         }
 
         private void ApplyOrchardPathUI()
@@ -198,10 +199,6 @@ namespace AgOpenGPS
             //between the rows (one, two or many passes) the clearance to the tree line applies
             bool between = !onRow;
 
-            //two and multi pass care which side the implement is mounted on - shown here, set in
-            //Tool Offset. Not editable on this panel any more (F50 fix 2026-08-01).
-            bool side = multi || twoPass;
-            lblOrchardMode.Text = gStr.gsOrchImplementSide + ": " + OrchardSideText();
             //superseded by the path mode; kept only so old profiles still migrate
             chkOrchardOnePass.Visible = false;
 
@@ -210,24 +207,16 @@ namespace AgOpenGPS
             //tabTConfig_Enter BEFORE the panel is shown. Reading it there left every row on its
             //designer position, which is why "Implement side" only appeared on a second pick.
             int y = 52;
-            PackOrchardRow(side, lblOrchardMode, null, ref y);
             PackOrchardRow(multi, lblOrchardPassCount, nudOrchardPassCount, ref y, lblOrchardPassWarn);
             PackOrchardRow(between, lblOrchardTree, nudOrchardTree, ref y);
             //the steering cap applies whenever the machine drives a derived pass, so it is on the
-            //panel for every path mode (F50 2026-08-01)
+            //panel for every path mode (F50 2026-08-01). Its row is two lines high: the caption,
+            //and "0 = off" under it in smaller type, which is why y gets the extra step.
+            int capTop = y;
             PackOrchardRow(true, lblOrchardMaxAngle, nudOrchardMaxAngle, ref y);
-        }
-
-        //F50 fix 2026-08-01: the implement side as the orchard rules see it - the SIGN of the tool
-        //offset, exactly what the stock Tool Offset icons show (> 0 right, < 0 left, 0 neither).
-        //Offset 0 is not a side implement at all, so it reads "centred" and no pass is restricted.
-        private string OrchardSideText()
-        {
-            double off = mf.tool.offset;
-            if (off == 0) return gStr.gsOrchWorkCenter;
-
-            return (off > 0 ? gStr.gsOrchWorkRight : gStr.gsOrchWorkLeft)
-                + "  (" + (Math.Abs(off) * mf.m2InchOrCm).ToString("N1") + " " + mf.unitsInCm + ")";
+            lblOrchardMaxAngleHint.Visible = true;
+            lblOrchardMaxAngleHint.Location = new Point(lblOrchardMaxAngleHint.Location.X, capTop + 28);
+            y += 18;
         }
 
         private static void PackOrchardRow(bool show, Control label, Control field, ref int y,

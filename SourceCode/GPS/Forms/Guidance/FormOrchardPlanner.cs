@@ -324,7 +324,7 @@ namespace AgOpenGPS
             DrawTrees();
             DrawRows();
             DrawMidlines();
-            DrawLimitBounds();
+            DrawLimitZone();
             DrawRefLine();
             DrawFilterPreview();
             if (mode == ViewMode.Build) DrawPoints();
@@ -365,27 +365,25 @@ namespace AgOpenGPS
             }
         }
 
-        // F50 (2026-08-01): the two steer-limit boundaries. Between them the commanded steer angle
-        // is capped so a GPS wobble cannot swing the machine into a trunk; outside them - the last
-        // 10 m at each row end - the machine has full authority to line up and turn. Drawn thin and
-        // dotted because it is a marker, not a line anyone drives; it is derived from the rows and
-        // cannot be edited, so what is drawn here is exactly what the limit tests.
-        private void DrawLimitBounds()
+        // F50 (2026-08-01): the steer-limit zone - the field boundary moved inward to clear the
+        // outermost trees by 10 m. Inside it the commanded steer angle is capped so a GPS wobble
+        // cannot swing the machine into a trunk; outside it, along every field edge, the machine
+        // has full authority to line up and turn. Drawn thin and dotted because it is a marker,
+        // not a line anyone drives; it is the same object the limit tests, so what is on screen
+        // is what is in force.
+        private void DrawLimitZone()
         {
-            var b = COrchard.BuildLimitBounds(rows);
-            if (b == null) return;
+            var z = mf.orchardLimitZone;
+            if (z == null || z.Count < 3) return;
 
             GL.Enable(EnableCap.LineStipple);
             GL.LineStipple(2, 0x5555);
             GL.LineWidth(1);
             GL.Color4(1.0f, 0.85f, 0.25f, 0.8f);
 
-            foreach (var line in b)
-            {
-                GL.Begin(PrimitiveType.LineStrip);
-                foreach (var p in line) GL.Vertex3(p.easting, p.northing, 0);
-                GL.End();
-            }
+            GL.Begin(PrimitiveType.LineLoop);
+            foreach (var p in z) GL.Vertex3(p.easting, p.northing, 0);
+            GL.End();
 
             GL.Disable(EnableCap.LineStipple);
         }

@@ -1,4 +1,4 @@
-using AgLibrary.Logging;
+﻿using AgLibrary.Logging;
 using AgOpenGPS.Core.Translations;
 using System;
 using System.Collections.Generic;
@@ -129,15 +129,13 @@ namespace AgOpenGPS
         }
 
         /// <summary>
-        /// NV custom F50 (2026-08-01): the two steer-limit boundaries, entry first. Derived from
-        /// the rows on every rebuild, never saved, not editable - so the dotted pair drawn in the
-        /// planner and the zone the limit tests are the same object. null = no zone.
+        /// NV custom F50 (2026-08-01): the steer-limit zone - the field boundary moved inward far
+        /// enough to clear the outermost trees by 10 m, simplified to a handful of points. Inside
+        /// it the steer angle is capped. Derived on every rebuild, never saved, not editable, so
+        /// the dotted loop the planner draws and the zone the limit tests are one object.
+        /// null = no zone, which means no cap (no boundary, or no rows to measure from).
         /// </summary>
-        public List<List<vec2>> orchardLimitBounds;
-
-        //latched so the cap does not chatter on and off while driving along a boundary
-        private bool orchardInLimitZone;
-        private const double LimitZoneHysteresis = 0.5;
+        public List<vec2> orchardLimitZone;
 
         //clamp episode, summarised into one log line per pass instead of one per tick - the
         //event log is trimmed to 100 lines at startup and a chatty check would eat all of it
@@ -148,66 +146,20 @@ namespace AgOpenGPS
         private double orchardClampSeconds;
 
         /// <summary>
-        /// Signed distance from a point to the nearest segment of a polyline; the sign says which
-        /// side. Only the sign is compared against a reference, so its absolute meaning is free.
-        /// </summary>
-        private static double SignedSideDistance(List<vec2> line, double e, double n)
-        {
-            double bestD = double.MaxValue, best = 0;
-            for (int i = 1; i < line.Count; i++)
-            {
-                double ax = line[i - 1].easting, ay = line[i - 1].northing;
-                double dx = line[i].easting - ax, dy = line[i].northing - ay;
-                double len2 = dx * dx + dy * dy;
-                if (len2 < 1e-9) continue;
-
-                double t = ((e - ax) * dx + (n - ay) * dy) / len2;
-                if (t < 0) t = 0; else if (t > 1) t = 1;
-                double px = ax + dx * t, py = ay + dy * t;
-                double d = (e - px) * (e - px) + (n - py) * (n - py);
-                if (d >= bestD) continue;
-
-                bestD = d;
-                best = (dx * (n - ay) - dy * (e - ax)) / Math.Sqrt(len2);
-            }
-            return best;
-        }
-
-        /// <summary>
-        /// Is the vehicle between the two boundaries? Each boundary is judged against the OTHER
-        /// one's midpoint, which is inside the orchard by construction - so no separate notion of
-        /// "inward" is needed and a skewed pair still reads correctly.
+        /// Is the machine inside the steer-limit zone? One point-in-polygon against the inset
+        /// boundary loop - the same call the rest of AOG uses for "am I in the field".
         /// </summary>
         private bool OrchardInLimitZoneNow()
         {
-            var b = orchardLimitBounds;
-            if (b == null || b.Count != 2) return false;
-
-            double dA = SignedSideDistance(b[0], pivotAxlePos.easting, pivotAxlePos.northing);
-            double dB = SignedSideDistance(b[1], pivotAxlePos.easting, pivotAxlePos.northing);
-
-            vec2 mA = b[0][b[0].Count / 2];
-            vec2 mB = b[1][b[1].Count / 2];
-            double rA = SignedSideDistance(b[0], mB.easting, mB.northing);
-            double rB = SignedSideDistance(b[1], mA.easting, mA.northing);
-
-            //inside means on the same side of each boundary as the far boundary is
-            double inA = dA * Math.Sign(rA);
-            double inB = dB * Math.Sign(rB);
-
-            if (orchardInLimitZone)
-                orchardInLimitZone = inA > -LimitZoneHysteresis && inB > -LimitZoneHysteresis;
-            else
-                orchardInLimitZone = inA > LimitZoneHysteresis && inB > LimitZoneHysteresis;
-
-            return orchardInLimitZone;
+            var z = orchardLimitZone;
+            return z != null && z.Count >= 3 && z.IsPointInPolygon(pivotAxlePos);
         }
 
         /// <summary>
         /// NV custom F50 (2026-08-01): cap the commanded steer angle while the machine is between
         /// the trees. A GPS wobble there must not turn into a big wheel angle - the row is only as
-        /// wide as the gap between two trunks. Outside the zone (the last 10 m at either end, where
-        /// the machine lines itself up and turns) there is no cap at all.
+        /// wide as the gap between two trunks. Outside the zone - the headland along every field
+        /// edge, where the machine lines itself up and turns - there is no cap at all.
         ///
         /// Applied at the single point where the angle reaches the PGN, so it also covers a turn
         /// that YouTurn is steering. Setting the parameter to 0 turns the cap off.
@@ -517,11 +469,14 @@ namespace AgOpenGPS
             int pathMode = COrchard.ResolvePathMode();
             double toolW = tool.width > 0.1 ? tool.width : 3.0;
 
-            //F50 (2026-08-01): the steer-limit zone is derived from the rows like everything else
-            //here, so it can never drift out of step with what the planner draws
-            try { orchardLimitBounds = COrchard.BuildLimitBounds(orchRows); }
-            catch (Exception ex) { orchardLimitBounds = null; Log.EventWriter("Orchard limit bounds: " + ex); }
-            orchardInLimitZone = false;
+            //F50 (2026-08-01): the steer-limit zone is derived here with everything else, so it can
+            //never drift out of step with what the planner draws. No boundary = no zone = no cap.
+            try
+            {
+                orchardLimitZone = COrchard.BuildLimitZone(
+                    bnd?.bndList?.Count > 0 ? bnd.bndList[0].fenceLine : null, orchRows);
+            }
+            catch (Exception ex) { orchardLimitZone = null; Log.EventWriter("Orchard limit zone: " + ex); }
 
             List<CTrk> made = new List<CTrk>();
             if (orchRows.Count > 0)

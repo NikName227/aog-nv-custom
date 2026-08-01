@@ -1,4 +1,4 @@
-using AgLibrary.Logging;
+﻿using AgLibrary.Logging;
 using AgOpenGPS.Core.Models;
 using System;
 using System.Collections.Generic;
@@ -893,122 +893,198 @@ namespace AgOpenGPS
             return tracks;
         }
 
-        // ── Steer limit zone (2026-08-01) ─────────────────────────────────
+        // ── Steer limit zone (2026-08-01, reworked after SIM markup) ──────
         // Between the trees the machine must never answer a GPS wobble with a big steering angle,
-        // but at the row ends it needs full authority to line itself up and to turn. So the field
-        // gets a zone: inside it the commanded angle is capped, outside it is not.
+        // but near the field edge it needs full authority to line itself up and to turn. So the
+        // field gets a zone: inside it the commanded angle is capped, outside it is not.
         //
-        // The zone is bounded by two lines, one at each end of the orchard. Each row contributes
-        // ONE point per end - walk LimitMarginMeters along that row from its end - and the points
-        // are ordered across the field and filtered, exactly like a row is. So the boundary follows
-        // the shape of the orchard end instead of straightening it, and rows of unequal length are
-        // not a special case: each brings its own point.
+        // First attempt took one point per row 10 m in from its end and threaded a line through
+        // them. It wandered - rows are not equally long, so the points zig-zagged and smoothing
+        // over that spacing dragged the line ~30 m inside instead of 10. Replaced with what AOG
+        // already does for turn lines (CTurn/CTurnLines): offset the field boundary INWARD and
+        // clean up the spikes the offset leaves on concave corners. One closed loop, so the test
+        // is a point-in-polygon, and the limit lifts along every field edge - which is where the
+        // machine turns, whichever edge that is.
         //
-        // Derived like everything else here: rebuilt whenever the rows change, never saved, not
-        // editable. What the planner draws IS what the limit uses, because it is one object.
+        // Derived like everything else here: rebuilt with the rows, never saved, not editable.
+        // What the planner draws IS what the limit tests, because it is one object.
         public const double LimitMarginMeters = 10.0;
 
+        /// <summary>Simplified to roughly this many points, so it stays a line you can read.</summary>
+        private const int LimitZoneMaxPoints = 6;
+
         /// <summary>
-        /// The two zone boundaries, entry first. null when there is nothing sensible to bound -
-        /// fewer than two rows, or rows too short to give the zone any length at all.
+        /// The steer-limit zone: the field boundary moved inward far enough to clear the outermost
+        /// trees by LimitMarginMeters. null when it cannot be built - no boundary, no rows, or an
+        /// inset that would swallow the field.
         /// </summary>
-        public static List<List<vec2>> BuildLimitBounds(List<OrchRow> rows)
+        /// <param name="fence">outer boundary ring, with headings</param>
+        public static List<vec2> BuildLimitZone(List<vec3> fence, List<OrchRow> rows)
         {
-            if (rows == null || rows.Count < 2) return null;
+            if (fence == null || fence.Count < 4 || rows == null || rows.Count < 2) return null;
 
-            //one common direction, so "the near end" means the same end on every row
-            vec2 main = MainDirection(rows);
+            double inset = LimitInset(fence, rows);
+            if (inset <= 0) return null;
 
-            var startPts = new List<vec2>();
-            var endPts = new List<vec2>();
+            //Offset every fence point along its normal. Which normal points INTO the field depends
+            //on the ring's winding, and a boundary can be recorded either way round, so both signs
+            //are tried and the one that actually lands inside wins. Guessing here would fail
+            //silently - every point outside, no zone, no cap, no complaint.
+            var raw = OffsetRing(fence, inset, +1);
+            var other = OffsetRing(fence, inset, -1);
+            if (other.Count > raw.Count) raw = other;
+            if (raw.Count < 4) return null;
 
-            foreach (var r in rows)
+            //a concave corner throws the offset points back out towards the fence and they cross
+            //each other - the same spikes FixTurnLine removes from a turn line, and the same cure:
+            //anything that did not end up at least the full inset away from the fence is not on
+            //the offset curve at all
+            double minSq = inset * inset * 0.9;
+            var kept = new List<vec2>();
+            foreach (vec2 p in raw)
             {
-                if (r.curve.Count < 2) continue;
-                //a row that cannot hold the margin at both ends would put the two boundaries the
-                //wrong way round - it simply does not take part in the zone
-                if (CurveLength(r.curve) < 2.0 * LimitMarginMeters) continue;
-
-                bool aligned = r.Dir().easting * main.easting + r.Dir().northing * main.northing >= 0;
-
-                vec2 a = WalkFromEnd(r.curve, LimitMarginMeters, fromStart: aligned);
-                vec2 b = WalkFromEnd(r.curve, LimitMarginMeters, fromStart: !aligned);
-                startPts.Add(a);
-                endPts.Add(b);
-            }
-
-            if (startPts.Count < 2) return null;
-
-            //ordered across the field and filtered, the same treatment a row gets
-            var s = FilterRowPoints(OrderEndToEnd(startPts), 0.5, 3);
-            var e = FilterRowPoints(OrderEndToEnd(endPts), 0.5, 3);
-            if (s.Count < 2 || e.Count < 2) return null;
-
-            return new List<List<vec2>> { s, e };
-        }
-
-        /// <summary>Orchard main direction: the row directions summed, each aligned to the first.</summary>
-        public static vec2 MainDirection(List<OrchRow> rows)
-        {
-            vec2 refDir = rows[0].Dir();
-            double sx = 0, sy = 0;
-            foreach (var r in rows)
-            {
-                vec2 d = r.Dir();
-                if (d.easting * refDir.easting + d.northing * refDir.northing < 0) { d.easting = -d.easting; d.northing = -d.northing; }
-                sx += d.easting; sy += d.northing;
-            }
-            double len = Math.Sqrt(sx * sx + sy * sy);
-            if (len < 0.001) return new vec2(0, 1);
-            return new vec2(sx / len, sy / len);
-        }
-
-        private static double CurveLength(List<vec3> c)
-        {
-            double s = 0;
-            for (int i = 1; i < c.Count; i++)
-            {
-                double de = c[i].easting - c[i - 1].easting;
-                double dn = c[i].northing - c[i - 1].northing;
-                s += Math.Sqrt(de * de + dn * dn);
-            }
-            return s;
-        }
-
-        /// <summary>Point `meters` along the curve from one of its ends.</summary>
-        private static vec2 WalkFromEnd(List<vec3> c, double meters, bool fromStart)
-        {
-            double s = 0;
-            if (fromStart)
-            {
-                for (int i = 1; i < c.Count; i++)
+                bool ok = true;
+                for (int i = 0; i < fence.Count; i++)
                 {
-                    double de = c[i].easting - c[i - 1].easting;
-                    double dn = c[i].northing - c[i - 1].northing;
-                    double d = Math.Sqrt(de * de + dn * dn);
-                    if (s + d >= meters)
-                    {
-                        double t = d < 0.001 ? 0 : (meters - s) / d;
-                        return new vec2(c[i - 1].easting + de * t, c[i - 1].northing + dn * t);
-                    }
-                    s += d;
+                    double de = fence[i].easting - p.easting;
+                    double dn = fence[i].northing - p.northing;
+                    if (de * de + dn * dn < minSq) { ok = false; break; }
                 }
-                return new vec2(c[c.Count - 1].easting, c[c.Count - 1].northing);
+                if (ok) kept.Add(p);
+            }
+            if (kept.Count < 4) return null;
+
+            return SimplifyClosed(kept, LimitZoneMaxPoints);
+        }
+
+        /// <summary>Offset a ring by its normals in one direction; keeps only what lands inside.</summary>
+        private static List<vec2> OffsetRing(List<vec3> fence, double inset, double sign)
+        {
+            var res = new List<vec2>();
+            foreach (vec3 f in fence)
+            {
+                double e = f.easting + (sign * -Math.Sin(glm.PIBy2 + f.heading) * inset);
+                double n = f.northing + (sign * -Math.Cos(glm.PIBy2 + f.heading) * inset);
+                var p = new vec2(e, n);
+                if (fence.IsPointInPolygon(p)) res.Add(p);
+            }
+            return res;
+        }
+
+        /// <summary>
+        /// How far in the boundary has to move: to the nearest tree of the INNER rows, plus the
+        /// margin. The outermost row on each side is skipped - it runs alongside the fence for its
+        /// whole length, so its distance describes the headland, not where the orchard ends.
+        /// </summary>
+        private static double LimitInset(List<vec3> fence, List<OrchRow> rows)
+        {
+            var sorted = SortRowsTransverse(rows);
+
+            //with only a handful of rows there is nothing left after dropping the outer ones
+            int from = sorted.Count > 2 ? 1 : 0;
+            int to = sorted.Count > 2 ? sorted.Count - 1 : sorted.Count;
+
+            double best = double.MaxValue;
+            for (int r = from; r < to; r++)
+            {
+                //the LAST tree of a row is what the margin is measured from; without mapped trees
+                //the row line's own ends are the best statement of where the planting stops
+                var ends = new List<vec2>();
+                if (sorted[r].trees.Count > 0)
+                {
+                    ends.Add(sorted[r].trees[0]);
+                    ends.Add(sorted[r].trees[sorted[r].trees.Count - 1]);
+                }
+                else if (sorted[r].curve.Count > 1)
+                {
+                    ends.Add(new vec2(sorted[r].curve[0].easting, sorted[r].curve[0].northing));
+                    var l = sorted[r].curve[sorted[r].curve.Count - 1];
+                    ends.Add(new vec2(l.easting, l.northing));
+                }
+
+                foreach (vec2 t in ends)
+                {
+                    double d = DistanceToRing(fence, t);
+                    if (d < best) best = d;
+                }
             }
 
-            for (int i = c.Count - 2; i >= 0; i--)
+            if (best == double.MaxValue) return 0;
+            return best + LimitMarginMeters;
+        }
+
+        /// <summary>Shortest distance from a point to a closed ring of points.</summary>
+        private static double DistanceToRing(List<vec3> ring, vec2 p)
+        {
+            double best = double.MaxValue;
+            for (int i = 0; i < ring.Count; i++)
             {
-                double de = c[i].easting - c[i + 1].easting;
-                double dn = c[i].northing - c[i + 1].northing;
-                double d = Math.Sqrt(de * de + dn * dn);
-                if (s + d >= meters)
-                {
-                    double t = d < 0.001 ? 0 : (meters - s) / d;
-                    return new vec2(c[i + 1].easting + de * t, c[i + 1].northing + dn * t);
-                }
-                s += d;
+                int j = i + 1 == ring.Count ? 0 : i + 1;
+                double ax = ring[i].easting, ay = ring[i].northing;
+                double dx = ring[j].easting - ax, dy = ring[j].northing - ay;
+                double len2 = dx * dx + dy * dy;
+
+                double t = len2 < 1e-9 ? 0 : ((p.easting - ax) * dx + (p.northing - ay) * dy) / len2;
+                if (t < 0) t = 0; else if (t > 1) t = 1;
+
+                double ex = ax + dx * t - p.easting;
+                double ny = ay + dy * t - p.northing;
+                double d = ex * ex + ny * ny;
+                if (d < best) best = d;
             }
-            return new vec2(c[0].easting, c[0].northing);
+            return Math.Sqrt(best);
+        }
+
+        /// <summary>
+        /// Keep the corners, drop the rest: repeatedly remove the point whose absence changes the
+        /// ring least, until only `want` are left. A field boundary is a few straight runs, so what
+        /// survives is exactly those corners - a line of five or six points, as asked for.
+        /// </summary>
+        private static List<vec2> SimplifyClosed(List<vec2> ring, int want)
+        {
+            if (want < 3) want = 3;
+
+            //offset points pile up at the corners, so near-coincident ones would survive as
+            //separate "corners" and eat the budget - drop them before counting
+            var pts = new List<vec2>();
+            foreach (vec2 p in ring)
+            {
+                if (pts.Count > 0)
+                {
+                    double de = p.easting - pts[pts.Count - 1].easting;
+                    double dn = p.northing - pts[pts.Count - 1].northing;
+                    if (de * de + dn * dn < 0.25) continue;
+                }
+                pts.Add(p);
+            }
+            while (pts.Count > 3)
+            {
+                double de = pts[0].easting - pts[pts.Count - 1].easting;
+                double dn = pts[0].northing - pts[pts.Count - 1].northing;
+                if (de * de + dn * dn >= 0.25) break;
+                pts.RemoveAt(pts.Count - 1);
+            }
+
+            while (pts.Count > want)
+            {
+                int drop = -1;
+                double least = double.MaxValue;
+                for (int i = 0; i < pts.Count; i++)
+                {
+                    vec2 a = pts[(i - 1 + pts.Count) % pts.Count];
+                    vec2 b = pts[i];
+                    vec2 c = pts[(i + 1) % pts.Count];
+
+                    //twice the triangle area = how far b stands off the line a-c
+                    double area = Math.Abs((b.easting - a.easting) * (c.northing - a.northing)
+                                         - (c.easting - a.easting) * (b.northing - a.northing));
+                    if (area < least) { least = area; drop = i; }
+                }
+                if (drop < 0) break;
+                pts.RemoveAt(drop);
+            }
+
+            return pts;
         }
 
         // Sort rows across the field: project each row centroid onto the axis perpendicular to the

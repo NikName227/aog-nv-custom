@@ -1650,7 +1650,10 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
     <value>Sigurna širina stabla (m)</value>
   </data>
   <data name="gsOrchMaxSteerAngle" xml:space="preserve">
-    <value>Najveći kut skretanja u redu (°, 0 = isklj.)</value>
+    <value>Najveći kut skretanja u redu (°)</value>
+  </data>
+  <data name="gsOrchMaxSteerAngleOff" xml:space="preserve">
+    <value>0 = isključeno</value>
   </data>
   <data name="gsOrchNoFixSteerOff" xml:space="preserve">
     <value>Autosteer ISKLJUČEN - nema RTK fixa</value>

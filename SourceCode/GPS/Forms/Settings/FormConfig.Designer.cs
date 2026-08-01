@@ -1,4 +1,4 @@
-using AgOpenGPS.Core.Models;
+﻿using AgOpenGPS.Core.Models;
 using AgOpenGPS.ResourcesBrands;
 
 namespace AgOpenGPS
@@ -114,6 +114,7 @@ namespace AgOpenGPS
             this.lblOrchardTree = new System.Windows.Forms.Label();
             this.nudOrchardTree = new AgOpenGPS.NudlessNumericUpDown();
             this.lblOrchardMaxAngle = new System.Windows.Forms.Label();
+            this.lblOrchardMaxAngleHint = new System.Windows.Forms.Label();
             this.nudOrchardMaxAngle = new AgOpenGPS.NudlessNumericUpDown();
             this.chkOrchardOnePass = new System.Windows.Forms.CheckBox();
             this.chkOrchardCenterFirst = new System.Windows.Forms.CheckBox();
@@ -1907,15 +1908,22 @@ namespace AgOpenGPS
             this.chkOrchardCenterFirst.Location = new System.Drawing.Point(20, 264);
             this.chkOrchardCenterFirst.Size = new System.Drawing.Size(440, 30);
             this.chkOrchardCenterFirst.Text = "Center pass first (odd pass count)";
-            //F50 (2026-08-01): steering cap between the trees, lifted at the row ends
+            //F50 (2026-08-01): steering cap between the trees, lifted in the headland.
+            //SIM markup: the caption did not fit next to the value, so the input moved right and
+            //"0 = off" dropped to a second, smaller line under it.
             this.lblOrchardMaxAngle.Font = new System.Drawing.Font("Tahoma", 12F);
             this.lblOrchardMaxAngle.Location = new System.Drawing.Point(20, 174);
-            this.lblOrchardMaxAngle.Size = new System.Drawing.Size(300, 26);
+            this.lblOrchardMaxAngle.Size = new System.Drawing.Size(420, 26);
             this.lblOrchardMaxAngle.Text = "Max steer angle in row (deg)";
+            this.lblOrchardMaxAngleHint.Font = new System.Drawing.Font("Tahoma", 9F);
+            this.lblOrchardMaxAngleHint.ForeColor = System.Drawing.Color.DimGray;
+            this.lblOrchardMaxAngleHint.Location = new System.Drawing.Point(22, 198);
+            this.lblOrchardMaxAngleHint.Size = new System.Drawing.Size(420, 20);
+            this.lblOrchardMaxAngleHint.Text = "0 = off";
             this.nudOrchardMaxAngle.DecimalPlaces = 1;
             this.nudOrchardMaxAngle.Font = new System.Drawing.Font("Tahoma", 12F);
             this.nudOrchardMaxAngle.Increment = new decimal(new int[] { 5, 0, 0, 65536 });
-            this.nudOrchardMaxAngle.Location = new System.Drawing.Point(340, 170);
+            this.nudOrchardMaxAngle.Location = new System.Drawing.Point(474, 170);
             this.nudOrchardMaxAngle.Maximum = new decimal(new int[] { 40, 0, 0, 0 });
             this.nudOrchardMaxAngle.Size = new System.Drawing.Size(120, 30);
             this.nudOrchardMaxAngle.Click += new System.EventHandler(this.nudOrchard_Click);
@@ -1933,6 +1941,7 @@ namespace AgOpenGPS
             this.pnlOrchardSet.Controls.Add(this.chkOrchardOnePass);
             this.pnlOrchardSet.Controls.Add(this.chkOrchardCenterFirst);
             this.pnlOrchardSet.Controls.Add(this.lblOrchardMaxAngle);
+            this.pnlOrchardSet.Controls.Add(this.lblOrchardMaxAngleHint);
             this.pnlOrchardSet.Controls.Add(this.nudOrchardMaxAngle);
             //
             // tabTHitch
@@ -8960,6 +8969,7 @@ namespace AgOpenGPS
         private System.Windows.Forms.Label lblOrchardTree;
         private AgOpenGPS.NudlessNumericUpDown nudOrchardTree;
         private System.Windows.Forms.Label lblOrchardMaxAngle;
+        private System.Windows.Forms.Label lblOrchardMaxAngleHint;
         private AgOpenGPS.NudlessNumericUpDown nudOrchardMaxAngle;
         private System.Windows.Forms.CheckBox chkOrchardOnePass;
         private System.Windows.Forms.CheckBox chkOrchardCenterFirst;

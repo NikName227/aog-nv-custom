@@ -2017,7 +2017,10 @@ USE AT OWN RISK.</value>
     <value>Safe tree width (m)</value>
   </data>
   <data name="gsOrchMaxSteerAngle" xml:space="preserve">
-    <value>Max steer angle in row (deg, 0 = off)</value>
+    <value>Max steer angle in row (deg)</value>
+  </data>
+  <data name="gsOrchMaxSteerAngleOff" xml:space="preserve">
+    <value>0 = off</value>
   </data>
   <data name="gsOrchNoFixSteerOff" xml:space="preserve">
     <value>AutoSteer OFF - no RTK fix</value>
