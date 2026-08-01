@@ -55,7 +55,10 @@ namespace AgOpenGPS.Properties
         public double setTool_orchardTreeMinDist = 1.0;
 
         public int setTool_orchardPassCount = 0;
-        public int setTool_orchardWorkMode = 0;        // 0 = center, 1 = left, 2 = right (multi pass only)
+        // DEAD since F50 fix 2026-08-01 - nothing reads it. The implement side is the SIGN of
+        // setVehicle_toolOffset (Tool -> Tool Offset); this was a second definition of the same
+        // fact that nothing kept in sync. Kept only so an older build still finds its value.
+        public int setTool_orchardWorkMode = 0;        // 0 = center, 1 = left, 2 = right
         // Full width of the band around a row line that is NOT worked (SIM 0730: measured
         // in the field as the untouched strip around the trees, which is easier to judge than
         // a one-sided margin). Half of it is the clearance the tool edge keeps from the row.

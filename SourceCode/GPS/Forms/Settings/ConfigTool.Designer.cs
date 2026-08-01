@@ -49,8 +49,6 @@ namespace AgOpenGPS
 
                 //F50: orchard settings ride on the implement profile
                 cboOrchardPath.SelectedIndex = OrchardModeToRow(COrchard.ResolvePathMode());
-                cboOrchardMode.SelectedIndex = Math.Max(0, Math.Min(2,
-                    Properties.ToolSettings.Default.setTool_orchardWorkMode));
                 nudOrchardTree.Value = (decimal)Properties.ToolSettings.Default.setTool_orchardTreeWidth;
                 nudOrchardPassCount.Value = NudClamp(nudOrchardPassCount,
                     Properties.ToolSettings.Default.setTool_orchardPassCount);
@@ -169,10 +167,11 @@ namespace AgOpenGPS
                                                   gStr.gsOrchPathOnRow);
             }
 
-            lblOrchardMode.Text = gStr.gsOrchWorkMode;
-            cboOrchardMode.Items.Clear();
-            cboOrchardMode.Items.AddRange(new object[] {
-                gStr.gsOrchWorkCenter, gStr.gsOrchWorkLeft, gStr.gsOrchWorkRight });
+            //F50 fix 2026-08-01: the implement side is no longer picked here - it is read from the
+            //Tool Offset submenu. The combo is gone and its label became the read-only echo of
+            //that value, so the driver sees what the orchard rules are using and where to change it.
+            cboOrchardMode.Visible = false;
+            lblOrchardMode.Size = new Size(560, lblOrchardMode.Size.Height);
 
             lblOrchardTree.Text = gStr.gsOrchTreeWidth;
             lblOrchardPassCount.Text = gStr.gsOrchPassCount;
@@ -191,10 +190,10 @@ namespace AgOpenGPS
             //between the rows (one, two or many passes) the clearance to the tree line applies
             bool between = !onRow;
 
-            //two pass: the working-mode box is the side the implement is mounted on, and it is
-            //the only setting that mode needs besides the safe tree width
+            //two and multi pass care which side the implement is mounted on - shown here, set in
+            //Tool Offset. Not editable on this panel any more (F50 fix 2026-08-01).
             bool side = multi || twoPass;
-            lblOrchardMode.Text = twoPass ? gStr.gsOrchImplementSide : gStr.gsOrchWorkMode;
+            lblOrchardMode.Text = gStr.gsOrchImplementSide + ": " + OrchardSideText();
             //superseded by the path mode; kept only so old profiles still migrate
             chkOrchardOnePass.Visible = false;
 
@@ -203,10 +202,22 @@ namespace AgOpenGPS
             //tabTConfig_Enter BEFORE the panel is shown. Reading it there left every row on its
             //designer position, which is why "Implement side" only appeared on a second pick.
             int y = 52;
-            PackOrchardRow(side, lblOrchardMode, cboOrchardMode, ref y);
+            PackOrchardRow(side, lblOrchardMode, null, ref y);
             PackOrchardRow(multi, lblOrchardPassCount, nudOrchardPassCount, ref y, lblOrchardPassWarn);
             PackOrchardRow(between, lblOrchardTree, nudOrchardTree, ref y);
             PackOrchardRow(multi, chkOrchardCenterFirst, null, ref y);
+        }
+
+        //F50 fix 2026-08-01: the implement side as the orchard rules see it - the SIGN of the tool
+        //offset, exactly what the stock Tool Offset icons show (> 0 right, < 0 left, 0 neither).
+        //Offset 0 is not a side implement at all, so it reads "centred" and no pass is restricted.
+        private string OrchardSideText()
+        {
+            double off = mf.tool.offset;
+            if (off == 0) return gStr.gsOrchWorkCenter;
+
+            return (off > 0 ? gStr.gsOrchWorkRight : gStr.gsOrchWorkLeft)
+                + "  (" + (Math.Abs(off) * mf.m2InchOrCm).ToString("N1") + " " + mf.unitsInCm + ")";
         }
 
         private static void PackOrchardRow(bool show, Control label, Control field, ref int y,
@@ -259,7 +270,9 @@ namespace AgOpenGPS
                 if (cboOrchardPath.SelectedIndex >= 0)
                     Properties.ToolSettings.Default.setTool_orchardPathMode =
                         OrchardRowToMode(cboOrchardPath.SelectedIndex);
-                Properties.ToolSettings.Default.setTool_orchardWorkMode = cboOrchardMode.SelectedIndex;
+                //setTool_orchardWorkMode is NOT written any more - the implement side comes from
+                //setVehicle_toolOffset (F50 fix 2026-08-01). The old value stays in the profile so
+                //an install that rolls back keeps what it had.
                 Properties.ToolSettings.Default.setTool_orchardTreeWidth = (double)nudOrchardTree.Value;
                 Properties.ToolSettings.Default.setTool_orchardPassCount = (int)nudOrchardPassCount.Value;
                 Properties.ToolSettings.Default.setTool_orchardOnePass = chkOrchardOnePass.Checked;
