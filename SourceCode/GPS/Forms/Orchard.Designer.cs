@@ -129,11 +129,12 @@ namespace AgOpenGPS
         }
 
         /// <summary>
-        /// NV custom F50 (2026-08-01): the steer-limit zone - the field boundary moved inward far
-        /// enough to clear the outermost trees by 10 m, simplified to a handful of points. Inside
-        /// it the steer angle is capped. Derived on every rebuild, never saved, not editable, so
-        /// the dotted loop the planner draws and the zone the limit tests are one object.
-        /// null = no zone, which means no cap (no boundary, or no rows to measure from).
+        /// NV custom F50 (2026-08-01): the steer-limit zone - the field boundary cut square across
+        /// the rows, 10 m short of the last tree at each end. Along the rows it follows the fence,
+        /// so the outermost rows are inside it too; the cuts run the full width because that is
+        /// where the machine turns. Inside it the steer angle is capped. Derived on every rebuild,
+        /// never saved, not editable, so the dotted loop the planner draws and the zone the limit
+        /// tests are one object. null = no zone, which means no cap.
         /// </summary>
         public List<vec2> orchardLimitZone;
 

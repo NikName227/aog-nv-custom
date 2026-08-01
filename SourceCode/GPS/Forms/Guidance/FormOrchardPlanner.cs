@@ -365,10 +365,10 @@ namespace AgOpenGPS
             }
         }
 
-        // F50 (2026-08-01): the steer-limit zone - the field boundary moved inward to clear the
-        // outermost trees by 10 m. Inside it the commanded steer angle is capped so a GPS wobble
-        // cannot swing the machine into a trunk; outside it, along every field edge, the machine
-        // has full authority to line up and turn. Drawn thin and dotted because it is a marker,
+        // F50 (2026-08-01): the steer-limit zone - the field boundary cut square across the rows,
+        // 10 m short of the last tree. Inside it the commanded steer angle is capped so a GPS
+        // wobble cannot swing the machine into a trunk; past the cuts, where it turns, it has full
+        // authority again. Drawn thin and dotted because it is a marker,
         // not a line anyone drives; it is the same object the limit tests, so what is on screen
         // is what is in force.
         private void DrawLimitZone()

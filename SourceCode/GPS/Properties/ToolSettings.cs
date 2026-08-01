@@ -72,7 +72,7 @@ namespace AgOpenGPS.Properties
         // Largest steering angle allowed while the machine is between the trees (deg, 0 = no cap).
         // A lost or wobbling fix must not turn into a big wheel angle in a row only as wide as the
         // gap between two trunks. Lifted for the last 10 m at each row end, where the machine
-        // lines itself up and turns - see COrchard.BuildLimitBounds.
+        // lines itself up and turns - see COrchard.BuildLimitZone.
         public double setTool_orchardMaxSteerAngle = 8.0;
 
         // Planter geometry (F50 planting): where the seedling actually lands, relative
