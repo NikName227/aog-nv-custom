@@ -917,6 +917,9 @@ namespace AgOpenGPS
                 btnLimitEdit.Checked = false;
                 btnDeletePoint.Checked = false;
                 mf.OrchardSaveLimitPoly();
+                //hand the point tools back to whatever the row side of the planner allows
+                btnAddPoint.Enabled = btnDeletePoint.Enabled = mode == ViewMode.Build;
+                ResetAddStage();
                 lblActiveOp.Text = "";
                 Log.EventWriter("Orchard: steer limit polygon saved, "
                     + (LimitPoly == null ? 0 : LimitPoly.Count) + " points");
@@ -938,6 +941,9 @@ namespace AgOpenGPS
             limitEditMode = true;
             mf.isOrchardLimitEditing = true;
             btnLimitEdit.Checked = true;
+            //the planner opens in Browse whenever the field already has rows, and Browse disables
+            //these two - so the limit editor turns them on for itself
+            btnAddPoint.Enabled = btnDeletePoint.Enabled = true;
             //the row tools would fight over the same clicks
             treeEditMode = false;
             ResetAddStage();
@@ -1448,8 +1454,12 @@ namespace AgOpenGPS
         {
             mode = m;
             bool build = m == ViewMode.Build;
-            btnAddPoint.Enabled = build;
-            btnDeletePoint.Enabled = build;
+            //F50: the point tools belong to row editing, hence the Build gate - but the steer
+            //limit borrows them, and it can be opened from Browse. Without this a row-mode change
+            //made mid-edit would switch them off under the driver's hand.
+            bool pointTools = build || limitEditMode;
+            btnAddPoint.Enabled = pointTools;
+            btnDeletePoint.Enabled = pointTools;
             btnPoint.Enabled = build;
             tboxName.Enabled = true;
             if (!build)
