@@ -1913,7 +1913,7 @@ namespace AgOpenGPS
             //"0 = off" dropped to a second, smaller line under it.
             this.lblOrchardMaxAngle.Font = new System.Drawing.Font("Tahoma", 12F);
             this.lblOrchardMaxAngle.Location = new System.Drawing.Point(20, 174);
-            this.lblOrchardMaxAngle.Size = new System.Drawing.Size(420, 26);
+            this.lblOrchardMaxAngle.Size = new System.Drawing.Size(310, 26);
             this.lblOrchardMaxAngle.Text = "Max steer angle in row (deg)";
             this.lblOrchardMaxAngleHint.Font = new System.Drawing.Font("Tahoma", 9F);
             this.lblOrchardMaxAngleHint.ForeColor = System.Drawing.Color.DimGray;
@@ -1923,7 +1923,7 @@ namespace AgOpenGPS
             this.nudOrchardMaxAngle.DecimalPlaces = 1;
             this.nudOrchardMaxAngle.Font = new System.Drawing.Font("Tahoma", 12F);
             this.nudOrchardMaxAngle.Increment = new decimal(new int[] { 5, 0, 0, 65536 });
-            this.nudOrchardMaxAngle.Location = new System.Drawing.Point(474, 170);
+            this.nudOrchardMaxAngle.Location = new System.Drawing.Point(340, 170);
             this.nudOrchardMaxAngle.Maximum = new decimal(new int[] { 40, 0, 0, 0 });
             this.nudOrchardMaxAngle.Size = new System.Drawing.Size(120, 30);
             this.nudOrchardMaxAngle.Click += new System.EventHandler(this.nudOrchard_Click);
