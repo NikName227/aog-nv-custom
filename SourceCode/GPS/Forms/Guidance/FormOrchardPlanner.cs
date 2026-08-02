@@ -1827,6 +1827,10 @@ namespace AgOpenGPS
             // SIM 0729 t5: the path is derived, not committed by hand. Editing the rows is a
             // change of the definition, so the passes are rebuilt from the new rows + the
             // implement settings - hand-made tracks are untouched.
+            //F50 (2026-08-02): drawing the first row on a plain field makes it an orchard, and
+            //deleting the last one makes it plain ground again - the mode follows either way
+            mf.OrchardModeFollowField("rows accepted");
+
             mf.OrchardRebuildTracks("orchard rows accepted");
 
             int derived = 0;

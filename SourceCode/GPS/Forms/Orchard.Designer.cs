@@ -33,9 +33,37 @@ namespace AgOpenGPS
             //to pick anything to get the passes that belong to this orchard
             trk.isOrchardAuto = orchRows.Count > 0;
 
+            OrchardModeFollowField("field opened");
+
             OrchardRebuildTracks("field opened");
 
             if (trk.isOrchardAuto) OrchardPickNearestPass(true);
+        }
+
+        /// <summary>
+        /// NV custom F50 (2026-08-02): the orchard MODE belongs to the field, its settings belong
+        /// to the implement. A mulcher works an orchard on Monday and open ground on Tuesday, and
+        /// the guidance has to follow the field it is given - so the checkbox is set from whether
+        /// the open field has rows, rather than being something the driver must remember to flip.
+        ///
+        /// Called on opening a field and on accepting rows in the planner, deliberately NOT when
+        /// settings change: the driver can still untick it to work an orchard field as plain
+        /// ground, and re-deriving it on every settings edit would undo that behind their back.
+        /// With no field open nothing touches it, so the last value stands and the orchard
+        /// parameters can be opened and read.
+        /// </summary>
+        public void OrchardModeFollowField(string why)
+        {
+            if (!CFeatureLock.IsOn(CFeatureLock.FeatureOrchard)) return;
+
+            bool isOrchardField = orchRows.Count > 0;
+            if (Properties.ToolSettings.Default.setTool_isToolOrchard == isOrchardField) return;
+
+            Properties.ToolSettings.Default.setTool_isToolOrchard = isOrchardField;
+            Properties.ToolSettings.Default.Save();
+            tool.isToolOrchard = isOrchardField;
+
+            Log.EventWriter("Orchard mode " + (isOrchardField ? "ON" : "OFF") + " (" + why + ")");
         }
 
         /// <summary>
