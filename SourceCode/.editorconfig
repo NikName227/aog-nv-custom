@@ -47,6 +47,10 @@ dotnet_diagnostic.CS1690.severity = silent
 # IDE0055: Fix formatting
 dotnet_diagnostic.IDE0055.severity = warning
 
+# Object initializers are written inline throughout this codebase; do not
+# require one member per line (IDE0055 is an error in Release builds).
+csharp_new_line_before_members_in_object_initializers = false
+
 # Enable code analysis for *.Designer files that are not actually designer generated
 [{ConfigData,ConfigHelp,ConfigMenu,ConfigModule,ConfigTool,ConfigVehicle,Controls,GUI,NMEA,NTRIPComm,OpenGL,PGN,Position,SaveOpen,Sections,SerialComm,UDP,UDPComm}.Designer.cs]
 generated_code = false

@@ -196,22 +196,18 @@ namespace AgOpenGPS
             string auto = hr ? "autosteer" : "autosteer";
             string byHand = hr ? "ručno, po tragovima" : "by hand, along the tracks";
 
-            steps.Add(new ITStep { group = 1, head = hr ? "1. Geometrija  ~7 km/h" : "1. Geometry  ~7 km/h",
-                                   label = there + " · " + auto, dir = 0, autosteer = true, target = passTargetM });
+            steps.Add(new ITStep { group = 1, head = hr ? "1. Geometrija  ~7 km/h" : "1. Geometry  ~7 km/h", label = there + " · " + auto, dir = 0, autosteer = true, target = passTargetM });
             steps.Add(new ITStep { group = 1, label = back + " · " + byHand, dir = 1, target = passTargetM });
             // A second manual pass is a genuinely independent reading of the offset
             // (a different pair), not a way to reach the antenna height — a pass that
             // follows an autosteer-laid track can never see the height error, because
             // autosteer already steered that error into the track itself.
-            steps.Add(new ITStep { group = 1, label = there + " · " + byHand, dir = 0, target = passTargetM,
-                                   optional = true });
+            steps.Add(new ITStep { group = 1, label = there + " · " + byHand, dir = 0, target = passTargetM, optional = true });
 
-            steps.Add(new ITStep { group = 2, head = hr ? "2. Brzina 4 km/h" : "2. Speed 4 km/h",
-                                   label = there + " · " + auto, dir = 0, autosteer = true, speed = 4, target = passTargetM });
+            steps.Add(new ITStep { group = 2, head = hr ? "2. Brzina 4 km/h" : "2. Speed 4 km/h", label = there + " · " + auto, dir = 0, autosteer = true, speed = 4, target = passTargetM });
             steps.Add(new ITStep { group = 2, label = back + " · " + auto, dir = 1, autosteer = true, speed = 4, target = passTargetM });
 
-            steps.Add(new ITStep { group = 3, head = hr ? "3. Brzina 10 km/h" : "3. Speed 10 km/h",
-                                   label = there + " · " + auto, dir = 0, autosteer = true, speed = 10, target = passTargetM });
+            steps.Add(new ITStep { group = 3, head = hr ? "3. Brzina 10 km/h" : "3. Speed 10 km/h", label = there + " · " + auto, dir = 0, autosteer = true, speed = 10, target = passTargetM });
             steps.Add(new ITStep { group = 3, label = back + " · " + auto, dir = 1, autosteer = true, speed = 10, target = passTargetM });
         }
 
