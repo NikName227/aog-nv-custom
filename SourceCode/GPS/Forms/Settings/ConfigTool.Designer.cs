@@ -40,34 +40,20 @@ namespace AgOpenGPS
                 rbtnFront.Visible = true;
                 //NV F06: Orchard tool type only for unlocked installs
                 rbtnOrchard.Visible = CFeatureLock.IsOn(CFeatureLock.FeatureOrchard);
+                //SIM 0730: the checkbox stayed on this tab when the parameters moved to the
+                //Hitch tab, so its caption is translated here (HR "Voćnjak")
+                rbtnOrchard.Text = gStr.gsOrchard;
 
-                //F50: orchard settings ride on the implement profile
-                cboOrchardMode.SelectedIndex = Math.Max(0, Math.Min(2,
-                    Properties.ToolSettings.Default.setTool_orchardWorkMode));
-                nudOrchardRowOffset.Value = (decimal)Properties.ToolSettings.Default.setTool_orchardRowOffset;
-                nudOrchardTree.Value = (decimal)Properties.ToolSettings.Default.setTool_orchardTreeSpace;
-                nudOrchardSafe.Value = (decimal)Properties.ToolSettings.Default.setTool_orchardSafeSpace;
-                chkOrchardOnePass.Checked = Properties.ToolSettings.Default.setTool_orchardOnePass;
-                chkOrchardCenterFirst.Checked = Properties.ToolSettings.Default.setTool_orchardCenterFirst;
-                nudPlantLateral.Value = NudClamp(nudPlantLateral,
-                    (decimal)Properties.ToolSettings.Default.setTool_plantLateralOffset);
-                nudPlantBehind.Value = NudClamp(nudPlantBehind,
-                    (decimal)Properties.ToolSettings.Default.setTool_plantDistBehindAxle);
+                //F50: orchard settings ride on the implement profile. The panel itself is on the
+                //Hitch tab; it is filled here too because the checkbox that reveals it is here.
+                LoadOrchardPanel();
 
-                //seed the toggle state for this visit (see rbtnOrchard_Click)
-                orchardWasChecked = Properties.ToolSettings.Default.setTool_isToolOrchard
+                //SIM 0730: orchard is a MODE, not a fifth implement type - the checkbox rides on
+                //top of whatever type is selected, so the type stays whatever it was last set to
+                rbtnOrchard.Checked = Properties.ToolSettings.Default.setTool_isToolOrchard
                     && CFeatureLock.IsOn(CFeatureLock.FeatureOrchard);
 
-                if (Properties.ToolSettings.Default.setTool_isToolOrchard
-                    && CFeatureLock.IsOn(CFeatureLock.FeatureOrchard))
-                {
-                    rbtnOrchard.Checked = true;
-                    rbtnTBT.Checked = false;
-                    rbtnTrailing.Checked = false;
-                    rbtnFixedRear.Checked = false;
-                    rbtnFront.Checked = false;
-                }
-                else if (Properties.ToolSettings.Default.setTool_isToolFront)
+                if (Properties.ToolSettings.Default.setTool_isToolFront)
                 {
                     rbtnTBT.Checked = false;
                     rbtnTrailing.Checked = false;
@@ -118,29 +104,209 @@ namespace AgOpenGPS
             return v;
         }
 
-        //F50: the settings panel covers the hitch-type pictures while Orchard is chosen
+        //F50 (SIM 0729 t3): each field in the orchard panel belongs to ONE path mode, so
+        //only that mode's fields are on screen - a planter offset means nothing when the
+        //machine is driving between the rows, and vice versa. The visible rows are packed
+        //from the top so there are no holes left by the hidden ones.
+        //F50 (SIM 0730): touch input - the orchard fields open the on-screen keypad like every
+        //other Settings field does (stock AOG pattern: NudlessNumericUpDown + ShowKeypad).
+        private void nudOrchard_Click(object sender, EventArgs e)
+        {
+            ((NudlessNumericUpDown)sender).ShowKeypad(this);
+            StoreOrchardPanel();
+        }
+
+        //F50 fix 2026-08-02: this panel lives on the HITCH tab, but every one of its values used
+        //to be written in tabTConfig_Leave - the CONFIG tab. Going Config -> Hitch wrote the values
+        //as they were BEFORE the driver touched them, and pressing OK from the Hitch tab never ran
+        //that handler again, so a changed path mode was simply lost. The rest of the form does not
+        //work that way either: it writes on edit (see nudDrawbarLength_Click) and lets Leave and
+        //FormClosing do the saving. This does the same, so persistence no longer depends on which
+        //tab happens to be open when OK is pressed.
+        //Setting the combo raises SelectedIndexChanged, which stores - and during a load the nuds
+        //below it are still holding whatever was there before. Without this guard the first entry
+        //to the tab would write those stale values over the saved ones and then read them back.
+        private bool orchardPanelLoading;
+
+        private void StoreOrchardPanel()
+        {
+            if (orchardPanelLoading) return;
+
+            if (cboOrchardPath.SelectedIndex >= 0)
+                Properties.ToolSettings.Default.setTool_orchardPathMode =
+                    OrchardRowToMode(cboOrchardPath.SelectedIndex);
+
+            Properties.ToolSettings.Default.setTool_orchardTreeWidth = (double)nudOrchardTree.Value;
+            Properties.ToolSettings.Default.setTool_orchardPassCount = (int)nudOrchardPassCount.Value;
+            Properties.ToolSettings.Default.setTool_orchardMaxSteerAngle = (double)nudOrchardMaxAngle.Value;
+        }
+
+        //the panel is filled from whichever tab gets entered first - it is shown on Hitch, but the
+        //orchard checkbox that reveals it is on Config
+        private void LoadOrchardPanel()
+        {
+            LocalizeOrchardPanel();
+
+            orchardPanelLoading = true;
+            try
+            {
+                LoadOrchardPanelValues();
+            }
+            finally { orchardPanelLoading = false; }
+
+            ApplyOrchardPathUI();
+        }
+
+        private void LoadOrchardPanelValues()
+        {
+            cboOrchardPath.SelectedIndex = OrchardModeToRow(COrchard.ResolvePathMode());
+            nudOrchardTree.Value = (decimal)Properties.ToolSettings.Default.setTool_orchardTreeWidth;
+            nudOrchardPassCount.Value = NudClamp(nudOrchardPassCount,
+                Properties.ToolSettings.Default.setTool_orchardPassCount);
+            nudOrchardMaxAngle.Value = NudClamp(nudOrchardMaxAngle,
+                (decimal)Properties.ToolSettings.Default.setTool_orchardMaxSteerAngle);
+            chkOrchardOnePass.Checked = Properties.ToolSettings.Default.setTool_orchardOnePass;
+        }
+
+        //F50 (SIM 0730): the list reads one pass -> two pass -> multi pass -> planting, which is
+        //not the order the modes were added in. The stored numbers must not move (they live in
+        //setTool_orchardPathMode), so only the DISPLAY order is defined here and everything maps
+        //through it - a future reshuffle is this one array.
+        private static readonly int[] orchardPathOrder =
+        {
+            COrchard.PathOnePass, COrchard.PathTwoPass, COrchard.PathMultiPass, COrchard.PathOnRow
+        };
+
+        private static int OrchardModeToRow(int mode)
+        {
+            for (int i = 0; i < orchardPathOrder.Length; i++) if (orchardPathOrder[i] == mode) return i;
+            return 0;
+        }
+
+        private static int OrchardRowToMode(int row)
+            => (row >= 0 && row < orchardPathOrder.Length) ? orchardPathOrder[row] : COrchard.PathOnePass;
+
+        private void cboOrchardPath_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            ApplyOrchardPathUI();
+            StoreOrchardPanel();
+        }
+
+        //F50 (SIM 0730): the panel was hard-coded English. The combo items are rebuilt rather
+        //than translated in place so the indices stay 0/1/2 = one pass / multi pass / on row.
+        private bool orchardPanelLocalized;
+
+        private void LocalizeOrchardPanel()
+        {
+            if (orchardPanelLocalized) return;
+            orchardPanelLocalized = true;
+
+            //the panel lives on the Hitch tab under the picture and its value, so it is laid
+            //out compactly: path mode on top, the mode's own rows below it
+            lblOrchardPath.Location = new Point(20, 12);
+            cboOrchardPath.Location = new Point(340, 8);
+            lblOrchardPath.Text = gStr.gsOrchPathMode;
+            cboOrchardPath.Items.Clear();
+            foreach (int m in orchardPathOrder)
+            {
+                cboOrchardPath.Items.Add(
+                    m == COrchard.PathOnePass ? gStr.gsOrchPathOnePass :
+                    m == COrchard.PathTwoPass ? gStr.gsOrchPathTwoPass :
+                    m == COrchard.PathMultiPass ? gStr.gsOrchPathMultiPass :
+                                                  gStr.gsOrchPathOnRow);
+            }
+
+            //F50 2026-08-01: the implement side is off this panel altogether. It is read from the
+            //tool offset, and the Tool Offset submenu already shows it with an icon and a value -
+            //echoing it here was the same fact stated twice (SIM markup 15:22).
+            cboOrchardMode.Visible = false;
+            lblOrchardMode.Visible = false;
+
+            //F50 2026-08-01: "centre pass first" is off this panel. It ordered the BUILD of the
+            //passes (their numbering, and the sequence handed to the field plan) but the driver
+            //picks the pass by steering onto it - OrchardPickNearestPass takes the nearest one and
+            //never looks at that order - so on screen it did nothing. The stored value still feeds
+            //the build; the sequencing itself gets designed in the turn plan.
+            chkOrchardCenterFirst.Visible = false;
+
+            lblOrchardTree.Text = gStr.gsOrchTreeWidth;
+            lblOrchardPassCount.Text = gStr.gsOrchPassCount;
+            lblOrchardMaxAngle.Text = gStr.gsOrchMaxSteerAngle;
+            lblOrchardMaxAngleHint.Text = gStr.gsOrchMaxSteerAngleOff;
+        }
+
+        private void ApplyOrchardPathUI()
+        {
+            int mode = cboOrchardPath.SelectedIndex < 0
+                ? COrchard.PathOnePass
+                : OrchardRowToMode(cboOrchardPath.SelectedIndex);
+
+            bool multi = mode == COrchard.PathMultiPass;
+            bool onRow = mode == COrchard.PathOnRow;
+            bool twoPass = mode == COrchard.PathTwoPass;
+            //between the rows (one, two or many passes) the clearance to the tree line applies
+            bool between = !onRow;
+
+            //superseded by the path mode; kept only so old profiles still migrate
+            chkOrchardOnePass.Visible = false;
+
+            //SIM 0730: pack by the INTENDED visibility, never by Control.Visible - WinForms
+            //reports a control inside a hidden panel as invisible, and this runs from
+            //tabTConfig_Enter BEFORE the panel is shown. Reading it there left every row on its
+            //designer position, which is why "Implement side" only appeared on a second pick.
+            int y = 52;
+            PackOrchardRow(multi, lblOrchardPassCount, nudOrchardPassCount, ref y, lblOrchardPassWarn);
+            PackOrchardRow(between, lblOrchardTree, nudOrchardTree, ref y);
+            //the steering cap applies whenever the machine drives a derived pass, so it is on the
+            //panel for every path mode (F50 2026-08-01). Its row is two lines high: the caption,
+            //and "0 = off" under it in smaller type, which is why y gets the extra step.
+            int capTop = y;
+            PackOrchardRow(true, lblOrchardMaxAngle, nudOrchardMaxAngle, ref y);
+            lblOrchardMaxAngleHint.Visible = true;
+            lblOrchardMaxAngleHint.Location = new Point(lblOrchardMaxAngleHint.Location.X, capTop + 28);
+            y += 18;
+        }
+
+        private static void PackOrchardRow(bool show, Control label, Control field, ref int y,
+            Control extra = null)
+        {
+            label.Visible = show;
+            if (field != null) field.Visible = show;
+            if (extra != null) extra.Visible = show;
+            if (!show) return;
+
+            label.Location = new Point(label.Location.X, y + 4);
+            if (field != null) field.Location = new Point(field.Location.X, y);
+            if (extra != null) extra.Location = new Point(extra.Location.X, y + 4);
+            y += 38;
+        }
+
+        //F50 (SIM 0730): 1 and 2 passes ARE the one-pass and two-pass modes, so they are refused
+        //here - the value snaps back to 0 (auto), the box goes red and says what is allowed.
+        private void nudOrchardPassCount_ValueChanged(object sender, EventArgs e)
+        {
+            if (nudOrchardPassCount.Value == 1 || nudOrchardPassCount.Value == 2)
+            {
+                nudOrchardPassCount.Value = 0;
+                nudOrchardPassCount.BackColor = Color.LightCoral;
+                lblOrchardPassWarn.Text = gStr.gsOrchPassCountMin;
+            }
+            else
+            {
+                nudOrchardPassCount.BackColor = Color.White;
+                lblOrchardPassWarn.Text = "";
+            }
+        }
+
+        //F50 (SIM 0730): the orchard checkbox no longer takes part in the implement TYPE - it
+        //only says whether the orchard mode is on. Its settings live on the Hitch tab, next to
+        //the hitch geometry they depend on.
         private void rbtnOrchard_CheckedChanged(object sender, EventArgs e)
         {
-            pnlOrchardSet.Visible = rbtnOrchard.Checked;
-            if (rbtnOrchard.Checked) pnlOrchardSet.BringToFront();
+            ApplyHitchTabLayout();
         }
 
-        //field 2026-07-16: the settings panel covers the other four type buttons, so
-        //a checked Orchard had no way OUT - clicking the green button again now
-        //toggles the mode off (back to rear-fixed, the geometry orchard rides on).
-        //NOTE: CheckedChanged fires BEFORE Click, so this flag is maintained ONLY
-        //here and on tab enter - it holds the state from before the current click.
-        private bool orchardWasChecked;
-
-        private void rbtnOrchard_Click(object sender, EventArgs e)
-        {
-            if (orchardWasChecked && rbtnOrchard.Checked)
-            {
-                rbtnOrchard.Checked = false;
-                rbtnFixedRear.Checked = true;
-            }
-            orchardWasChecked = rbtnOrchard.Checked;
-        }
+        private void rbtnOrchard_Click(object sender, EventArgs e) { }
 
         private void tabTConfig_Leave(object sender, EventArgs e)
         {
@@ -148,24 +314,20 @@ namespace AgOpenGPS
             {
                 //F50: orchard settings are saved regardless of the chosen type
                 Properties.ToolSettings.Default.setTool_isToolOrchard = rbtnOrchard.Checked;
-                Properties.ToolSettings.Default.setTool_orchardWorkMode = cboOrchardMode.SelectedIndex;
-                Properties.ToolSettings.Default.setTool_orchardRowOffset = (double)nudOrchardRowOffset.Value;
-                Properties.ToolSettings.Default.setTool_orchardTreeSpace = (double)nudOrchardTree.Value;
-                Properties.ToolSettings.Default.setTool_orchardSafeSpace = (double)nudOrchardSafe.Value;
+                if (cboOrchardPath.SelectedIndex >= 0)
+                    Properties.ToolSettings.Default.setTool_orchardPathMode =
+                        OrchardRowToMode(cboOrchardPath.SelectedIndex);
+                //The orchard panel is NOT written here any more (F50 fix 2026-08-02) - it sits on
+                //the Hitch tab and writes itself as it is edited, so this handler cannot overwrite
+                //a fresh choice with the value it had before the driver opened that tab.
                 Properties.ToolSettings.Default.setTool_orchardOnePass = chkOrchardOnePass.Checked;
-                Properties.ToolSettings.Default.setTool_orchardCenterFirst = chkOrchardCenterFirst.Checked;
-                Properties.ToolSettings.Default.setTool_plantLateralOffset = (double)nudPlantLateral.Value;
-                Properties.ToolSettings.Default.setTool_plantDistBehindAxle = (double)nudPlantBehind.Value;
+                //setTool_orchardCenterFirst is NOT written any more - it left this panel, but the
+                //stored value keeps ordering the pass BUILD, so it must not be overwritten by a
+                //checkbox nobody can see (F50 2026-08-01).
 
-                if (rbtnOrchard.Checked)
-                {
-                    //orchard rides on a rear-fixed geometry for guidance purposes
-                    Properties.ToolSettings.Default.setTool_isToolFront = false;
-                    Properties.ToolSettings.Default.setTool_isToolTBT = false;
-                    Properties.ToolSettings.Default.setTool_isToolTrailing = false;
-                    Properties.ToolSettings.Default.setTool_isToolRearFixed = true;
-                }
-                else if (rbtnFront.Checked)
+                //SIM 0730: the orchard checkbox does NOT decide the implement type any more -
+                //the last chosen type is kept and used (a front-mounted pole or planter included)
+                if (rbtnFront.Checked)
                 {
                     Properties.ToolSettings.Default.setTool_isToolFront = true;
                     Properties.ToolSettings.Default.setTool_isToolTBT = false;
@@ -208,8 +370,6 @@ namespace AgOpenGPS
             mf.tool.isToolTBT = Properties.ToolSettings.Default.setTool_isToolTBT;
             mf.tool.isToolFrontFixed = Properties.ToolSettings.Default.setTool_isToolFront;
             mf.tool.isToolOrchard = Properties.ToolSettings.Default.setTool_isToolOrchard;
-            mf.tool.plantLateralOffset = Properties.ToolSettings.Default.setTool_plantLateralOffset;
-            mf.tool.plantDistBehindAxle = Properties.ToolSettings.Default.setTool_plantDistBehindAxle;
 
             //mf.tool.hitchLength = (double)nudDrawbarLength.Value * mf.inchOrCm2m;
             if (Properties.ToolSettings.Default.setTool_isToolFront && mf.tool.hitchLength < 0)
@@ -226,8 +386,41 @@ namespace AgOpenGPS
 
         #region  Hitch
 
+        //F50 (SIM 0730): with orchard on, the hitch picture shrinks and the orchard settings sit
+        //underneath it - the two belong together (the hitch geometry is what the orchard measures
+        //from), and the implement-type page stays free of them.
+        private void ApplyHitchTabLayout()
+        {
+            bool orch = rbtnOrchard.Checked && CFeatureLock.IsOn(CFeatureLock.FeatureOrchard);
+
+            //SIM 0730 markup: shrink the picture in BOTH directions (height alone left it
+            //stretched), and keep the hitch VALUE clear of the orchard rows - it sits right under
+            //the picture, so the panel starts below it.
+            picboxToolHitch.Location = orch ? new Point(210, 8) : new Point(13, 12);
+            picboxToolHitch.Size = orch ? new Size(420, 204) : new Size(838, 407);
+
+            int nudY = orch ? 218 : 407;
+            nudDrawbarLength.Location = new Point(nudDrawbarLength.Location.X, nudY);
+            nudTrailingHitchLength.Location = new Point(nudTrailingHitchLength.Location.X, nudY);
+            nudTankHitch.Location = new Point(nudTankHitch.Location.X, nudY);
+            labelTractorUnits.Location = new Point(labelTractorUnits.Location.X, nudY + 69);
+            label112.Location = new Point(label112.Location.X, nudY + 88);
+
+            pnlOrchardSet.Visible = orch;
+            if (orch)
+            {
+                pnlOrchardSet.BringToFront();
+                ApplyOrchardPathUI();
+            }
+        }
+
         private void tabTHitch_Enter(object sender, EventArgs e)
         {
+            //F50 fix 2026-08-02: the orchard panel is on THIS tab, so it is filled here - reaching
+            //Hitch without passing through Config used to leave it on its designer defaults
+            if (mf.vehicle.VehicleConfig.Type != VehicleType.Harvester) LoadOrchardPanel();
+
+            ApplyHitchTabLayout();
             if (mf.vehicle.VehicleConfig.Type != VehicleType.Harvester)
             {
                 //fixed -hitch only on vehicle
@@ -299,6 +492,7 @@ namespace AgOpenGPS
 
         private void tabTHitch_Leave(object sender, EventArgs e)
         {
+            if (mf.vehicle.VehicleConfig.Type != VehicleType.Harvester) StoreOrchardPanel();
             Properties.VehicleSettings.Default.Save();
             Properties.ToolSettings.Default.Save();
         }

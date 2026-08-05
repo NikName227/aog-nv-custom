@@ -26,6 +26,14 @@ namespace AgOpenGPS
 
         public readonly List<PlantSpot> spots = new List<PlantSpot>();
 
+        /// <summary>
+        /// Tree positions of the orchard rows (SIM 0730). The "how far to the next tree" readout
+        /// is wanted in EVERY orchard mode, not only while planting - mulching or spraying wants
+        /// to know it just as much. When a planting job exists its spots are the targets;
+        /// otherwise these are, and nothing is ever marked on them.
+        /// </summary>
+        public readonly List<vec2> rowTrees = new List<vec2>();
+
         /// <summary>Distance from the planter drop point to the next seedling spot; -1 = none.</summary>
         public double DistToNext { get; private set; } = -1;
 
@@ -35,6 +43,9 @@ namespace AgOpenGPS
         public vec2 PlantPoint { get; private set; }
 
         public bool IsOn => spots.Count > 0;
+
+        /// <summary>Is there anything to measure the distance to?</summary>
+        public bool HasTrees => spots.Count > 0 || rowTrees.Count > 0;
 
         // the spot being driven at; -1 = look for a new one
         private int targetIdx = -1;
@@ -51,6 +62,7 @@ namespace AgOpenGPS
         public void Clear()
         {
             spots.Clear();
+            rowTrees.Clear();
             targetIdx = -1;
             PlantedCount = 0;
             DistToNext = -1;
@@ -94,38 +106,56 @@ namespace AgOpenGPS
         /// <summary>Per fix: follow the drop point, mark spots it drove past, aim at the next.</summary>
         public void Update()
         {
-            if (spots.Count == 0) { DistToNext = -1; return; }
+            if (!HasTrees) { DistToNext = -1; return; }
 
-            vec3 piv = mf.pivotAxlePos;
-            double h = piv.heading;
-            double back = mf.tool.plantDistBehindAxle;
-            double lat = mf.tool.plantLateralOffset;
+            //SIM 0730: the implement position AOG already computes is the measuring point -
+            //toolPos comes from the hitch geometry (hitch length for a rigid tool, the trailing
+            //lengths and the jackknife for a towed one), and the tool offset puts it sideways.
+            //No F50 geometry of its own: a planter is set up like any other implement.
+            vec3 tp = mf.toolPos;
+            double h = tp.heading;
+            double lat = mf.tool.offset;
 
             PlantPoint = new vec2(
-                piv.easting - Math.Sin(h) * back + Math.Sin(h + glm.PIBy2) * lat,
-                piv.northing - Math.Cos(h) * back + Math.Cos(h + glm.PIBy2) * lat);
+                tp.easting + Math.Sin(h + glm.PIBy2) * lat,
+                tp.northing + Math.Cos(h + glm.PIBy2) * lat);
 
             double fe = Math.Sin(h), fn = Math.Cos(h);   // forward unit vector
             bool driving = mf.avgSpeed > MinSpeedKmh && !mf.isReverse;
 
-            // the drop point passed the target -> that seedling is in the ground.
-            // Cross-track error does NOT matter here: the driver aims down the row, and
-            // a spot that is only approximately hit is still the one being planted.
+            // SIM 0730: driving past a spot no longer marks it planted. Geometry cannot know
+            // whether a seedling actually went into the ground - a skipped spot, a hand refill,
+            // a pass driven twice - and a wrong mark is worse than no mark. The call stays with
+            // the driver (MarkTargetPlanted), the HUD keeps showing how far the next spot is.
             if (targetIdx >= 0)
             {
                 PlantSpot t = spots[targetIdx];
-                if (t.planted) targetIdx = -1;
-                else if (driving && Along(t.pos, fe, fn) < 0)
-                {
-                    t.planted = true;
-                    PlantedCount++;
-                    dirty = true;
-                    targetIdx = -1;
-                }
+                if (t.planted || (driving && Along(t.pos, fe, fn) < 0)) targetIdx = -1;
+            }
+
+            if (spots.Count == 0)
+            {
+                //no planting job: plain readout to the nearest tree of the rows ahead
+                DistToNext = NearestAhead(rowTrees, fe, fn);
+                return;
             }
 
             if (targetIdx < 0) targetIdx = FindNextAhead(fe, fn);
             DistToNext = targetIdx >= 0 ? Dist(spots[targetIdx].pos) : -1;
+        }
+
+        // distance to the nearest position ahead of the implement; -1 = none in range
+        private double NearestAhead(List<vec2> pts, double fe, double fn)
+        {
+            double best = SearchRange;
+            bool any = false;
+            for (int i = 0; i < pts.Count; i++)
+            {
+                if (Along(pts[i], fe, fn) < 0) continue;
+                double d = Dist(pts[i]);
+                if (d < best) { best = d; any = true; }
+            }
+            return any ? best : -1;
         }
 
         // nearest not-yet-planted spot that is still in front of the drop point

@@ -296,6 +296,12 @@ namespace AgOpenGPS
 
             VehicleDotVisual.DrawVehicleDot(mf.pivotAxlePos.ToGeoCoord());
 
+            //F50 (SIM 0730): show the orchard rows here too - the hand-made lines drawn in this
+            //window are exactly the ones that work around and along the orchard (skewed boundary,
+            //headland strips), and they are far easier to place with the rows in sight. Display
+            //only: this window never touches the orchard geometry.
+            DrawOrchardRows();
+
             DrawBuiltLines();
             if (smoothLine != null && smoothLine.Count > 1)
             {
@@ -1514,6 +1520,23 @@ namespace AgOpenGPS
         }
 
         // Draw only the ACTIVE line (Browse) or the line being built/edited (Build).
+        //F50: the tree rows of this field, same thin muted line as the main map
+        private void DrawOrchardRows()
+        {
+            if (mf.orchRows.Count == 0) return;
+
+            GL.LineWidth(1);
+            GL.Color4(0.35f, 0.62f, 0.35f, 0.75f);
+            for (int i = 0; i < mf.orchRows.Count; i++)
+            {
+                var c = mf.orchRows[i].curve;
+                if (c.Count < 2) continue;
+                GL.Begin(PrimitiveType.LineStrip);
+                for (int p = 0; p < c.Count; p++) GL.Vertex3(c[p].easting, c[p].northing, 0);
+                GL.End();
+            }
+        }
+
         private void DrawBuiltLines()
         {
             int show = (mode == LineMode.Browse) ? activeIdx : workIdx;

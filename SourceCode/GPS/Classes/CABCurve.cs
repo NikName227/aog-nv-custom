@@ -240,6 +240,14 @@ namespace AgOpenGPS
                     && mf.yt.isYouTurnBtnOn
                     && mf.plan.TryGuidanceOffset(out int planIdx))
                     howManyPathsAway = planIdx;
+
+                //F50 t10: a derived orchard pass is ONE line, not a reference for endless
+                //parallel passes. The passes already exist as their own tracks (one per
+                //inter-row / per row), so offsetting by tool width only pulled the driver onto
+                //something that was never planned - straight over a tree row when the width
+                //and the row spacing do not match. The next inter-row is reached by selecting
+                //the next derived line (auto), not by stepping this one sideways.
+                if (track.isOrchardDerived && mf.trk.isOrchardAuto) howManyPathsAway = 0;
             }
 
             if (!isCurveValid || howManyPathsAway != lastHowManyPathsAway || (isHeadingSameWay != lastIsHeadingSameWay && mf.tool.offset != 0))
@@ -261,7 +269,10 @@ namespace AgOpenGPS
                 curList = await build;
                 findGlobalNearestCurvePoint = true;
 
-                if (mf.isSideGuideLines && mf.camera.camSetDistance > mf.tool.width * -400)
+                //F50 t10: no side guide lines on a derived orchard pass - they marched across
+                //the field in tool-width steps and could sit on the trees
+                if (mf.isSideGuideLines && mf.camera.camSetDistance > mf.tool.width * -400
+                    && !(track.isOrchardDerived && mf.trk.isOrchardAuto))
                 {
                     if (buildList != null)
                         await buildList;
@@ -1079,7 +1090,13 @@ namespace AgOpenGPS
 
             int ptCount = mf.trk.gArr[mf.trk.idx].curvePts.Count;
 
-            if (mf.trk.gArr[mf.trk.idx].mode != TrackMode.waterPivot)
+            //F50 t10 (SIM 0730): on a derived orchard pass the reference line is NOT drawn. AOG's
+            //reference is the edge of pass 0, so on an orchard pass it lands half a tool width
+            //off the driven line - right along the tractor's flank, dashed, looking like a line
+            //to follow. The pass itself (violet) and the guidance line are what count here.
+            bool isOrchardPass = mf.trk.gArr[mf.trk.idx].isOrchardDerived && mf.trk.isOrchardAuto;
+
+            if (mf.trk.gArr[mf.trk.idx].mode != TrackMode.waterPivot && !isOrchardPass)
             {
                 if (mf.trk.gArr[mf.trk.idx].curvePts == null || mf.trk.gArr[mf.trk.idx].curvePts.Count == 0) return;
 

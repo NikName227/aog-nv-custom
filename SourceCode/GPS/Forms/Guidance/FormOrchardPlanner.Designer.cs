@@ -1,4 +1,4 @@
-namespace AgOpenGPS
+﻿namespace AgOpenGPS
 {
     partial class FormOrchardPlanner
     {
@@ -39,6 +39,7 @@ namespace AgOpenGPS
             this.btnPoint = new System.Windows.Forms.Button();
             this.lblPointMode = new System.Windows.Forms.Label();
             this.btnAddPoint = new System.Windows.Forms.CheckBox();
+            this.btnLimitEdit = new System.Windows.Forms.CheckBox();
             this.btnDeletePoint = new System.Windows.Forms.CheckBox();
             this.btnImportKml = new System.Windows.Forms.Button();
             this.btnMakePath = new System.Windows.Forms.Button();
@@ -52,21 +53,40 @@ namespace AgOpenGPS
             this.btnAccept = new System.Windows.Forms.Button();
             this.btnNewOrchard = new System.Windows.Forms.Button();
             this.btnTreesOnRow = new System.Windows.Forms.Button();
+            this.lblFilterCap = new System.Windows.Forms.Label();
+            this.lblThin = new System.Windows.Forms.Label();
+            this.btnThinDown = new System.Windows.Forms.Button();
+            this.btnThinUp = new System.Windows.Forms.Button();
+            this.lblThinVal = new System.Windows.Forms.Label();
+            this.lblSmooth = new System.Windows.Forms.Label();
+            this.btnSmoothDown = new System.Windows.Forms.Button();
+            this.btnSmoothUp = new System.Windows.Forms.Button();
+            this.lblSmoothVal = new System.Windows.Forms.Label();
+            this.btnFilterApply = new System.Windows.Forms.Button();
             this.pnlGen = new System.Windows.Forms.Panel();
             this.lblGenCap = new System.Windows.Forms.Label();
             this.lblGenRowSpace = new System.Windows.Forms.Label();
-            this.nudGenRowSpace = new System.Windows.Forms.NumericUpDown();
+            this.nudGenRowSpace = new AgOpenGPS.NudlessNumericUpDown();
             this.lblGenTreeSpace = new System.Windows.Forms.Label();
-            this.nudGenTreeSpace = new System.Windows.Forms.NumericUpDown();
+            this.nudGenTreeSpace = new AgOpenGPS.NudlessNumericUpDown();
             this.lblGenHeadland = new System.Windows.Forms.Label();
-            this.nudGenHeadland = new System.Windows.Forms.NumericUpDown();
+            this.nudGenHeadland = new AgOpenGPS.NudlessNumericUpDown();
             this.lblGenSetback = new System.Windows.Forms.Label();
-            this.nudGenSetback = new System.Windows.Forms.NumericUpDown();
+            this.nudGenSetback = new AgOpenGPS.NudlessNumericUpDown();
             this.chkGenStagger = new System.Windows.Forms.CheckBox();
             this.btnGenLine = new System.Windows.Forms.Button();
             this.btnGenerate = new System.Windows.Forms.Button();
             this.lblGenResult = new System.Windows.Forms.Label();
             this.btnGenClose = new System.Windows.Forms.Button();
+            this.nudRefLong = new AgOpenGPS.NudlessNumericUpDown();
+            this.btnRefDir = new System.Windows.Forms.Button();
+            this.btnMarkTree = new System.Windows.Forms.Button();
+            this.btnEditTrees = new System.Windows.Forms.Button();
+            this.btnDeleteLastTree = new System.Windows.Forms.Button();
+            this.lblTreeMinDist = new System.Windows.Forms.Label();
+            this.nudTreeMinDist = new AgOpenGPS.NudlessNumericUpDown();
+            this.btnKeyTrigger = new System.Windows.Forms.Button();
+            this.lblKeyTrigger = new System.Windows.Forms.Label();
             this.SuspendLayout();
             //
             // oglSelf
@@ -178,7 +198,7 @@ namespace AgOpenGPS
             //
             this.lblName.AutoSize = true;
             this.lblName.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
-            this.lblName.Location = new System.Drawing.Point(684, 600);
+            this.lblName.Location = new System.Drawing.Point(684, 616);
             this.lblName.Name = "lblName";
             this.lblName.Size = new System.Drawing.Size(43, 16);
             this.lblName.TabIndex = 33;
@@ -187,7 +207,7 @@ namespace AgOpenGPS
             // tboxName
             //
             this.tboxName.Font = new System.Drawing.Font("Tahoma", 11.25F);
-            this.tboxName.Location = new System.Drawing.Point(740, 596);
+            this.tboxName.Location = new System.Drawing.Point(740, 612);
             this.tboxName.Name = "tboxName";
             this.tboxName.Size = new System.Drawing.Size(246, 26);
             this.tboxName.TabIndex = 34;
@@ -279,7 +299,7 @@ namespace AgOpenGPS
             //
             this.lblMeasure.Font = new System.Drawing.Font("Tahoma", 11F, System.Drawing.FontStyle.Bold);
             this.lblMeasure.ForeColor = System.Drawing.Color.Firebrick;
-            this.lblMeasure.Location = new System.Drawing.Point(684, 260);
+            this.lblMeasure.Location = new System.Drawing.Point(684, 252);
             this.lblMeasure.Name = "lblMeasure";
             this.lblMeasure.Size = new System.Drawing.Size(104, 22);
             this.lblMeasure.TabIndex = 9;
@@ -360,6 +380,26 @@ namespace AgOpenGPS
             this.lblPointMode.TabIndex = 15;
             this.lblPointMode.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
             //
+            // btnLimitEdit
+            //
+            //F50 (2026-08-01): opens the steer-limit polygon for editing. Sits directly above
+            //"Add point" and is deliberately narrower and smaller - it is set once per field,
+            //not a tool reached for on every pass.
+            this.btnLimitEdit.Appearance = System.Windows.Forms.Appearance.Button;
+            this.btnLimitEdit.AutoCheck = false;
+            this.btnLimitEdit.BackColor = System.Drawing.Color.AliceBlue;
+            this.btnLimitEdit.FlatAppearance.CheckedBackColor = System.Drawing.Color.Gold;
+            this.btnLimitEdit.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnLimitEdit.Font = new System.Drawing.Font("Tahoma", 8.25F, System.Drawing.FontStyle.Bold);
+            this.btnLimitEdit.Location = new System.Drawing.Point(684, 276);
+            this.btnLimitEdit.Name = "btnLimitEdit";
+            this.btnLimitEdit.Size = new System.Drawing.Size(96, 38);
+            this.btnLimitEdit.TabStop = false;
+            this.btnLimitEdit.Text = "Limit zone\r\nsteering";
+            this.btnLimitEdit.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.btnLimitEdit.UseVisualStyleBackColor = false;
+            this.btnLimitEdit.Click += new System.EventHandler(this.btnLimitEdit_Click);
+            //
             // btnAddPoint
             //
             this.btnAddPoint.Appearance = System.Windows.Forms.Appearance.Button;
@@ -398,9 +438,9 @@ namespace AgOpenGPS
             this.btnImportKml.BackColor = System.Drawing.Color.AliceBlue;
             this.btnImportKml.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnImportKml.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
-            this.btnImportKml.Location = new System.Drawing.Point(684, 372);
+            this.btnImportKml.Location = new System.Drawing.Point(684, 366);
             this.btnImportKml.Name = "btnImportKml";
-            this.btnImportKml.Size = new System.Drawing.Size(145, 56);
+            this.btnImportKml.Size = new System.Drawing.Size(145, 44);
             this.btnImportKml.TabIndex = 18;
             this.btnImportKml.Text = "Import KML";
             this.btnImportKml.UseVisualStyleBackColor = false;
@@ -412,12 +452,16 @@ namespace AgOpenGPS
             this.btnMakePath.Enabled = false;
             this.btnMakePath.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnMakePath.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
-            this.btnMakePath.Location = new System.Drawing.Point(835, 372);
+            this.btnMakePath.Location = new System.Drawing.Point(835, 366);
             this.btnMakePath.Name = "btnMakePath";
-            this.btnMakePath.Size = new System.Drawing.Size(145, 56);
+            this.btnMakePath.Size = new System.Drawing.Size(145, 44);
             this.btnMakePath.TabIndex = 19;
             this.btnMakePath.Text = "Make path";
             this.btnMakePath.UseVisualStyleBackColor = false;
+            //SIM 0729 t4: this window only DEFINES rows - the driving path comes from the
+            //rows plus the implement settings and is (re)generated automatically, so the
+            //manual trigger is hidden. BuildPasses/btnMakePath_Click stay as the engine.
+            this.btnMakePath.Visible = false;
             this.btnMakePath.Click += new System.EventHandler(this.btnMakePath_Click);
             //
             // lblWarn
@@ -425,9 +469,9 @@ namespace AgOpenGPS
             this.lblWarn.AutoSize = false;
             this.lblWarn.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
             this.lblWarn.ForeColor = System.Drawing.Color.Firebrick;
-            this.lblWarn.Location = new System.Drawing.Point(684, 436);
+            this.lblWarn.Location = new System.Drawing.Point(684, 471);
             this.lblWarn.Name = "lblWarn";
-            this.lblWarn.Size = new System.Drawing.Size(300, 40);
+            this.lblWarn.Size = new System.Drawing.Size(145, 18);
             this.lblWarn.TabIndex = 20;
             //
             // btnRecordRow (F50 phase 2: record a row by DRIVING it, boundary-recorder
@@ -435,30 +479,31 @@ namespace AgOpenGPS
             // safe distance from the tree line / slope)
             //
             this.btnRecordRow = new System.Windows.Forms.Button();
-            this.nudRecOffset = new System.Windows.Forms.NumericUpDown();
+            this.nudRecOffset = new AgOpenGPS.NudlessNumericUpDown();
             this.btnRecSide = new System.Windows.Forms.Button();
             this.btnRecordRow.BackColor = System.Drawing.Color.MistyRose;
             this.btnRecordRow.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnRecordRow.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
-            this.btnRecordRow.Location = new System.Drawing.Point(684, 482);
+            this.btnRecordRow.Location = new System.Drawing.Point(684, 490);
             this.btnRecordRow.Name = "btnRecordRow";
-            this.btnRecordRow.Size = new System.Drawing.Size(145, 56);
+            this.btnRecordRow.Size = new System.Drawing.Size(145, 44);
             this.btnRecordRow.Text = "Record row";
             this.btnRecordRow.UseVisualStyleBackColor = false;
             this.btnRecordRow.Click += new System.EventHandler(this.btnRecordRow_Click);
             this.nudRecOffset.DecimalPlaces = 1;
             this.nudRecOffset.Font = new System.Drawing.Font("Tahoma", 12F);
             this.nudRecOffset.Increment = new decimal(new int[] { 5, 0, 0, 65536 });
-            this.nudRecOffset.Location = new System.Drawing.Point(835, 482);
+            this.nudRecOffset.Location = new System.Drawing.Point(835, 486);
             this.nudRecOffset.Maximum = new decimal(new int[] { 10, 0, 0, 0 });
             this.nudRecOffset.Name = "nudRecOffset";
-            this.nudRecOffset.Size = new System.Drawing.Size(70, 32);
+            this.nudRecOffset.Size = new System.Drawing.Size(70, 28);
+            this.nudRecOffset.Click += new System.EventHandler(this.nudOrchard_Click);
             this.nudRecOffset.Value = new decimal(new int[] { 2, 0, 0, 0 });
             this.btnRecSide.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnRecSide.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
-            this.btnRecSide.Location = new System.Drawing.Point(908, 482);
+            this.btnRecSide.Location = new System.Drawing.Point(908, 486);
             this.btnRecSide.Name = "btnRecSide";
-            this.btnRecSide.Size = new System.Drawing.Size(72, 32);
+            this.btnRecSide.Size = new System.Drawing.Size(72, 28);
             this.btnRecSide.Text = "R →";
             this.btnRecSide.UseVisualStyleBackColor = true;
             this.btnRecSide.Click += new System.EventHandler(this.btnRecSide_Click);
@@ -470,7 +515,7 @@ namespace AgOpenGPS
             this.btnNewRow.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
             this.btnNewRow.Location = new System.Drawing.Point(684, 548);
             this.btnNewRow.Name = "btnNewRow";
-            this.btnNewRow.Size = new System.Drawing.Size(146, 42);
+            this.btnNewRow.Size = new System.Drawing.Size(96, 56);
             this.btnNewRow.TabIndex = 21;
             this.btnNewRow.Text = "New row";
             this.btnNewRow.UseVisualStyleBackColor = false;
@@ -481,9 +526,9 @@ namespace AgOpenGPS
             this.btnEdit.BackColor = System.Drawing.Color.AliceBlue;
             this.btnEdit.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnEdit.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
-            this.btnEdit.Location = new System.Drawing.Point(838, 548);
+            this.btnEdit.Location = new System.Drawing.Point(786, 548);
             this.btnEdit.Name = "btnEdit";
-            this.btnEdit.Size = new System.Drawing.Size(146, 42);
+            this.btnEdit.Size = new System.Drawing.Size(96, 56);
             this.btnEdit.TabIndex = 22;
             this.btnEdit.Text = "Edit row";
             this.btnEdit.UseVisualStyleBackColor = false;
@@ -577,6 +622,10 @@ namespace AgOpenGPS
             this.btnTreesOnRow.TabIndex = 41;
             this.btnTreesOnRow.Text = "Trees\r\non row";
             this.btnTreesOnRow.UseVisualStyleBackColor = false;
+            //SIM 0729 t2: the generator lays out the whole orchard, so re-spacing one row
+            //by hand only ever REDUCED the seedling count - hidden until it is redefined.
+            //COrchard.PlaceTreesOnRow stays in the code.
+            this.btnTreesOnRow.Visible = false;
             this.btnTreesOnRow.Click += new System.EventHandler(this.btnTreesOnRow_Click);
             //
             // pnlGen - planting layout settings; sits over the row buttons so the drawing
@@ -608,6 +657,7 @@ namespace AgOpenGPS
             this.nudGenRowSpace.Minimum = new decimal(new int[] { 5, 0, 0, 65536 });
             this.nudGenRowSpace.Name = "nudGenRowSpace";
             this.nudGenRowSpace.Size = new System.Drawing.Size(118, 28);
+            this.nudGenRowSpace.Click += new System.EventHandler(this.nudOrchard_Click);
             this.nudGenRowSpace.Value = new decimal(new int[] { 4, 0, 0, 0 });
             this.lblGenTreeSpace.Font = new System.Drawing.Font("Tahoma", 9.75F);
             this.lblGenTreeSpace.Location = new System.Drawing.Point(6, 60);
@@ -622,6 +672,7 @@ namespace AgOpenGPS
             this.nudGenTreeSpace.Minimum = new decimal(new int[] { 3, 0, 0, 65536 });
             this.nudGenTreeSpace.Name = "nudGenTreeSpace";
             this.nudGenTreeSpace.Size = new System.Drawing.Size(118, 28);
+            this.nudGenTreeSpace.Click += new System.EventHandler(this.nudOrchard_Click);
             this.nudGenTreeSpace.Value = new decimal(new int[] { 3, 0, 0, 0 });
             this.lblGenHeadland.Font = new System.Drawing.Font("Tahoma", 9.75F);
             this.lblGenHeadland.Location = new System.Drawing.Point(6, 90);
@@ -635,6 +686,7 @@ namespace AgOpenGPS
             this.nudGenHeadland.Maximum = new decimal(new int[] { 50, 0, 0, 0 });
             this.nudGenHeadland.Name = "nudGenHeadland";
             this.nudGenHeadland.Size = new System.Drawing.Size(118, 28);
+            this.nudGenHeadland.Click += new System.EventHandler(this.nudOrchard_Click);
             this.nudGenHeadland.Value = new decimal(new int[] { 6, 0, 0, 0 });
             this.lblGenSetback.Font = new System.Drawing.Font("Tahoma", 9.75F);
             this.lblGenSetback.Location = new System.Drawing.Point(6, 120);
@@ -648,6 +700,7 @@ namespace AgOpenGPS
             this.nudGenSetback.Maximum = new decimal(new int[] { 50, 0, 0, 0 });
             this.nudGenSetback.Name = "nudGenSetback";
             this.nudGenSetback.Size = new System.Drawing.Size(118, 28);
+            this.nudGenSetback.Click += new System.EventHandler(this.nudOrchard_Click);
             this.nudGenSetback.Value = new decimal(new int[] { 2, 0, 0, 0 });
             this.chkGenStagger.Font = new System.Drawing.Font("Tahoma", 9.75F);
             this.chkGenStagger.Location = new System.Drawing.Point(6, 150);
@@ -731,6 +784,7 @@ namespace AgOpenGPS
             this.Controls.Add(this.btnNavRight);
             this.Controls.Add(this.btnNavDown);
             this.Controls.Add(this.lblPointMode);
+            this.Controls.Add(this.btnLimitEdit);
             this.Controls.Add(this.btnAddPoint);
             this.Controls.Add(this.btnDeletePoint);
             this.Controls.Add(this.btnImportKml);
@@ -744,6 +798,182 @@ namespace AgOpenGPS
             this.Controls.Add(this.btnCancel);
             this.Controls.Add(this.btnAccept);
             this.Controls.Add(this.btnNewOrchard);
+            //
+            // Row filter (t9): thin + smooth on the row's control points, magenta preview
+            //
+            this.lblFilterCap.AutoSize = true;
+            this.lblFilterCap.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
+            this.lblFilterCap.Location = new System.Drawing.Point(684, 344);
+            this.lblFilterCap.Name = "lblFilterCap";
+            this.lblFilterCap.Size = new System.Drawing.Size(120, 16);
+            this.lblFilterCap.Text = "Filter row";
+            this.lblThin.AutoSize = true;
+            this.lblThin.Font = new System.Drawing.Font("Tahoma", 8.25F);
+            this.lblThin.Location = new System.Drawing.Point(684, 414);
+            this.lblThin.Name = "lblThin";
+            this.lblThin.Size = new System.Drawing.Size(90, 14);
+            this.lblThin.Text = "Thin (m)";
+            this.btnThinDown.Font = new System.Drawing.Font("Tahoma", 12F, System.Drawing.FontStyle.Bold);
+            this.btnThinDown.Location = new System.Drawing.Point(684, 430);
+            this.btnThinDown.Name = "btnThinDown";
+            this.btnThinDown.Size = new System.Drawing.Size(44, 40);
+            this.btnThinDown.Text = "−";
+            this.btnThinDown.UseVisualStyleBackColor = true;
+            this.btnThinDown.Click += new System.EventHandler(this.btnThinDown_Click);
+            this.lblThinVal.Font = new System.Drawing.Font("Tahoma", 12F, System.Drawing.FontStyle.Bold);
+            this.lblThinVal.Location = new System.Drawing.Point(730, 440);
+            this.lblThinVal.Name = "lblThinVal";
+            this.lblThinVal.Size = new System.Drawing.Size(40, 22);
+            this.lblThinVal.Text = "--";
+            this.lblThinVal.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.btnThinUp.Font = new System.Drawing.Font("Tahoma", 12F, System.Drawing.FontStyle.Bold);
+            this.btnThinUp.Location = new System.Drawing.Point(772, 430);
+            this.btnThinUp.Name = "btnThinUp";
+            this.btnThinUp.Size = new System.Drawing.Size(44, 40);
+            this.btnThinUp.Text = "+";
+            this.btnThinUp.UseVisualStyleBackColor = true;
+            this.btnThinUp.Click += new System.EventHandler(this.btnThinUp_Click);
+            this.lblSmooth.AutoSize = true;
+            this.lblSmooth.Font = new System.Drawing.Font("Tahoma", 8.25F);
+            this.lblSmooth.Location = new System.Drawing.Point(838, 414);
+            this.lblSmooth.Name = "lblSmooth";
+            this.lblSmooth.Size = new System.Drawing.Size(90, 14);
+            this.lblSmooth.Text = "Smooth";
+            this.btnSmoothDown.Font = new System.Drawing.Font("Tahoma", 12F, System.Drawing.FontStyle.Bold);
+            this.btnSmoothDown.Location = new System.Drawing.Point(838, 430);
+            this.btnSmoothDown.Name = "btnSmoothDown";
+            this.btnSmoothDown.Size = new System.Drawing.Size(44, 40);
+            this.btnSmoothDown.Text = "−";
+            this.btnSmoothDown.UseVisualStyleBackColor = true;
+            this.btnSmoothDown.Click += new System.EventHandler(this.btnSmoothDown_Click);
+            this.lblSmoothVal.Font = new System.Drawing.Font("Tahoma", 12F, System.Drawing.FontStyle.Bold);
+            this.lblSmoothVal.Location = new System.Drawing.Point(884, 440);
+            this.lblSmoothVal.Name = "lblSmoothVal";
+            this.lblSmoothVal.Size = new System.Drawing.Size(40, 22);
+            this.lblSmoothVal.Text = "--";
+            this.lblSmoothVal.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            this.btnSmoothUp.Font = new System.Drawing.Font("Tahoma", 12F, System.Drawing.FontStyle.Bold);
+            this.btnSmoothUp.Location = new System.Drawing.Point(926, 430);
+            this.btnSmoothUp.Name = "btnSmoothUp";
+            this.btnSmoothUp.Size = new System.Drawing.Size(44, 40);
+            this.btnSmoothUp.Text = "+";
+            this.btnSmoothUp.UseVisualStyleBackColor = true;
+            this.btnSmoothUp.Click += new System.EventHandler(this.btnSmoothUp_Click);
+            this.btnFilterApply.BackColor = System.Drawing.Color.Honeydew;
+            this.btnFilterApply.Enabled = false;
+            this.btnFilterApply.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnFilterApply.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
+            this.btnFilterApply.Location = new System.Drawing.Point(835, 366);
+            this.btnFilterApply.Name = "btnFilterApply";
+            this.btnFilterApply.Size = new System.Drawing.Size(145, 44);
+            this.btnFilterApply.Text = "Apply filter";
+            this.btnFilterApply.UseVisualStyleBackColor = false;
+            this.btnFilterApply.Click += new System.EventHandler(this.btnFilterApply_Click);
+            //
+            // Reference point (SIM 0730): where the measuring point sits relative to the tractor -
+            // lateral + side, longitudinal + direction. Everything this window measures (the
+            // recorded row line, a marked tree) comes from it, so mapping with a pole needs no
+            // change to the implement profile.
+            //
+            this.nudRefLong.DecimalPlaces = 1;
+            this.nudRefLong.Font = new System.Drawing.Font("Tahoma", 12F);
+            this.nudRefLong.Increment = new decimal(new int[] { 1, 0, 0, 65536 });
+            this.nudRefLong.Location = new System.Drawing.Point(835, 518);
+            this.nudRefLong.Maximum = new decimal(new int[] { 15, 0, 0, 0 });
+            this.nudRefLong.Name = "nudRefLong";
+            this.nudRefLong.Size = new System.Drawing.Size(70, 28);
+            this.nudRefLong.Click += new System.EventHandler(this.nudOrchard_Click);
+            this.btnRefDir.Font = new System.Drawing.Font("Tahoma", 11F, System.Drawing.FontStyle.Bold);
+            this.btnRefDir.Location = new System.Drawing.Point(908, 518);
+            this.btnRefDir.Name = "btnRefDir";
+            this.btnRefDir.Size = new System.Drawing.Size(72, 28);
+            this.btnRefDir.Text = "^ F";
+            this.btnRefDir.UseVisualStyleBackColor = true;
+            this.btnRefDir.Click += new System.EventHandler(this.btnRefDir_Click);
+            //
+            // Tree marking (SIM 0730): big button over the map, and the recording-only controls
+            // that take the place of the point/import/filter block while a row is being recorded.
+            //
+            this.btnMarkTree.BackColor = System.Drawing.Color.Honeydew;
+            this.btnMarkTree.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnMarkTree.Font = new System.Drawing.Font("Tahoma", 14F, System.Drawing.FontStyle.Bold);
+            this.btnMarkTree.Location = new System.Drawing.Point(24, 560);
+            this.btnMarkTree.Name = "btnMarkTree";
+            this.btnMarkTree.Size = new System.Drawing.Size(150, 88);
+            this.btnMarkTree.Text = "Tree";
+            this.btnMarkTree.UseVisualStyleBackColor = false;
+            this.btnMarkTree.Visible = false;
+            this.btnMarkTree.Click += new System.EventHandler(this.btnMarkTree_Click);
+            this.btnDeleteLastTree.BackColor = System.Drawing.Color.MistyRose;
+            this.btnDeleteLastTree.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnDeleteLastTree.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
+            this.btnDeleteLastTree.Location = new System.Drawing.Point(684, 316);
+            this.btnDeleteLastTree.Name = "btnDeleteLastTree";
+            this.btnDeleteLastTree.Size = new System.Drawing.Size(296, 44);
+            this.btnDeleteLastTree.Text = "Delete last tree";
+            this.btnDeleteLastTree.UseVisualStyleBackColor = false;
+            this.btnDeleteLastTree.Visible = false;
+            this.btnDeleteLastTree.Click += new System.EventHandler(this.btnDeleteLastTree_Click);
+            this.lblTreeMinDist.AutoSize = true;
+            this.lblTreeMinDist.Font = new System.Drawing.Font("Tahoma", 8.25F);
+            this.lblTreeMinDist.Location = new System.Drawing.Point(684, 376);
+            this.lblTreeMinDist.Name = "lblTreeMinDist";
+            this.lblTreeMinDist.Size = new System.Drawing.Size(140, 14);
+            this.lblTreeMinDist.Text = "Min tree spacing (m)";
+            this.lblTreeMinDist.Visible = false;
+            this.nudTreeMinDist.DecimalPlaces = 1;
+            this.nudTreeMinDist.Font = new System.Drawing.Font("Tahoma", 12F);
+            this.nudTreeMinDist.Increment = new decimal(new int[] { 5, 0, 0, 65536 });
+            this.nudTreeMinDist.Location = new System.Drawing.Point(835, 370);
+            this.nudTreeMinDist.Maximum = new decimal(new int[] { 20, 0, 0, 0 });
+            this.nudTreeMinDist.Name = "nudTreeMinDist";
+            this.nudTreeMinDist.Size = new System.Drawing.Size(70, 30);
+            this.nudTreeMinDist.Visible = false;
+            this.nudTreeMinDist.Click += new System.EventHandler(this.nudOrchard_Click);
+            this.btnKeyTrigger.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnKeyTrigger.Font = new System.Drawing.Font("Tahoma", 9F);
+            this.btnKeyTrigger.Location = new System.Drawing.Point(684, 412);
+            this.btnKeyTrigger.Name = "btnKeyTrigger";
+            this.btnKeyTrigger.Size = new System.Drawing.Size(145, 38);
+            this.btnKeyTrigger.Text = "Key trigger";
+            this.btnKeyTrigger.UseVisualStyleBackColor = true;
+            this.btnKeyTrigger.Visible = false;
+            this.btnKeyTrigger.Click += new System.EventHandler(this.btnKeyTrigger_Click);
+            this.lblKeyTrigger.AutoSize = true;
+            this.lblKeyTrigger.Font = new System.Drawing.Font("Tahoma", 7.5F);
+            this.lblKeyTrigger.ForeColor = System.Drawing.Color.DimGray;
+            this.lblKeyTrigger.Location = new System.Drawing.Point(686, 452);
+            this.lblKeyTrigger.Name = "lblKeyTrigger";
+            this.lblKeyTrigger.Size = new System.Drawing.Size(140, 12);
+            this.lblKeyTrigger.Text = "";
+            this.lblKeyTrigger.Visible = false;
+            this.btnEditTrees.BackColor = System.Drawing.Color.AliceBlue;
+            this.btnEditTrees.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnEditTrees.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
+            this.btnEditTrees.Location = new System.Drawing.Point(888, 548);
+            this.btnEditTrees.Name = "btnEditTrees";
+            this.btnEditTrees.Size = new System.Drawing.Size(96, 56);
+            this.btnEditTrees.Text = "Edit trees";
+            this.btnEditTrees.UseVisualStyleBackColor = false;
+            this.btnEditTrees.Click += new System.EventHandler(this.btnEditTrees_Click);
+            this.Controls.Add(this.btnEditTrees);
+            this.Controls.Add(this.btnMarkTree);
+            this.Controls.Add(this.btnDeleteLastTree);
+            this.Controls.Add(this.lblTreeMinDist);
+            this.Controls.Add(this.nudTreeMinDist);
+            this.Controls.Add(this.btnKeyTrigger);
+            this.Controls.Add(this.lblKeyTrigger);
+            this.Controls.Add(this.nudRefLong);
+            this.Controls.Add(this.btnRefDir);
+            this.Controls.Add(this.lblThin);
+            this.Controls.Add(this.btnThinDown);
+            this.Controls.Add(this.lblThinVal);
+            this.Controls.Add(this.btnThinUp);
+            this.Controls.Add(this.lblSmooth);
+            this.Controls.Add(this.btnSmoothDown);
+            this.Controls.Add(this.lblSmoothVal);
+            this.Controls.Add(this.btnSmoothUp);
+            this.Controls.Add(this.btnFilterApply);
             this.Controls.Add(this.btnTreesOnRow);
             this.Controls.Add(this.pnlGen);
             this.Controls.Add(this.oglSelf);
@@ -786,11 +1016,12 @@ namespace AgOpenGPS
         private System.Windows.Forms.Button btnPoint;
         private System.Windows.Forms.Label lblPointMode;
         private System.Windows.Forms.CheckBox btnAddPoint;
+        private System.Windows.Forms.CheckBox btnLimitEdit;
         private System.Windows.Forms.CheckBox btnDeletePoint;
         private System.Windows.Forms.Button btnImportKml;
         private System.Windows.Forms.Button btnMakePath;
         private System.Windows.Forms.Button btnRecordRow;
-        private System.Windows.Forms.NumericUpDown nudRecOffset;
+        private AgOpenGPS.NudlessNumericUpDown nudRecOffset;
         private System.Windows.Forms.Button btnRecSide;
         private System.Windows.Forms.Label lblWarn;
         private System.Windows.Forms.Button btnNewRow;
@@ -803,16 +1034,35 @@ namespace AgOpenGPS
         //planting: new-orchard layout generator
         private System.Windows.Forms.Button btnNewOrchard;
         private System.Windows.Forms.Button btnTreesOnRow;
+        private System.Windows.Forms.Label lblFilterCap;
+        private AgOpenGPS.NudlessNumericUpDown nudRefLong;
+        private System.Windows.Forms.Button btnRefDir;
+        private System.Windows.Forms.Button btnEditTrees;
+        private System.Windows.Forms.Button btnMarkTree;
+        private System.Windows.Forms.Button btnDeleteLastTree;
+        private System.Windows.Forms.Label lblTreeMinDist;
+        private AgOpenGPS.NudlessNumericUpDown nudTreeMinDist;
+        private System.Windows.Forms.Button btnKeyTrigger;
+        private System.Windows.Forms.Label lblKeyTrigger;
+        private System.Windows.Forms.Label lblThin;
+        private System.Windows.Forms.Button btnThinDown;
+        private System.Windows.Forms.Button btnThinUp;
+        private System.Windows.Forms.Label lblThinVal;
+        private System.Windows.Forms.Label lblSmooth;
+        private System.Windows.Forms.Button btnSmoothDown;
+        private System.Windows.Forms.Button btnSmoothUp;
+        private System.Windows.Forms.Label lblSmoothVal;
+        private System.Windows.Forms.Button btnFilterApply;
         private System.Windows.Forms.Panel pnlGen;
         private System.Windows.Forms.Label lblGenCap;
         private System.Windows.Forms.Label lblGenRowSpace;
-        private System.Windows.Forms.NumericUpDown nudGenRowSpace;
+        private AgOpenGPS.NudlessNumericUpDown nudGenRowSpace;
         private System.Windows.Forms.Label lblGenTreeSpace;
-        private System.Windows.Forms.NumericUpDown nudGenTreeSpace;
+        private AgOpenGPS.NudlessNumericUpDown nudGenTreeSpace;
         private System.Windows.Forms.Label lblGenHeadland;
-        private System.Windows.Forms.NumericUpDown nudGenHeadland;
+        private AgOpenGPS.NudlessNumericUpDown nudGenHeadland;
         private System.Windows.Forms.Label lblGenSetback;
-        private System.Windows.Forms.NumericUpDown nudGenSetback;
+        private AgOpenGPS.NudlessNumericUpDown nudGenSetback;
         private System.Windows.Forms.CheckBox chkGenStagger;
         private System.Windows.Forms.Button btnGenLine;
         private System.Windows.Forms.Button btnGenerate;

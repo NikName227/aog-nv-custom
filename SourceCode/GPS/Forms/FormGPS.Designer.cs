@@ -145,6 +145,7 @@ namespace AgOpenGPS
             this.boundariesToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.headlandToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.turnLinesToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.orchardToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.headlandBuildToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.tramLinesMenuField = new System.Windows.Forms.ToolStripMenuItem();
             this.tramsMultiMenuField = new System.Windows.Forms.ToolStripMenuItem();
@@ -158,7 +159,6 @@ namespace AgOpenGPS
             this.btnNudge = new System.Windows.Forms.Button();
             this.btnABDraw = new System.Windows.Forms.Button();
             this.btnSmartAB = new System.Windows.Forms.Button();
-            this.btnOrchard = new System.Windows.Forms.Button();
             this.btnPlusAB = new System.Windows.Forms.Button();
             this.btnBuildTracks = new System.Windows.Forms.Button();
             this.btnTracksOff = new System.Windows.Forms.Button();
@@ -1859,6 +1859,7 @@ namespace AgOpenGPS
             this.headlandToolStripMenuItem,
             this.headlandBuildToolStripMenuItem,
             this.turnLinesToolStripMenuItem,
+            this.orchardToolStripMenuItem,
             this.tramLinesMenuField,
             this.tramsMultiMenuField,
             this.deleteAppliedToolStripMenuItem,
@@ -1912,6 +1913,20 @@ namespace AgOpenGPS
             this.turnLinesToolStripMenuItem.Size = new System.Drawing.Size(445, 70);
             this.turnLinesToolStripMenuItem.Text = "Turn Lines";
             this.turnLinesToolStripMenuItem.Click += new System.EventHandler(this.turnLinesToolStripMenuItem_Click);
+            //
+            // orchardToolStripMenuItem (F50: the orchard is a FIELD definition - its rows live
+            // with the field - so it belongs next to turn lines, not in the AB-line flyout)
+            //
+            this.orchardToolStripMenuItem.Font = new System.Drawing.Font("Tahoma", 26.25F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            //the resource is 128 px while the rest of this menu is 64 - unscaled it stretched
+            //the whole submenu, so it goes in at the size the other items use
+            this.orchardToolStripMenuItem.Image = new System.Drawing.Bitmap(
+                global::AgOpenGPS.Properties.Resources.Orchard, new System.Drawing.Size(64, 64));
+            this.orchardToolStripMenuItem.ImageScaling = System.Windows.Forms.ToolStripItemImageScaling.None;
+            this.orchardToolStripMenuItem.Name = "orchardToolStripMenuItem";
+            this.orchardToolStripMenuItem.Size = new System.Drawing.Size(445, 70);
+            this.orchardToolStripMenuItem.Text = "Orchard";
+            this.orchardToolStripMenuItem.Click += new System.EventHandler(this.btnOrchard_Click);
             //
             // tramLinesMenuField
             //
@@ -2001,7 +2016,6 @@ namespace AgOpenGPS
             this.flp1.Controls.Add(this.btnNudge);
             this.flp1.Controls.Add(this.btnABDraw);
             this.flp1.Controls.Add(this.btnSmartAB);
-            this.flp1.Controls.Add(this.btnOrchard);
             this.flp1.Controls.Add(this.btnPlusAB);
             this.flp1.Controls.Add(this.btnBuildTracks);
             this.flp1.Controls.Add(this.btnTracksOff);
@@ -2079,29 +2093,6 @@ namespace AgOpenGPS
             this.btnSmartAB.TextAlign = System.Drawing.ContentAlignment.TopCenter;
             this.btnSmartAB.UseVisualStyleBackColor = false;
             this.btnSmartAB.Click += new System.EventHandler(this.btnSmartAB_Click);
-            //
-            // btnOrchard (Feature 50 — orchard row planner; icon button, Smart AB style)
-            //
-            this.btnOrchard.Anchor = System.Windows.Forms.AnchorStyles.None;
-            this.btnOrchard.BackColor = System.Drawing.Color.Transparent;
-            this.btnOrchard.BackgroundImage = global::AgOpenGPS.Properties.Resources.Orchard;
-            this.btnOrchard.BackgroundImageLayout = System.Windows.Forms.ImageLayout.Zoom;
-            this.btnOrchard.Enabled = false;
-            this.btnOrchard.FlatAppearance.BorderColor = System.Drawing.Color.ForestGreen;
-            this.btnOrchard.FlatAppearance.BorderSize = 0;
-            this.btnOrchard.FlatAppearance.CheckedBackColor = System.Drawing.Color.Transparent;
-            this.btnOrchard.FlatAppearance.MouseDownBackColor = System.Drawing.Color.Transparent;
-            this.btnOrchard.FlatAppearance.MouseOverBackColor = System.Drawing.Color.Transparent;
-            this.btnOrchard.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnOrchard.Font = new System.Drawing.Font("Tahoma", 9.75F, System.Drawing.FontStyle.Bold);
-            this.btnOrchard.ImeMode = System.Windows.Forms.ImeMode.NoControl;
-            this.btnOrchard.Location = new System.Drawing.Point(3, 340);
-            this.btnOrchard.Name = "btnOrchard";
-            this.btnOrchard.Size = new System.Drawing.Size(80, 72);
-            this.btnOrchard.TabIndex = 547;
-            this.btnOrchard.TextAlign = System.Drawing.ContentAlignment.TopCenter;
-            this.btnOrchard.UseVisualStyleBackColor = false;
-            this.btnOrchard.Click += new System.EventHandler(this.btnOrchard_Click);
             //
             // btnPlusAB
             //
@@ -3069,7 +3060,6 @@ namespace AgOpenGPS
         public System.Windows.Forms.Button btnSectionMasterManual;
         public System.Windows.Forms.Button btnABDraw;
         public System.Windows.Forms.Button btnSmartAB;
-        public System.Windows.Forms.Button btnOrchard;
         public System.Windows.Forms.ToolStripMenuItem menustripLanguage;
         public System.Windows.Forms.Button btnCycleLines;
         private System.Windows.Forms.StatusStrip statusStripLeft;
@@ -3155,6 +3145,7 @@ namespace AgOpenGPS
         private System.Windows.Forms.ToolStripMenuItem boundariesToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem headlandToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem turnLinesToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem orchardToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem headlandBuildToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem tramLinesMenuField;
         private System.Windows.Forms.ToolStripMenuItem flagByLatLonToolStripMenuItem;

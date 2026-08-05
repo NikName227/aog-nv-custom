@@ -95,6 +95,9 @@ namespace AgOpenGPS
             // --- Planting job (F50): seedling spots + what is already in the ground ---
             planting.Load(dir);
 
+            // (F50: the orchard rows are read further down - the derived path needs the
+            //  boundary for the outer strip passes, and the boundary loads later)
+
             // --- Sections into triStrip + area ---
             if (TryLoad("Sections.txt", LoadCriticality.Optional, () => SectionsFiles.Load(dir), out var sections))
             {
@@ -150,6 +153,17 @@ namespace AgOpenGPS
                 bnd.BuildTurnLines();
             }
 
+            // --- Orchard rows (F50): the definition of the orchard. The driving path is derived
+            // from them plus the implement settings, so it is rebuilt here instead of being read
+            // from a file. AFTER the boundary on purpose: the outer strip pass (boundary <-> first
+            // and last row) can only be placed once the field edge is known.
+            OrchardLoadRows(dir);
+
+            // --- Steer limit polygon (F50): the driver's own outline of where the steering cap
+            // applies. After the rows and the boundary, because a field that has none yet gets a
+            // default rectangle sized from them.
+            OrchardLoadLimitPoly(dir);
+
             // --- Turn limit lines + pass plan (NV custom, needs boundaries loaded
             // first). F06 feature lock: without the turnapp unlock the files are
             // left untouched on disk and the feature stays fully off (stock youturn).
@@ -159,6 +173,11 @@ namespace AgOpenGPS
             {
                 tnl.ApplyLoaded(TurnLinesFiles.Load(dir));
                 plan.ApplyLoaded(TurnPlanFiles.Load(dir, tool.width - tool.overlap));
+
+                //F50 t10 D: the orchard rows were read before this (the path is derived from
+                //them), so the plan that just came off disk is checked against the passes that
+                //actually exist now - it is kept when it matches, regenerated when it does not.
+                OrchardSyncPlan(false);
             }
             else
             {
@@ -227,7 +246,14 @@ namespace AgOpenGPS
         // Save tracks
         public void FileSaveTracks()
         {
-            TrackFiles.Save(GetFieldDir(true), trk.gArr);
+            //F50 (SIM 0729 t5): the orchard path is derived from the rows + the implement,
+            //so it is NOT part of the user's track list - it is rebuilt on every open. Saving
+            //it would mean a fresh copy of every pass each time the machine changes.
+            var keep = new List<CTrk>(trk.gArr.Count);
+            for (int i = 0; i < trk.gArr.Count; i++)
+                if (!trk.gArr[i].isOrchardDerived) keep.Add(trk.gArr[i]);
+
+            TrackFiles.Save(GetFieldDir(true), keep);
         }
 
         // Load tracks
@@ -240,6 +266,12 @@ namespace AgOpenGPS
             {
                 tracks = new List<CTrk>();
             }
+
+            //F50: paths the old "Make path" button committed are in the file of fields that
+            //were planned before this change - mark them derived so the rebuild below
+            //replaces them (and the next save drops them) instead of doubling up
+            foreach (var t in tracks)
+                if (COrchard.IsDerivedName(t.name)) t.isOrchardDerived = true;
 
             trk.gArr?.Clear();
             trk.gArr.AddRange(tracks);
@@ -659,6 +691,11 @@ namespace AgOpenGPS
 
             for (int i = 0; i < trk.gArr.Count; i++)
             {
+                //F50 (SIM 0730): the orchard passes are derived from the rows and the implement
+                //and are rebuilt on every change - they belong in Orchard.kml, not in a file
+                //meant to describe what the field HAS
+                if (trk.gArr[i].isOrchardDerived) continue;
+
                 linePts = "";
                 kml.WriteStartElement("Placemark");
                 kml.WriteElementString("visibility", "0");

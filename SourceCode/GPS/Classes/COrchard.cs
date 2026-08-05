@@ -1,4 +1,4 @@
-using AgLibrary.Logging;
+﻿using AgLibrary.Logging;
 using AgOpenGPS.Core.Models;
 using System;
 using System.Collections.Generic;
@@ -71,6 +71,54 @@ namespace AgOpenGPS
     public static class COrchard
     {
         public const double ExtendMeters = 150.0; // guidance tail length each end (matches Smart AB)
+
+        // ── Path modes (SIM feedback 2026-07-29) ──────────────────────────
+        // How the AB lines are derived from the rows. The rows are the definition of the
+        // orchard; these three say what the machine does with them.
+        public const int PathOnePass = 0;    // one line down the middle of each inter-row
+        public const int PathMultiPass = 1;  // several passes per inter-row (to be re-specced)
+        public const int PathOnRow = 2;      // the line IS the row + planter offset (planting)
+        public const int PathTwoPass = 3;    // exactly two passes, one hugging each tree line
+
+        /// <summary>
+        /// Every track that this class generates carries this name prefix. The path is a
+        /// DERIVED object: it is rebuilt whenever the rows or the implement change, and it
+        /// is not written to TrackLines.txt - the prefix is how the tracks the user made by
+        /// hand (Smart AB, recorded curves) are told apart and left alone.
+        /// </summary>
+        public const string DerivedPrefix = "Orch ";
+
+        /// <summary>Legacy prefix: paths committed by the planner's old "Make path" button.</summary>
+        public const string LegacyDerivedPrefix = "Row Mid ";
+
+        public static bool IsDerivedName(string name)
+            => name != null && (name.StartsWith(DerivedPrefix) || name.StartsWith(LegacyDerivedPrefix));
+
+        /// <summary>
+        /// The inter-row (or row) number carried in a derived pass name - "Orch Mid 3 p2" -> 3,
+        /// "Orch row 5" -> 5. Used as the plan's zone, which is what colours the passes.
+        /// </summary>
+        public static int ZoneFromDerivedName(string name)
+        {
+            if (name == null) return 1;
+            string[] parts = name.Split(' ');
+            return parts.Length > 2 && int.TryParse(parts[2], out int z) ? z : 1;
+        }
+
+        /// <summary>
+        /// The saved path mode, migrating an install that only knows the old one-pass flag
+        /// (checked = one pass, unchecked = multi pass). Runs once and writes the result back.
+        /// </summary>
+        public static int ResolvePathMode()
+        {
+            var ts = Properties.ToolSettings.Default;
+            if (ts.setTool_orchardPathMode < 0 || ts.setTool_orchardPathMode > PathTwoPass)
+            {
+                ts.setTool_orchardPathMode = ts.setTool_orchardOnePass ? PathOnePass : PathMultiPass;
+                try { ts.Save(); } catch { /* a read-only profile is not worth a crash */ }
+            }
+            return ts.setTool_orchardPathMode;
+        }
 
         // ── Generator (planting): lay out a NEW orchard inside the boundary ──
         // Planting turns F50 around: there are no trees yet, so the rows and the seedling
@@ -340,10 +388,11 @@ namespace AgOpenGPS
         // (passes start at that side's row). The working belt of an inter-row =
         // rowGap - 2×rowOffset (setting 6); pass count = ceil(belt / toolWidth),
         // onePass forces a single center pass (spraying). Hard limits: the tool edge
-        // keeps treeSpace from either row line; in L/R mode the pass line keeps
-        // safeSpace from the OPPOSITE row. Violations drop the pass + a warning.
+        // keeps half of treeWidth from either row line (treeWidth = the whole unworked band
+        // around a row, SIM 0730); in L/R mode the pass line keeps safeSpace from the OPPOSITE
+        // row. Violations drop the pass + a warning.
         public static List<CTrk> BuildPasses(List<OrchRow> rows, double toolWidth,
-            int workMode, double safeSpace, double treeSpace, double rowOffset,
+            int workMode, double safeSpace, double treeWidth, double rowOffset,
             bool onePass, bool centerFirst, out List<string> warnings)
         {
             warnings = new List<string>();
@@ -365,7 +414,8 @@ namespace AgOpenGPS
                 string interName = "Mid " + (i + 1);
 
                 // usable half-width: the tool edge must not reach into the tree line
-                double halfLimit = gap * 0.5 - treeSpace - toolWidth * 0.5;
+                //the tool edge must stay out of the unworked band: half of it per side
+                double halfLimit = gap * 0.5 - treeWidth * 0.5 - toolWidth * 0.5;
                 if (halfLimit < 0)
                 {
                     warnings.Add(interName + ": inter-row too narrow for the tool (gap "
@@ -422,9 +472,10 @@ namespace AgOpenGPS
                     CABCurve.CalculateHeadings(ref pass);
 
                     var t = new CTrk { mode = TrackMode.Curve, heading = head, isVisible = true };
+                    t.isOrchardDerived = true;
                     t.ptA = new vec2(pass[0].easting, pass[0].northing);
                     t.ptB = new vec2(pass[pass.Count - 1].easting, pass[pass.Count - 1].northing);
-                    t.name = "Row " + interName + (offs.Count > 1 ? " p" + (k + 1) : "");
+                    t.name = DerivedPrefix + interName + (offs.Count > 1 ? " p" + (k + 1) : "");
                     foreach (vec3 p in pass) t.curvePts.Add(p);
                     result.Add(t);
                 }
@@ -483,6 +534,356 @@ namespace AgOpenGPS
             return ((bc.easting - m.easting) * rx + (bc.northing - m.northing) * ry) >= 0 ? 1 : -1;
         }
 
+        // ── Path from rows + implement (SIM 0729 t3/t5) ───────────────────
+        // One entry point for all three modes. Everything it returns is a DERIVED track.
+        // bounds (t10 E) let the OUTER strips - between the boundary and the first / last row -
+        // get their pass too; without a boundary they are simply skipped.
+        public static List<CTrk> BuildTracks(List<OrchRow> rows, int pathMode, double toolWidth,
+            double treeWidth, bool centerFirst, int passCount,
+            out List<string> warnings, List<List<vec2>> bounds = null)
+        {
+            if (pathMode == PathOnRow)
+                return BuildOnRowTracks(rows, toolWidth, out warnings);
+
+            //two pass and multi pass are the same layout, only the pass count differs
+            //(SIM 0730). centerFirst = do the middle before the two row passes.
+            if (pathMode == PathTwoPass || pathMode == PathMultiPass)
+            {
+                var along = BuildRowPassTracks(rows, toolWidth, treeWidth,
+                    pathMode == PathMultiPass, centerFirst, passCount, out warnings);
+                //the outer rows get their one strip along the boundary side as well
+                AddOuterStripPasses(rows, bounds, toolWidth, treeWidth, true, along, warnings);
+                return along;
+            }
+
+            //one pass: a single line down the middle of each inter-row. The old belt settings
+            //(row offset, safe space, working mode) are gone - they shaped no line any more.
+            var passes = BuildPasses(rows, toolWidth, 0, 0, treeWidth, 0,
+                true, centerFirst, out warnings);
+
+            AddOuterStripPasses(rows, bounds, toolWidth, treeWidth,
+                pathMode == PathOnePass, passes, warnings);
+
+            return passes;
+        }
+
+        // ── Outer strips: boundary <-> first / last row (t10 E) ───────────
+        // The inter-row loop only works between two rows, so the ground between the boundary and
+        // the outermost rows had no pass at all. Decision 2026-07-30: the pass runs PARALLEL to
+        // the outer row (constant offset, same clearance rules), and where the machine does not
+        // fit there is simply no pass plus a warning - a skewed boundary is worked with the
+        // driver's own Smart AB lines, not with a converging line nobody can follow.
+        //
+        // The first row's strip is put in FRONT of the inter-row passes and the last row's strip
+        // behind them, so the sequence still sweeps across the field in one direction.
+        private static void AddOuterStripPasses(List<OrchRow> rows, List<List<vec2>> bounds,
+            double toolWidth, double treeWidth, bool onePass,
+            List<CTrk> passes, List<string> warnings)
+        {
+            if (rows == null || rows.Count < 2 || bounds == null || bounds.Count == 0) return;
+            if (toolWidth < 0.1) return;
+
+            var sorted = SortRowsTransverse(rows);
+
+            for (int side = 0; side < 2; side++)
+            {
+                OrchRow row = side == 0 ? sorted[0] : sorted[sorted.Count - 1];
+                OrchRow inner = side == 0 ? sorted[1] : sorted[sorted.Count - 2];
+                if (row.curve.Count < 2 || inner.curve.Count < 2) continue;
+
+                //outward = away from the neighbouring row
+                double outward = -OffsetSignTowardB(row.curve, inner);
+
+                double free = OutwardFreeWidth(row.curve, bounds, outward,
+                    treeWidth * 0.5 + toolWidth * 3.0 + 1.0);
+                string name = "edge " + (side + 1);
+
+                //how many passes fit between the tree line and the boundary
+                int n = 0;
+                var offs = new List<double>();
+                while (true)
+                {
+                    double d = treeWidth * 0.5 + toolWidth * (n + 0.5);
+                    if (d + toolWidth * 0.5 > free) break;
+                    offs.Add(d);
+                    n++;
+                    if (onePass || n > 20) break;
+                }
+
+                if (offs.Count == 0)
+                {
+                    warnings.Add("Orch " + name + ": strip too narrow for the tool ("
+                        + free.ToString("N1") + " m)");
+                    continue;
+                }
+
+                var made = new List<CTrk>();
+                for (int k = 0; k < offs.Count; k++)
+                {
+                    var line = OffsetCurve(row.curve, outward * offs[k]);
+                    if (line.Count < 2) continue;
+                    CABCurve.CalculateHeadings(ref line);
+                    line = OffsetCurve(line, -0.5 * toolWidth);
+
+                    double head = line[line.Count / 2].heading;
+                    if (head < 0) head += glm.twoPI;
+
+                    ExtendEnds(line, ExtendMeters);
+                    CABCurve.CalculateHeadings(ref line);
+
+                    var t = new CTrk { mode = TrackMode.Curve, heading = head, isVisible = true };
+                    t.isOrchardDerived = true;
+                    t.ptA = new vec2(line[0].easting, line[0].northing);
+                    t.ptB = new vec2(line[line.Count - 1].easting, line[line.Count - 1].northing);
+                    t.name = DerivedPrefix + name + (offs.Count > 1 ? " p" + (k + 1) : "");
+                    foreach (vec3 p in line) t.curvePts.Add(p);
+                    made.Add(t);
+                }
+
+                if (side == 0) passes.InsertRange(0, made);
+                else passes.AddRange(made);
+            }
+        }
+
+        // How far the field reaches outward from a row before the boundary, in metres: march out
+        // perpendicular from points along the row and keep the WORST (narrowest) place. The ends
+        // are left out of the sample - there the nearest boundary is the headland, not the strip.
+        private static double OutwardFreeWidth(List<vec3> curve, List<List<vec2>> bounds,
+            double outward, double maxLook)
+        {
+            const double step = 0.25;
+            int from = curve.Count / 10, to = curve.Count - curve.Count / 10;
+            if (to - from < 2) { from = 0; to = curve.Count; }
+
+            double worst = maxLook;
+            for (int i = from; i < to; i += 3)
+            {
+                double rx = Math.Sin(curve[i].heading + glm.PIBy2) * outward;
+                double ry = Math.Cos(curve[i].heading + glm.PIBy2) * outward;
+
+                double d = 0;
+                while (d + step <= worst)
+                {
+                    var p = new vec2(curve[i].easting + rx * (d + step),
+                                     curve[i].northing + ry * (d + step));
+                    if (!IsInsideField(p, bounds)) break;
+                    d += step;
+                }
+                if (d < worst) worst = d;
+                if (worst < step) return 0;
+            }
+            return worst;
+        }
+
+        // ── Passes along the rows: two pass and multi pass are ONE layout ─
+        // A side-mounted implement (mulcher, mower, trimmer) goes down each inter-row twice,
+        // working along one tree line each time. A centred implement does the same two passes and
+        // then fills what is left in the middle. Same geometry, one function (user 2026-07-30:
+        // "logika je jednaka pa da iskoristimo kod za obje opcije").
+        //
+        //   workable width   Wc = gap - treeWidth        (between the unworked bands)
+        //   pass count       n  = 2                      (two pass)
+        //                    n  = max(2, ceil(Wc / W))   (multi pass)
+        //   outer centres    at treeWidth/2 + W/2 from each row - hugging the tree lines
+        //   spacing          s  = (gap - treeWidth - W) / (n - 1)
+        //   overlap          o  = W - s, THE SAME at every junction
+        //
+        // The surplus when n passes are wider than Wc is spread evenly over all junctions, and by
+        // symmetry an odd n puts one pass exactly down the middle of the inter-row - both of the
+        // things the layout was asked for. n = 2 leaves the middle unworked on purpose.
+        //
+        // Only the two OUTER passes belong to a tree line; that side is recorded on the track
+        // (orchardRowSide) so a side implement can be kept to the passes it can actually work.
+        // The middle passes have no side and are drivable either way.
+        //
+        // middleFirst = do the middle before the two row passes instead of after.
+        //
+        // passCount (SIM 0730, multi pass only): 0 = work the count out from the tool width as
+        // above; >= 3 = take exactly that many passes whatever the width and the overlap - the
+        // two outer ones still hug the tree lines by the safe tree width, the rest are spread
+        // evenly between them. 1 and 2 are refused in the UI (they are the one-pass and two-pass
+        // modes), so anything below 3 is treated as 0 here.
+        public static List<CTrk> BuildRowPassTracks(List<OrchRow> rows, double toolWidth,
+            double treeWidth, bool multiPass, bool middleFirst, int passCount,
+            out List<string> warnings)
+        {
+            warnings = new List<string>();
+            var result = new List<CTrk>();
+            if (rows == null || rows.Count < 2) return result;
+            if (toolWidth < 0.1) { warnings.Add("No tool width"); return result; }
+
+            var sorted = SortRowsTransverse(rows);
+
+            for (int i = 0; i < sorted.Count - 1; i++)
+            {
+                var a = sorted[i];
+                var b = sorted[i + 1];
+                if (a.curve.Count < 2 || b.curve.Count < 2) continue;
+
+                var mid = BuildMidline(a, b, out double gap);
+                if (mid == null) continue;
+
+                string interName = "Mid " + (i + 1);
+
+                //the machine has to fit beside a row at all:
+                //row spacing >= tool width + safe tree width
+                if (gap - treeWidth - toolWidth < -0.001)
+                {
+                    warnings.Add("Orch " + interName + ": inter-row too narrow for the tool (gap "
+                        + gap.ToString("N1") + " m)");
+                    continue;
+                }
+
+                double outer = treeWidth * 0.5 + toolWidth * 0.5;   // row line -> outer centre
+                double span = gap - treeWidth - toolWidth;          // outer centre -> outer centre
+
+                int n = 2;
+                if (multiPass)
+                {
+                    if (passCount >= 3) n = Math.Min(passCount, 40);
+                    else
+                    {
+                        double workable = gap - treeWidth;
+                        n = (int)Math.Ceiling(workable / toolWidth - 0.001);
+                        if (n < 2) n = 2;
+                        if (n > 40) n = 40;
+                    }
+                }
+                double step = n > 1 ? span / (n - 1) : 0;
+
+                //offsets measured from row a, toward row b
+                var offsets = new List<double>();
+                for (int k = 0; k < n; k++) offsets.Add(outer + step * k);
+
+                //order: the two row passes first, then the middle - or the other way round
+                var order = new List<int>();
+                if (middleFirst)
+                {
+                    for (int k = 1; k < n - 1; k++) order.Add(k);
+                    order.Add(0);
+                    if (n > 1) order.Add(n - 1);
+                }
+                else
+                {
+                    order.Add(0);
+                    if (n > 1) order.Add(n - 1);
+                    for (int k = 1; k < n - 1; k++) order.Add(k);
+                }
+
+                double signAB = OffsetSignTowardB(a.curve, b);   // + = right of row a's heading
+
+                int passNo = 0;
+                foreach (int k in order)
+                {
+                    passNo++;
+
+                    var line = OffsetCurve(a.curve, signAB * offsets[k]);
+                    if (line.Count < 2) continue;
+                    CABCurve.CalculateHeadings(ref line);
+                    line = OffsetCurve(line, -0.5 * toolWidth);
+
+                    double head = line[line.Count / 2].heading;
+                    if (head < 0) head += glm.twoPI;
+
+                    ExtendEnds(line, ExtendMeters);
+                    CABCurve.CalculateHeadings(ref line);
+
+                    var t = new CTrk { mode = TrackMode.Curve, heading = head, isVisible = true };
+                    t.isOrchardDerived = true;
+
+                    //which tree line this pass belongs to, as a side of ITS OWN heading:
+                    //k = 0 hugs row a (row is on the -signAB side), k = n-1 hugs row b
+                    if (k == 0) t.orchardRowSide = signAB > 0 ? TrackSide.Left : TrackSide.Right;
+                    else if (k == n - 1) t.orchardRowSide = signAB > 0 ? TrackSide.Right : TrackSide.Left;
+                    else t.orchardRowSide = TrackSide.None;
+
+                    t.ptA = new vec2(line[0].easting, line[0].northing);
+                    t.ptB = new vec2(line[line.Count - 1].easting, line[line.Count - 1].northing);
+                    t.name = DerivedPrefix + interName + " p" + passNo;
+                    foreach (vec3 p in line) t.curvePts.Add(p);
+                    result.Add(t);
+                }
+            }
+            return result;
+        }
+
+        // ── On row (planting): the line IS the row ────────────────────────
+        // Planting a new orchard means driving ALONG the defined rows so the planter drops each
+        // seedling exactly where the row says. The planter IS the implement (its working width,
+        // and its lateral mounting as AOG's tool offset), so the geometry is the plain AOG one,
+        // right of the track heading positive:
+        //   pivot path  = reference + 0.5*width - tool.offset   (AOG's convention: the reference
+        //                 is the EDGE of pass 0, see CABCurve distAway)
+        //   implement   = pivot + tool.offset = reference + 0.5*width
+        // The implement therefore lands on reference + half a width whatever the offset is - AOG
+        // compensates it, and flips that compensation when the row is driven the other way.
+        // So the track is simply the row shifted half a width, and nothing here has to know about
+        // the mounting side (SIM 0730: an F50 planter-offset of its own would double-count it and
+        // would not survive driving the row in reverse).
+        public static List<CTrk> BuildOnRowTracks(List<OrchRow> rows, double toolWidth,
+            out List<string> warnings)
+        {
+            warnings = new List<string>();
+            var result = new List<CTrk>();
+            if (rows == null || rows.Count == 0) return result;
+            if (toolWidth < 0.1) { warnings.Add("No tool width"); return result; }
+
+            double off = -0.5 * toolWidth;   //the planter sits on the row, AOG does the rest
+
+            var sorted = SortRowsTransverse(rows);
+            for (int i = 0; i < sorted.Count; i++)
+            {
+                var r = sorted[i];
+                if (r.curve.Count < 2) continue;
+
+                var line = OffsetCurve(r.curve, off);
+                CABCurve.CalculateHeadings(ref line);
+
+                double head = line[line.Count / 2].heading;
+                if (head < 0) head += glm.twoPI;
+
+                ExtendEnds(line, ExtendMeters);
+                CABCurve.CalculateHeadings(ref line);
+
+                var t = new CTrk { mode = TrackMode.Curve, heading = head, isVisible = true };
+                t.isOrchardDerived = true;
+                t.ptA = new vec2(line[0].easting, line[0].northing);
+                t.ptB = new vec2(line[line.Count - 1].easting, line[line.Count - 1].northing);
+                t.name = DerivedPrefix + "row " + (i + 1);
+                foreach (vec3 p in line) t.curvePts.Add(p);
+                result.Add(t);
+            }
+            return result;
+        }
+
+        // ── Tool-fits check (SIM 0729 t8) ─────────────────────────────────
+        // Safety check against driving into a tree row: the machine has to fit into the
+        // inter-row once the offsets are taken off it.
+        //     width > gap - treeWidth
+        // SIM 0730: this is the ONE rule now - the same one every pass is placed by, so the alert
+        // can no longer fire over settings that shape no line.
+        // Returns how many metres are missing in the WORST inter-row (0 = it fits). Planting
+        // (on row) is not checked: the trees are not in the ground yet, and the machine
+        // straddles the row instead of passing between two of them.
+        public static double ToolTooWideBy(List<OrchRow> rows, double toolWidth,
+            double treeWidth, out int worstInterRow)
+        {
+            worstInterRow = -1;
+            double worst = 0;
+            if (rows == null || rows.Count < 2 || toolWidth < 0.1) return 0;
+
+            var sorted = SortRowsTransverse(rows);
+            for (int i = 0; i < sorted.Count - 1; i++)
+            {
+                if (sorted[i].curve.Count < 2 || sorted[i + 1].curve.Count < 2) continue;
+                if (BuildMidline(sorted[i], sorted[i + 1], out double gap) == null) continue;
+
+                double missing = toolWidth - (gap - treeWidth);
+                if (missing > worst) { worst = missing; worstInterRow = i + 1; }
+            }
+            return worst;
+        }
+
         // ── Planner: "sredina" MVP (kept for reference; BuildPasses supersedes it) ──
         // One center pass per inter-row = BuildPasses with onePass = true.
         public static List<CTrk> BuildMidlines(List<OrchRow> rows, double toolWidth, out int warnCount)
@@ -490,6 +891,129 @@ namespace AgOpenGPS
             var tracks = BuildPasses(rows, toolWidth, 0, 0, 0, 0, true, true, out List<string> warns);
             warnCount = warns.Count;
             return tracks;
+        }
+
+        // ── Steer limit polygon (2026-08-01) ──────────────────────────────
+        // Between the trees the machine must never answer a GPS wobble with a big steering angle,
+        // but where it turns it needs full authority. Inside this polygon the commanded angle is
+        // capped; outside it, it is not.
+        //
+        // Three attempts at deriving that outline from the rows all failed, each in its own way,
+        // and all for the same reason: the shape depends on how the block is actually worked, and
+        // no amount of geometry knows that. A line threaded through per-row points wandered once it
+        // was smoothed. Moving the field boundary inward all round dropped the outermost rows out.
+        // Cutting the boundary square across the rows collapsed to nothing the moment one short row
+        // appeared - silently, taking the cap with it.
+        //
+        // So this one is DRAWN BY THE DRIVER. It starts as a rectangle with the whole field inside
+        // it, which means the cap is in force everywhere until someone decides otherwise, and the
+        // planner lets the points be dragged, added and deleted. Being the driver's own data it is
+        // saved beside the field and nothing regenerates it behind their back. To switch the cap
+        // off entirely the angle parameter goes to 0 - the polygon is not the off switch.
+        public const string LimitFile = "SteerLimit.txt";
+
+        /// <summary>A polygon needs four corners before it is worth calling one.</summary>
+        public const int LimitMinPoints = 4;
+
+        /// <summary>
+        /// The starting polygon: an upright rectangle with the whole field comfortably inside it,
+        /// so the cap covers everything until the driver pulls the corners in. Falls back to the
+        /// rows when there is no boundary yet. null when there is nothing to measure at all.
+        /// </summary>
+        public static List<vec2> DefaultLimitPoly(List<vec3> fence, List<OrchRow> rows)
+        {
+            double minE = double.MaxValue, maxE = double.MinValue;
+            double minN = double.MaxValue, maxN = double.MinValue;
+            bool any = false;
+
+            if (fence != null)
+                foreach (vec3 p in fence)
+                {
+                    if (p.easting < minE) minE = p.easting;
+                    if (p.easting > maxE) maxE = p.easting;
+                    if (p.northing < minN) minN = p.northing;
+                    if (p.northing > maxN) maxN = p.northing;
+                    any = true;
+                }
+
+            if (!any && rows != null)
+                foreach (OrchRow r in rows)
+                    foreach (vec3 p in r.curve)
+                    {
+                        if (p.easting < minE) minE = p.easting;
+                        if (p.easting > maxE) maxE = p.easting;
+                        if (p.northing < minN) minN = p.northing;
+                        if (p.northing > maxN) maxN = p.northing;
+                        any = true;
+                    }
+
+            if (!any) return null;
+
+            //a little air around it, so the corners are grabbable outside the field drawing
+            const double pad = 5.0;
+            minE -= pad; maxE += pad; minN -= pad; maxN += pad;
+
+            return new List<vec2>
+            {
+                new vec2(minE, minN),
+                new vec2(maxE, minN),
+                new vec2(maxE, maxN),
+                new vec2(minE, maxN),
+            };
+        }
+
+        public static void SaveLimitPoly(string fieldDir, List<vec2> poly)
+        {
+            if (string.IsNullOrEmpty(fieldDir)) return;
+            string path = Path.Combine(fieldDir, LimitFile);
+
+            try
+            {
+                if (poly == null || poly.Count < LimitMinPoints)
+                {
+                    if (File.Exists(path)) File.Delete(path);
+                    return;
+                }
+
+                using (var w = new StreamWriter(path, false))
+                {
+                    w.WriteLine("$SteerLimit");
+                    w.WriteLine(poly.Count.ToString(CultureInfo.InvariantCulture));
+                    foreach (vec2 p in poly)
+                        w.WriteLine(p.easting.ToString("N3", CultureInfo.InvariantCulture) + ","
+                                  + p.northing.ToString("N3", CultureInfo.InvariantCulture));
+                }
+            }
+            catch (Exception ex) { Log.EventWriter("Orchard SaveLimitPoly: " + ex); }
+        }
+
+        /// <summary>The saved polygon, or null when the field has none yet.</summary>
+        public static List<vec2> LoadLimitPoly(string fieldDir)
+        {
+            if (string.IsNullOrEmpty(fieldDir)) return null;
+            string path = Path.Combine(fieldDir, LimitFile);
+            if (!File.Exists(path)) return null;
+
+            try
+            {
+                string[] L = File.ReadAllLines(path);
+                int i = 0;
+                if (i < L.Length && L[i].StartsWith("$SteerLimit")) i++;
+                if (i >= L.Length) return null;
+                if (!int.TryParse(L[i++], NumberStyles.Integer, CultureInfo.InvariantCulture, out int n)) return null;
+
+                var poly = new List<vec2>(n);
+                for (int k = 0; k < n && i < L.Length; k++, i++)
+                {
+                    string[] w = L[i].Split(',');
+                    if (w.Length < 2) continue;
+                    if (double.TryParse(w[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double e)
+                        && double.TryParse(w[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double nn))
+                        poly.Add(new vec2(e, nn));
+                }
+                return poly.Count >= LimitMinPoints ? poly : null;
+            }
+            catch (Exception ex) { Log.EventWriter("Orchard LoadLimitPoly: " + ex); return null; }
         }
 
         // Sort rows across the field: project each row centroid onto the axis perpendicular to the
@@ -536,6 +1060,145 @@ namespace AgOpenGPS
             }
             dist = Math.Sqrt(best);
             return res;
+        }
+
+        /// <summary>
+        /// First free "Row N" name (SIM 0730). Deliberately NOT translated: row names are written
+        /// to Orchard.txt and the recorded-rows archive is matched by them, so switching the app
+        /// language must not break that match.
+        /// </summary>
+        public static string NextRowName(List<OrchRow> rows)
+        {
+            int n = 0;
+            if (rows != null)
+            {
+                foreach (var r in rows)
+                {
+                    if (r.name == null || !r.name.StartsWith("Row ")) continue;
+                    if (int.TryParse(r.name.Substring(4).Trim(), out int k) && k > n) n = k;
+                }
+            }
+            return "Row " + (n + 1);
+        }
+
+        /// <summary>
+        /// Pull every tree of a row onto its line, moving them LATERALLY only (SIM 0730): a
+        /// recorded tree cannot be placed sideways with any accuracy, and a tree belongs on the
+        /// row - so filtering the line takes the trees with it, keeping their position along the
+        /// row and zeroing the cross-track offset.
+        /// </summary>
+        public static void ProjectTreesOntoRow(OrchRow row)
+        {
+            if (row == null || row.curve.Count < 2 || row.trees.Count == 0) return;
+
+            for (int t = 0; t < row.trees.Count; t++)
+            {
+                vec2 p = row.trees[t];
+                vec2 best = new vec2(row.curve[0].easting, row.curve[0].northing);
+                double bestD = double.MaxValue;
+
+                for (int i = 0; i < row.curve.Count - 1; i++)
+                {
+                    double ax = row.curve[i].easting, ay = row.curve[i].northing;
+                    double bx = row.curve[i + 1].easting, by = row.curve[i + 1].northing;
+                    double dx = bx - ax, dy = by - ay;
+                    double len2 = dx * dx + dy * dy;
+                    if (len2 < 1e-9) continue;
+
+                    //where the tree falls on this segment, clamped to it
+                    double u = ((p.easting - ax) * dx + (p.northing - ay) * dy) / len2;
+                    if (u < 0) u = 0; else if (u > 1) u = 1;
+
+                    double qx = ax + dx * u, qy = ay + dy * u;
+                    double de = p.easting - qx, dn = p.northing - qy;
+                    double d = de * de + dn * dn;
+                    if (d < bestD) { bestD = d; best = new vec2(qx, qy); }
+                }
+
+                row.trees[t] = best;
+            }
+        }
+
+        // ── Row filters: thin + smooth (t9) ───────────────────────────────
+        // A row driven with the recorder is sampled every metre or so, GPS noise and all, so it
+        // arrives with coarse steps. Both filters work on the CONTROL points, never on the dense
+        // curve: Orchard.txt stores only the control points and rebuilds the curve on load, so a
+        // filter applied to the curve would quietly vanish the next time the field is opened.
+
+        /// <summary>
+        /// Drop points closer together than minDist. The first and the LAST point always stay -
+        /// the ends of a row are its anchors (headland, row length). This is what actually removes
+        /// the coarse steps of a 1 m recording; the average alone only rounds them off.
+        /// </summary>
+        public static List<vec2> ThinPoints(List<vec2> pts, double minDist)
+        {
+            var outPts = new List<vec2>();
+            if (pts == null || pts.Count == 0) return outPts;
+            if (minDist <= 0.01 || pts.Count < 3) { outPts.AddRange(pts); return outPts; }
+
+            double sq = minDist * minDist;
+            outPts.Add(pts[0]);
+            for (int i = 1; i < pts.Count - 1; i++)
+            {
+                var last = outPts[outPts.Count - 1];
+                double de = pts[i].easting - last.easting, dn = pts[i].northing - last.northing;
+                if (de * de + dn * dn >= sq) outPts.Add(pts[i]);
+            }
+            outPts.Add(pts[pts.Count - 1]);
+            return outPts;
+        }
+
+        /// <summary>
+        /// Centre-weighted moving average over "window" points (same idea as Smart AB's smooth,
+        /// on vec2 control points). The first and last half-window keep their place, so the row
+        /// ends do not creep.
+        /// </summary>
+        public static List<vec2> SmoothPoints(List<vec2> pts, int window)
+        {
+            var outPts = new List<vec2>();
+            if (pts == null) return outPts;
+            outPts.AddRange(pts);
+            if (window < 2 || pts.Count < window) return outPts;
+
+            int half = window / 2;
+            for (int i = half; i < pts.Count - half; i++)
+            {
+                double e = 0, n = 0;
+                for (int j = -half; j < half; j++) { e += pts[i + j].easting; n += pts[i + j].northing; }
+                outPts[i] = new vec2(e / window, n / window);
+            }
+            return outPts;
+        }
+
+        /// <summary>Thin then smooth, as ONE step - the order the values are read in.</summary>
+        public static List<vec2> FilterRowPoints(List<vec2> pts, double thinMeters, int smoothWindow)
+        {
+            var res = ThinPoints(pts, thinMeters);
+            if (smoothWindow >= 2) res = SmoothPoints(res, smoothWindow);
+            return res;
+        }
+
+        // ── Raw recorded rows: Orchard_recorded.txt (t9) ──────────────────
+        // Written lazily, the first time a recorded row is filtered, and never overwritten for a
+        // row that is already in it - otherwise the second filtering would archive the already
+        // smoothed line and the measurement would be gone. Rows are matched BY NAME.
+        public static void ArchiveRecordedRow(string fieldDir, OrchRow row)
+        {
+            if (string.IsNullOrEmpty(fieldDir) || row == null) return;
+            if (row.source != RowSource.Recorded) return;   // KML has its own original
+
+            try
+            {
+                var have = LoadRowsFrom(fieldDir, RecordedFile);
+                foreach (var r in have) if (r.name == row.name) return;   // already measured
+
+                have.Add(new OrchRow(row));
+                SaveRowsTo(fieldDir, RecordedFile, have);
+            }
+            catch (Exception ex)
+            {
+                Log.EventWriter("Orchard ArchiveRecordedRow: " + ex);
+            }
         }
 
         // ── Shared geometry helpers (mirror Smart AB) ─────────────────────
@@ -700,10 +1363,23 @@ namespace AgOpenGPS
 
         // ── Per-field persistence (rows saved "under field", fixed) ───────
         // Simple text format: one row block per row, control points only (curve is derived on load).
+        /// <summary>The working rows of the field.</summary>
+        public const string RowsFile = "Orchard.txt";
+
+        /// <summary>
+        /// The raw recorded rows, kept beside the field the first time a recorded row is filtered
+        /// (t9). Orchard.txt holds the rows that are worked with; this one is the measurement, so
+        /// a filter can always be judged against - or undone back to - what was actually driven.
+        /// </summary>
+        public const string RecordedFile = "Orchard_recorded.txt";
+
         public static void SaveRows(string fieldDir, List<OrchRow> rows, List<vec2> looseTrees = null)
+            => SaveRowsTo(fieldDir, RowsFile, rows, looseTrees);
+
+        public static void SaveRowsTo(string fieldDir, string fileName, List<OrchRow> rows, List<vec2> looseTrees = null)
         {
             if (string.IsNullOrEmpty(fieldDir)) return;
-            string path = Path.Combine(fieldDir, "Orchard.txt");
+            string path = Path.Combine(fieldDir, fileName);
             using (var w = new StreamWriter(path, false))
             {
                 w.WriteLine("$Orchard");
@@ -737,10 +1413,13 @@ namespace AgOpenGPS
         }
 
         public static List<OrchRow> LoadRows(string fieldDir, List<vec2> looseTreesOut)
+            => LoadRowsFrom(fieldDir, RowsFile, looseTreesOut);
+
+        public static List<OrchRow> LoadRowsFrom(string fieldDir, string fileName, List<vec2> looseTreesOut = null)
         {
             var rows = new List<OrchRow>();
             if (string.IsNullOrEmpty(fieldDir)) return rows;
-            string path = Path.Combine(fieldDir, "Orchard.txt");
+            string path = Path.Combine(fieldDir, fileName);
             if (!File.Exists(path)) return rows;
             try
             {

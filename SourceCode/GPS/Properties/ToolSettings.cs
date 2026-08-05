@@ -31,18 +31,53 @@ namespace AgOpenGPS.Properties
         // Orchard tool type (F50): the processing settings belong to the IMPLEMENT -
         // changing the machine changes the pass pattern, the orchard rows stay put
         public bool setTool_isToolOrchard = false;
+        // How the AB lines are derived from the rows (SIM feedback 2026-07-29):
+        //   0 = one pass  - a single line down the middle of each inter-row
+        //   1 = multi pass- several passes per inter-row (the settings below)
+        //   2 = on row    - the line IS the row + planter offset (planting a new orchard)
+        // -1 = not chosen yet -> migrated once from setTool_orchardOnePass. That old flag
+        // is kept (never renamed): settings are serialized BY FIELD NAME, so renaming it
+        // would silently throw away what is already saved on the machine (F05 lesson).
+        public int setTool_orchardPathMode = -1;
+        // Multi pass only: how many passes per inter-row. 0 = work it out from the tool
+        // width; >= 3 = exactly that many, whatever the width and the overlap. 1 and 2 are
+        // refused by the UI - they would be the one-pass and two-pass modes.
+        // Orchard window reference point (SIM 0730): where the thing that MEASURES sits -
+        // a pole on the front, the recorder's own offset - relative to the tractor. Lateral is
+        // + to the right of travel, longitudinal + forward from the rear axle. Deliberately not
+        // the implement geometry: mapping an orchard with a pole must not mean rewriting the
+        // implement profile (which would change coverage and the planting path).
+        public double setTool_orchardRefLateral = 2.0;
+        public double setTool_orchardRefLong = 0;
+
+        // Marking trees while recording: a press closer than this to the last tree is ignored,
+        // so a double tap does not put two trees on one trunk.
+        public double setTool_orchardTreeMinDist = 1.0;
+
+        public int setTool_orchardPassCount = 0;
+        // DEAD since F50 fix 2026-08-01 - nothing reads it. The implement side is the SIGN of
+        // setVehicle_toolOffset (Tool -> Tool Offset); this was a second definition of the same
+        // fact that nothing kept in sync. Kept only so an older build still finds its value.
         public int setTool_orchardWorkMode = 0;        // 0 = center, 1 = left, 2 = right
-        public double setTool_orchardSafeSpace = 1.0;  // m clearance to the OPPOSITE row (from pass line)
-        public double setTool_orchardTreeSpace = 0.5;  // m the tool edge keeps from the tree-line center
-        public double setTool_orchardRowOffset = 0.5;  // m tool offset from the row -> working belt width
+        // Full width of the band around a row line that is NOT worked (SIM 0730: measured
+        // in the field as the untouched strip around the trees, which is easier to judge than
+        // a one-sided margin). Half of it is the clearance the tool edge keeps from the row.
+        public double setTool_orchardTreeWidth = 1.0;   // m, the whole unworked band
         public bool setTool_orchardOnePass = false;    // force 1 center pass per inter-row (spraying)
+        // Orders the pass BUILD (numbering, and the sequence handed to the field plan). Off the
+        // settings panel since 2026-08-01 - the driver picks a pass by steering onto it, so on
+        // screen it did nothing; the sequencing gets designed in the turn plan.
         public bool setTool_orchardCenterFirst = true; // odd passes: center first, then outward
+
+        // Largest steering angle allowed while the machine is between the trees (deg, 0 = no cap).
+        // A lost or wobbling fix must not turn into a big wheel angle in a row only as wide as the
+        // gap between two trunks. Lifted for the last 10 m at each row end, where the machine
+        // lines itself up and turns - see COrchard.BuildLimitZone.
+        public double setTool_orchardMaxSteerAngle = 8.0;
 
         // Planter geometry (F50 planting): where the seedling actually lands, relative
         // to the tractor. Guidance still steers the pivot - only the "next tree" HUD and
         // the planted marking use this point.
-        public double setTool_plantLateralOffset = 0;    // m, + = right of the driving direction
-        public double setTool_plantDistBehindAxle = 1.0; // m behind the rear axle
         public bool setTool_isSectionsNotZones = true;
         public bool setTool_isSectionOffWhenOut = true;
         public bool setTool_isDisplayTramControl = true;

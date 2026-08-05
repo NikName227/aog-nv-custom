@@ -10,7 +10,10 @@ using System.Windows.Forms;
 
 namespace AgOpenGPS
 {
-    public enum TrackMode { None = 0, AB = 2, Curve = 4, bndTrackOuter = 8, bndTrackInner = 16, bndCurve = 32, waterPivot = 64 };//, Heading, Circle, Spiral
+    public enum TrackMode { None = 0, AB = 2, Curve = 4, bndTrackOuter = 8, bndTrackInner = 16, bndCurve = 32, waterPivot = 64 }
+
+    /// <summary>NV custom F50: a side relative to a track's heading.</summary>
+    public enum TrackSide { None = 0, Left = 1, Right = 2 };//, Heading, Circle, Spiral
 
     public class CTrack
     {
@@ -22,6 +25,89 @@ namespace AgOpenGPS
         public int idx, autoTrack3SecTimer;
 
         public bool isAutoTrack = false, isAutoSnapToPivot = false, isAutoSnapped;
+
+        /// <summary>
+        /// NV custom F50 (t10): the driver picked the single "Orchard" entry in the track list
+        /// instead of one line. While it is on, the orchard automatics run - the derived pass is
+        /// driven as ONE fixed line (no width multiples), the nearest derived line is selected by
+        /// itself, and AOG's side guide lines are off. Picking any hand-made line turns it off and
+        /// gives fully stock behaviour, which is what the work AROUND the orchard needs.
+        /// </summary>
+        public bool isOrchardAuto;
+
+        /// <summary>Orchard automatics are on AND there is something derived to drive.</summary>
+        public bool IsOrchardAutoOn
+        {
+            get
+            {
+                if (!isOrchardAuto) return false;
+                for (int i = 0; i < gArr.Count; i++) if (gArr[i].isOrchardDerived) return true;
+                return false;
+            }
+        }
+
+        /// <summary>Is the active track a derived orchard pass?</summary>
+        public bool IsActiveOrchardPass
+            => idx > -1 && idx < gArr.Count && gArr[idx].isOrchardDerived;
+
+        // ── What the driver is shown (F50 t10, SIM 0730) ──────────────────────────
+        // The orchard is ONE item everywhere in the UI, not one per inter-row: one row in the
+        // track list, one step for the cycle buttons, and one line in the counter. So a field
+        // with an orchard and no hand-made line reads 1/1, and 1/2 once a manual AB line is
+        // added - never 1/24.
+
+        /// <summary>Number of items the driver can pick: the orchard counts as one.</summary>
+        public int DisplayCount
+        {
+            get
+            {
+                int n = 0;
+                bool anyDerived = false;
+                for (int i = 0; i < gArr.Count; i++)
+                {
+                    if (gArr[i].isOrchardDerived) anyDerived = true;
+                    else n++;
+                }
+                return n + (anyDerived ? 1 : 0);
+            }
+        }
+
+        /// <summary>1-based position of the active item in that same list; 0 = nothing active.</summary>
+        public int DisplayIndex
+        {
+            get
+            {
+                if (idx < 0 || idx >= gArr.Count) return 0;
+
+                bool anyDerived = false;
+                for (int i = 0; i < gArr.Count; i++) if (gArr[i].isOrchardDerived) { anyDerived = true; break; }
+
+                //the orchard sits first, as in the track list
+                if (gArr[idx].isOrchardDerived) return 1;
+
+                int n = anyDerived ? 1 : 0;
+                for (int i = 0; i < gArr.Count; i++)
+                {
+                    if (gArr[i].isOrchardDerived) continue;
+                    n++;
+                    if (i == idx) return n;
+                }
+                return n;
+            }
+        }
+
+        /// <summary>"1/2" for the counter label - the orchard as a single line.</summary>
+        public string DisplayCounterText => DisplayIndex + "/" + DisplayCount;
+
+        /// <summary>Does this field have a derived orchard path at all?</summary>
+        public bool HasOrchardDerived
+        {
+            get
+            {
+                for (int i = 0; i < gArr.Count; i++) if (gArr[i].isOrchardDerived) return true;
+                return false;
+            }
+        }
 
         public CTrack(FormGPS _f)
         {
@@ -127,12 +213,15 @@ namespace AgOpenGPS
             return trak;
         }
 
-        //F50: orchard passes are FIXED reference lines (trees do not move) - the
-        //"Row ..." name marks them so no track-file format change is needed
+        //F50: orchard passes are FIXED reference lines (trees do not move), so nudging them
+        //makes no sense. Since t10 the marker is the derived flag itself - the old check on
+        //the "Row " name prefix stopped matching when the derived tracks were renamed to
+        //"Orch ..." (name check kept as the fallback for tracks read from an older field file
+        //before the first rebuild).
         public bool IsFixedTrack(int i)
         {
             return i > -1 && i < gArr.Count
-                && gArr[i].name.StartsWith("Row ", System.StringComparison.Ordinal);
+                && (gArr[i].isOrchardDerived || COrchard.IsDerivedName(gArr[i].name));
         }
 
         public void NudgeTrack(double dist)
@@ -349,6 +438,22 @@ namespace AgOpenGPS
         public double nudgeDistance;
         public HashSet<int> workedTracks = new HashSet<int>();
 
+        /// <summary>
+        /// NV custom F50 (SIM 0730): which side of THIS track's own heading the tree line it
+        /// belongs to lies on. Only the two passes that hug a row have one - the passes in the
+        /// middle of an inter-row are None and can be driven either way. A side-mounted implement
+        /// can only work a pass whose row is on the implement's side, and that flips when the pass
+        /// is driven the other way round, so this is what the automatics filter on.
+        /// </summary>
+        public TrackSide orchardRowSide;
+
+        /// <summary>
+        /// NV custom F50: this track was DERIVED from the orchard rows + the implement
+        /// settings, not made by the user. Derived tracks are rebuilt on every change and
+        /// are never written to TrackLines.txt, so they cannot pile up (SIM 0729 t5).
+        /// </summary>
+        public bool isOrchardDerived;
+
         public CTrk()
         {
             curvePts = new List<vec3>();
@@ -375,6 +480,8 @@ namespace AgOpenGPS
             endPtB = new vec2();
             mode = _trk.mode;
             nudgeDistance = _trk.nudgeDistance;
+            isOrchardDerived = _trk.isOrchardDerived;
+            orchardRowSide = _trk.orchardRowSide;
         }
     }
 }

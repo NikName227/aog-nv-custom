@@ -651,21 +651,35 @@ namespace AgOpenGPS
             CPlanEntry cur = CurrentEntry();
             string curName = CurrentTrackName();
 
-            CPlanEntry best = null;
+            //candidates in plan order; the first one that can actually be worked wins.
+            //F50 (SIM 0730): a turn reverses the driving direction, so for a side-mounted
+            //implement the workable pass of an inter-row is the other one after the turn - aiming
+            //the maneuver at a pass we could not work on arrival is what made it "catch every AB
+            //line". A pass in the middle of an inter-row has no side and always qualifies.
+            var candidates = new List<CPlanEntry>();
             foreach (var p in entries)
             {
                 if (p.isWorked || p.isSkipped || p == cur) continue;
                 if (EntryTrackName(p) == curName) continue;   // same track = stock path
-                if (best == null || p.order < best.order) best = p;
+                candidates.Add(p);
             }
-            if (best == null) return false;
+            candidates.Sort((u, v) => u.order.CompareTo(v.order));
 
-            string tName = EntryTrackName(best);
-            foreach (var t in mf.trk.gArr)
+            foreach (var p in candidates)
             {
-                if (t.name == tName) { track = t; break; }
+                string cName = EntryTrackName(p);
+                CTrk cand = null;
+                foreach (var t in mf.trk.gArr)
+                {
+                    if (t.name == cName) { cand = t; break; }
+                }
+                if (cand == null || cand.curvePts.Count < 2) continue;
+                if (!mf.OrchardPassAllowed(cand, true)) continue;
+
+                track = cand;
+                break;
             }
-            if (track == null || track.curvePts.Count < 2) return false;
+            if (track == null) return false;
 
             // driven strip of that pass = +0.5 working width right of its reference
             vec3 piv = mf.pivotAxlePos;

@@ -5160,5 +5160,353 @@ namespace AgOpenGPS.Core.Translations {
                 return ResourceManager.GetString("gsFixedOrchardRowNoNudge", resourceCulture);
             }
         }
-    }
+            public static string gsOrchPathMode {
+            get {
+                return ResourceManager.GetString("gsOrchPathMode", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchPathOnePass {
+            get {
+                return ResourceManager.GetString("gsOrchPathOnePass", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchPathMultiPass {
+            get {
+                return ResourceManager.GetString("gsOrchPathMultiPass", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchPathOnRow {
+            get {
+                return ResourceManager.GetString("gsOrchPathOnRow", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchWorkMode {
+            get {
+                return ResourceManager.GetString("gsOrchWorkMode", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchWorkCenter {
+            get {
+                return ResourceManager.GetString("gsOrchWorkCenter", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchWorkLeft {
+            get {
+                return ResourceManager.GetString("gsOrchWorkLeft", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchWorkRight {
+            get {
+                return ResourceManager.GetString("gsOrchWorkRight", resourceCulture);
+            }
+        }
+        
+public static string gsOrchTreeWidth {
+            get {
+                return ResourceManager.GetString("gsOrchTreeWidth", resourceCulture);
+            }
+        }
+
+public static string gsOrchMaxSteerAngle {
+            get {
+                return ResourceManager.GetString("gsOrchMaxSteerAngle", resourceCulture);
+            }
+        }
+
+public static string gsOrchMaxSteerAngleOff {
+            get {
+                return ResourceManager.GetString("gsOrchMaxSteerAngleOff", resourceCulture);
+            }
+        }
+
+public static string gsOrchSteerLimitBtn {
+            get {
+                return ResourceManager.GetString("gsOrchSteerLimitBtn", resourceCulture);
+            }
+        }
+
+public static string gsOrchSteerLimit {
+            get {
+                return ResourceManager.GetString("gsOrchSteerLimit", resourceCulture);
+            }
+        }
+
+public static string gsOrchLimitMinPoints {
+            get {
+                return ResourceManager.GetString("gsOrchLimitMinPoints", resourceCulture);
+            }
+        }
+
+public static string gsOrchLimitNoField {
+            get {
+                return ResourceManager.GetString("gsOrchLimitNoField", resourceCulture);
+            }
+        }
+
+public static string gsOrchNoFixSteerOff {
+            get {
+                return ResourceManager.GetString("gsOrchNoFixSteerOff", resourceCulture);
+            }
+        }
+
+public static string gsOrchNoFixNoSteer {
+            get {
+                return ResourceManager.GetString("gsOrchNoFixNoSteer", resourceCulture);
+            }
+        }
+        
+public static string gsOrchCenterFirst {
+            get {
+                return ResourceManager.GetString("gsOrchCenterFirst", resourceCulture);
+            }
+        }
+        
+public static string gsOrchPlanterBehind {
+            get {
+                return ResourceManager.GetString("gsOrchPlanterBehind", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchName {
+            get {
+                return ResourceManager.GetString("gsOrchName", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchLegend {
+            get {
+                return ResourceManager.GetString("gsOrchLegend", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchLegRow {
+            get {
+                return ResourceManager.GetString("gsOrchLegRow", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchLegMid {
+            get {
+                return ResourceManager.GetString("gsOrchLegMid", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchLegTree {
+            get {
+                return ResourceManager.GetString("gsOrchLegTree", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchFine {
+            get {
+                return ResourceManager.GetString("gsOrchFine", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchCoarse {
+            get {
+                return ResourceManager.GetString("gsOrchCoarse", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchMeasure {
+            get {
+                return ResourceManager.GetString("gsOrchMeasure", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchAddPoint {
+            get {
+                return ResourceManager.GetString("gsOrchAddPoint", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchDeletePoint {
+            get {
+                return ResourceManager.GetString("gsOrchDeletePoint", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchImportKml {
+            get {
+                return ResourceManager.GetString("gsOrchImportKml", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchRecordRow {
+            get {
+                return ResourceManager.GetString("gsOrchRecordRow", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchRecordStop {
+            get {
+                return ResourceManager.GetString("gsOrchRecordStop", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchNewRow {
+            get {
+                return ResourceManager.GetString("gsOrchNewRow", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchEditRow {
+            get {
+                return ResourceManager.GetString("gsOrchEditRow", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchDelRow {
+            get {
+                return ResourceManager.GetString("gsOrchDelRow", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchGenRowSpace {
+            get {
+                return ResourceManager.GetString("gsOrchGenRowSpace", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchGenTreeSpace {
+            get {
+                return ResourceManager.GetString("gsOrchGenTreeSpace", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchGenHeadland {
+            get {
+                return ResourceManager.GetString("gsOrchGenHeadland", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchGenSetback {
+            get {
+                return ResourceManager.GetString("gsOrchGenSetback", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchGenStagger {
+            get {
+                return ResourceManager.GetString("gsOrchGenStagger", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchGenLine {
+            get {
+                return ResourceManager.GetString("gsOrchGenLine", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchGenerate {
+            get {
+                return ResourceManager.GetString("gsOrchGenerate", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchClose {
+            get {
+                return ResourceManager.GetString("gsOrchClose", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchPathTwoPass {
+            get {
+                return ResourceManager.GetString("gsOrchPathTwoPass", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchImplementSide {
+            get {
+                return ResourceManager.GetString("gsOrchImplementSide", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchFilterCap {
+            get {
+                return ResourceManager.GetString("gsOrchFilterCap", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchThin {
+            get {
+                return ResourceManager.GetString("gsOrchThin", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchSmoothLbl {
+            get {
+                return ResourceManager.GetString("gsOrchSmoothLbl", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchFilterApply {
+            get {
+                return ResourceManager.GetString("gsOrchFilterApply", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchPassCount {
+            get {
+                return ResourceManager.GetString("gsOrchPassCount", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchPassCountMin {
+            get {
+                return ResourceManager.GetString("gsOrchPassCountMin", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchTree {
+            get {
+                return ResourceManager.GetString("gsOrchTree", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchDeleteLastTree {
+            get {
+                return ResourceManager.GetString("gsOrchDeleteLastTree", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchTreeMinDist {
+            get {
+                return ResourceManager.GetString("gsOrchTreeMinDist", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchKeyTrigger {
+            get {
+                return ResourceManager.GetString("gsOrchKeyTrigger", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchPressKey {
+            get {
+                return ResourceManager.GetString("gsOrchPressKey", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchRefLong {
+            get {
+                return ResourceManager.GetString("gsOrchRefLong", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchEditTrees {
+            get {
+                return ResourceManager.GetString("gsOrchEditTrees", resourceCulture);
+            }
+        }
+        
+}
 }

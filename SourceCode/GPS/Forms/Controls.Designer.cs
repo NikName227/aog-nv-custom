@@ -138,21 +138,23 @@ namespace AgOpenGPS
                 flp1.Controls[1].Visible = isBnd && !isEasyDriveMode;
 
                 flp1.Controls[2].Visible = true;
-                //F06: orchard launcher (Controls[3]) only when the feature is unlocked
-                flp1.Controls[3].Visible = CFeatureLock.IsOn(CFeatureLock.FeatureOrchard);
+
+                //F50 (SIM 0730): the orchard launcher moved OUT of this flyout into the Field
+                //tools menu (it defines the field, not an AB line), so every index below shifted
+                //down by one - this list is positional, it has to be renumbered with it.
 
                 //+AB and Build tracks (list) - always available, like stock
+                flp1.Controls[3].Visible = true;
                 flp1.Controls[4].Visible = true;
-                flp1.Controls[5].Visible = true;
 
                 //off button
-                flp1.Controls[6].Visible = tracksVisible > 0;
+                flp1.Controls[5].Visible = tracksVisible > 0;
 
                 //auto snap to pivot
-                flp1.Controls[7].Visible = tracksVisible > 0;
+                flp1.Controls[6].Visible = tracksVisible > 0;
 
                 //ref nudge
-                flp1.Controls[8].Visible = tracksVisible > 0;
+                flp1.Controls[7].Visible = tracksVisible > 0;
 
                 for (int i = 0; i < flp1.Controls.Count; i++)
                 {
@@ -211,6 +213,17 @@ namespace AgOpenGPS
             }
             else
             {
+                //F50 (2026-08-01): in an orchard autosteer only runs on a real RTK fix. Without
+                //this the gate would be a revolving door - it drops autosteer when the fix goes,
+                //and the driver presses the button straight back on with no fix, which is exactly
+                //the state the gate exists to prevent. Refuse to arm instead.
+                if (OrchardSteerGateOn && pn.fixQuality != 4)
+                {
+                    Log.EventWriter("Orchard: autosteer refused, no RTK fix (quality " + pn.fixQuality + ")");
+                    TimedMessageBox(3000, gStr.gsOrchard, gStr.gsOrchNoFixNoSteer);
+                    return;
+                }
+
                 if (ct.isContourBtnOn | trk.idx > -1)
                 {
                     isBtnAutoSteerOn = true;
@@ -315,6 +328,28 @@ namespace AgOpenGPS
             trk.isAutoTrack = false;
             btnAutoTrack.Image = Resources.AutoTrackOff;
 
+            //F50 t10 (SIM 0730): in an orchard the whole path is one stop - "Orchard" then the
+            //hand-made lines - instead of 24 inter-row passes to click through
+            if (OrchardCycleTracks(1, out string orchName))
+            {
+                guideLineCounter = 20;
+                lblGuidanceLine.Visible = true;
+                lblGuidanceLine.Text = orchName ?? "";
+
+                if (isBtnAutoSteerOn)
+                {
+                    btnAutoSteer.PerformClick();
+                    TimedMessageBox(2000, gStr.gsGuidanceStopped, "Track Changed");
+                }
+                if (yt.isYouTurnBtnOn) btnAutoYouTurn.PerformClick();
+
+                lblNumCu.Text = trk.DisplayCounterText;
+                twoSecondCounter = 100;
+                ABLine.isABValid = false;
+                curve.isCurveValid = false;
+                return;
+            }
+
             if (trk.gArr.Count > 1)
             {
                 while (true)
@@ -339,7 +374,7 @@ namespace AgOpenGPS
 
                 if (yt.isYouTurnBtnOn) btnAutoYouTurn.PerformClick();
 
-                lblNumCu.Text = (trk.idx + 1).ToString() + "/" + trk.gArr.Count.ToString();
+                lblNumCu.Text = trk.DisplayCounterText;   //F50 t10: orchard = one line
             }
 
             twoSecondCounter = 100;
@@ -358,6 +393,26 @@ namespace AgOpenGPS
 
             trk.isAutoTrack = false;
             btnAutoTrack.Image = Resources.AutoTrackOff;
+
+            //F50 t10 (SIM 0730): same single stop for the orchard, backwards
+            if (OrchardCycleTracks(-1, out string orchName))
+            {
+                guideLineCounter = 20;
+                lblGuidanceLine.Visible = true;
+                lblGuidanceLine.Text = orchName ?? "";
+
+                if (isBtnAutoSteerOn)
+                {
+                    btnAutoSteer.PerformClick();
+                    TimedMessageBox(2000, gStr.gsGuidanceStopped, "Track Changed");
+                }
+
+                lblNumCu.Text = trk.DisplayCounterText;
+                ABLine.isABValid = false;
+                curve.isCurveValid = false;
+                twoSecondCounter = 100;
+                return;
+            }
 
             if (trk.gArr.Count > 1)
             {
@@ -381,7 +436,7 @@ namespace AgOpenGPS
                     TimedMessageBox(2000, gStr.gsGuidanceStopped, "Track Changed");
                 }
 
-                lblNumCu.Text = (trk.idx + 1).ToString() + "/" + trk.gArr.Count.ToString();
+                lblNumCu.Text = trk.DisplayCounterText;   //F50 t10: orchard = one line
             }
 
             ABLine.isABValid = false;
@@ -873,6 +928,12 @@ namespace AgOpenGPS
 
                 try { ExportFieldAs_KML(); }
                 catch (Exception ex) { Log.EventWriter($"WARNING: KML export failed: {ex}"); }
+
+                //F50 (SIM 0730): the orchard as its own file - boundary, headland, rows, trees.
+                //Written here so it is always in step with the field, and closing the program
+                //closes the field, which is the other moment it has to be fresh.
+                try { ExportOrchardAs_KML(); }
+                catch (Exception ex) { Log.EventWriter($"WARNING: Orchard KML export failed: {ex}"); }
 
                 //ExportFieldAs_ISOXMLv3(); NOTE: This is very very slow, commented out until we have a field exporter
 

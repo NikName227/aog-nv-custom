@@ -1,4 +1,4 @@
-using AgOpenGPS.Core.Models;
+﻿using AgOpenGPS.Core.Models;
 using AgOpenGPS.ResourcesBrands;
 
 namespace AgOpenGPS
@@ -102,22 +102,22 @@ namespace AgOpenGPS
             this.rbtnFixedRear = new System.Windows.Forms.RadioButton();
             this.rbtnFront = new System.Windows.Forms.RadioButton();
             this.rbtnTrailing = new System.Windows.Forms.RadioButton();
-            this.rbtnOrchard = new System.Windows.Forms.RadioButton();
+            this.rbtnOrchard = new System.Windows.Forms.CheckBox();
             this.pnlOrchardSet = new System.Windows.Forms.Panel();
+            this.lblOrchardPath = new System.Windows.Forms.Label();
+            this.cboOrchardPath = new System.Windows.Forms.ComboBox();
+            this.lblOrchardPassCount = new System.Windows.Forms.Label();
+            this.nudOrchardPassCount = new AgOpenGPS.NudlessNumericUpDown();
+            this.lblOrchardPassWarn = new System.Windows.Forms.Label();
             this.lblOrchardMode = new System.Windows.Forms.Label();
             this.cboOrchardMode = new System.Windows.Forms.ComboBox();
-            this.lblOrchardRowOffset = new System.Windows.Forms.Label();
-            this.nudOrchardRowOffset = new System.Windows.Forms.NumericUpDown();
             this.lblOrchardTree = new System.Windows.Forms.Label();
-            this.nudOrchardTree = new System.Windows.Forms.NumericUpDown();
-            this.lblOrchardSafe = new System.Windows.Forms.Label();
-            this.nudOrchardSafe = new System.Windows.Forms.NumericUpDown();
+            this.nudOrchardTree = new AgOpenGPS.NudlessNumericUpDown();
+            this.lblOrchardMaxAngle = new System.Windows.Forms.Label();
+            this.lblOrchardMaxAngleHint = new System.Windows.Forms.Label();
+            this.nudOrchardMaxAngle = new AgOpenGPS.NudlessNumericUpDown();
             this.chkOrchardOnePass = new System.Windows.Forms.CheckBox();
             this.chkOrchardCenterFirst = new System.Windows.Forms.CheckBox();
-            this.lblPlantLateral = new System.Windows.Forms.Label();
-            this.nudPlantLateral = new System.Windows.Forms.NumericUpDown();
-            this.lblPlantBehind = new System.Windows.Forms.Label();
-            this.nudPlantBehind = new System.Windows.Forms.NumericUpDown();
             this.tabTHitch = new System.Windows.Forms.TabPage();
             this.label112 = new System.Windows.Forms.Label();
             this.labelTractorUnits = new System.Windows.Forms.Label();
@@ -1732,7 +1732,6 @@ namespace AgOpenGPS
             // labelBoxAttachmentStyle
             // 
             this.labelBoxAttachmentStyle.BackgroundImageLayout = System.Windows.Forms.ImageLayout.None;
-            this.labelBoxAttachmentStyle.Controls.Add(this.pnlOrchardSet);
             this.labelBoxAttachmentStyle.Controls.Add(this.pboxConfigHarvester);
             this.labelBoxAttachmentStyle.Controls.Add(this.rbtnTBT);
             this.labelBoxAttachmentStyle.Controls.Add(this.rbtnFixedRear);
@@ -1827,6 +1826,8 @@ namespace AgOpenGPS
             this.rbtnOrchard.FlatAppearance.BorderSize = 1;
             this.rbtnOrchard.FlatAppearance.CheckedBackColor = System.Drawing.Color.LightGreen;
             this.rbtnOrchard.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.rbtnOrchard.Appearance = System.Windows.Forms.Appearance.Button;
+            this.rbtnOrchard.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
             this.rbtnOrchard.Font = new System.Drawing.Font("Tahoma", 14.25F, System.Drawing.FontStyle.Bold);
             this.rbtnOrchard.Location = new System.Drawing.Point(206, 446);
             this.rbtnOrchard.Name = "rbtnOrchard";
@@ -1841,10 +1842,44 @@ namespace AgOpenGPS
             // pnlOrchardSet (orchard processing settings; interactive image = later design pass)
             //
             this.pnlOrchardSet.BackColor = System.Drawing.Color.WhiteSmoke;
-            this.pnlOrchardSet.Location = new System.Drawing.Point(16, 48);
+            this.pnlOrchardSet.Location = new System.Drawing.Point(10, 332);
             this.pnlOrchardSet.Name = "pnlOrchardSet";
-            this.pnlOrchardSet.Size = new System.Drawing.Size(695, 394);
+            this.pnlOrchardSet.Size = new System.Drawing.Size(840, 248);
             this.pnlOrchardSet.Visible = false;
+            //SIM 0729 t3: how the AB lines follow the rows. This is the top-level choice -
+            //the fields below it belong to one mode each and are shown accordingly
+            //(ApplyOrchardPathUI).
+            this.lblOrchardPath.Font = new System.Drawing.Font("Tahoma", 12F, System.Drawing.FontStyle.Bold);
+            this.lblOrchardPath.Location = new System.Drawing.Point(20, 24);
+            this.lblOrchardPath.Size = new System.Drawing.Size(300, 26);
+            this.lblOrchardPath.Text = "Path mode";
+            this.cboOrchardPath.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.cboOrchardPath.Font = new System.Drawing.Font("Tahoma", 12F);
+            this.cboOrchardPath.Items.AddRange(new object[] {
+                "One pass (center of inter-row)",
+                "Multi pass (per inter-row)",
+                "On row (planting)",
+                "Two passes (beside the trees)" });
+            this.cboOrchardPath.Location = new System.Drawing.Point(340, 20);
+            this.cboOrchardPath.Size = new System.Drawing.Size(330, 30);
+            this.cboOrchardPath.SelectedIndexChanged += new System.EventHandler(this.cboOrchardPath_SelectedIndexChanged);
+            this.lblOrchardPassCount.Font = new System.Drawing.Font("Tahoma", 12F);
+            this.lblOrchardPassCount.Location = new System.Drawing.Point(20, 74);
+            this.lblOrchardPassCount.Name = "lblOrchardPassCount";
+            this.lblOrchardPassCount.Size = new System.Drawing.Size(300, 26);
+            this.lblOrchardPassCount.Text = "Passes per inter-row (0 = auto)";
+            this.nudOrchardPassCount.Font = new System.Drawing.Font("Tahoma", 12F);
+            this.nudOrchardPassCount.Location = new System.Drawing.Point(340, 70);
+            this.nudOrchardPassCount.Maximum = new decimal(new int[] { 40, 0, 0, 0 });
+            this.nudOrchardPassCount.Size = new System.Drawing.Size(120, 30);
+            this.nudOrchardPassCount.Click += new System.EventHandler(this.nudOrchard_Click);
+            this.nudOrchardPassCount.ValueChanged += new System.EventHandler(this.nudOrchardPassCount_ValueChanged);
+            this.lblOrchardPassWarn.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Bold);
+            this.lblOrchardPassWarn.ForeColor = System.Drawing.Color.Red;
+            this.lblOrchardPassWarn.Location = new System.Drawing.Point(474, 74);
+            this.lblOrchardPassWarn.Name = "lblOrchardPassWarn";
+            this.lblOrchardPassWarn.Size = new System.Drawing.Size(200, 26);
+            this.lblOrchardPassWarn.Text = "";
             this.lblOrchardMode.Font = new System.Drawing.Font("Tahoma", 12F);
             this.lblOrchardMode.Location = new System.Drawing.Point(20, 24);
             this.lblOrchardMode.Size = new System.Drawing.Size(300, 26);
@@ -1854,16 +1889,6 @@ namespace AgOpenGPS
             this.cboOrchardMode.Items.AddRange(new object[] { "Center", "Left", "Right" });
             this.cboOrchardMode.Location = new System.Drawing.Point(340, 20);
             this.cboOrchardMode.Size = new System.Drawing.Size(180, 30);
-            this.lblOrchardRowOffset.Font = new System.Drawing.Font("Tahoma", 12F);
-            this.lblOrchardRowOffset.Location = new System.Drawing.Point(20, 74);
-            this.lblOrchardRowOffset.Size = new System.Drawing.Size(300, 26);
-            this.lblOrchardRowOffset.Text = "Tool offset from row (m)";
-            this.nudOrchardRowOffset.DecimalPlaces = 2;
-            this.nudOrchardRowOffset.Font = new System.Drawing.Font("Tahoma", 12F);
-            this.nudOrchardRowOffset.Increment = new decimal(new int[] { 1, 0, 0, 65536 });
-            this.nudOrchardRowOffset.Location = new System.Drawing.Point(340, 70);
-            this.nudOrchardRowOffset.Maximum = new decimal(new int[] { 10, 0, 0, 0 });
-            this.nudOrchardRowOffset.Size = new System.Drawing.Size(120, 30);
             this.lblOrchardTree.Font = new System.Drawing.Font("Tahoma", 12F);
             this.lblOrchardTree.Location = new System.Drawing.Point(20, 124);
             this.lblOrchardTree.Size = new System.Drawing.Size(300, 26);
@@ -1874,16 +1899,7 @@ namespace AgOpenGPS
             this.nudOrchardTree.Location = new System.Drawing.Point(340, 120);
             this.nudOrchardTree.Maximum = new decimal(new int[] { 10, 0, 0, 0 });
             this.nudOrchardTree.Size = new System.Drawing.Size(120, 30);
-            this.lblOrchardSafe.Font = new System.Drawing.Font("Tahoma", 12F);
-            this.lblOrchardSafe.Location = new System.Drawing.Point(20, 174);
-            this.lblOrchardSafe.Size = new System.Drawing.Size(300, 26);
-            this.lblOrchardSafe.Text = "Safe space - opposite row (m)";
-            this.nudOrchardSafe.DecimalPlaces = 2;
-            this.nudOrchardSafe.Font = new System.Drawing.Font("Tahoma", 12F);
-            this.nudOrchardSafe.Increment = new decimal(new int[] { 1, 0, 0, 65536 });
-            this.nudOrchardSafe.Location = new System.Drawing.Point(340, 170);
-            this.nudOrchardSafe.Maximum = new decimal(new int[] { 20, 0, 0, 0 });
-            this.nudOrchardSafe.Size = new System.Drawing.Size(120, 30);
+            this.nudOrchardTree.Click += new System.EventHandler(this.nudOrchard_Click);
             this.chkOrchardOnePass.Font = new System.Drawing.Font("Tahoma", 12F);
             this.chkOrchardOnePass.Location = new System.Drawing.Point(20, 224);
             this.chkOrchardOnePass.Size = new System.Drawing.Size(440, 30);
@@ -1892,47 +1908,46 @@ namespace AgOpenGPS
             this.chkOrchardCenterFirst.Location = new System.Drawing.Point(20, 264);
             this.chkOrchardCenterFirst.Size = new System.Drawing.Size(440, 30);
             this.chkOrchardCenterFirst.Text = "Center pass first (odd pass count)";
+            //F50 (2026-08-01): steering cap between the trees, lifted in the headland.
+            //SIM markup: the caption did not fit next to the value, so the input moved right and
+            //"0 = off" dropped to a second, smaller line under it.
+            this.lblOrchardMaxAngle.Font = new System.Drawing.Font("Tahoma", 12F);
+            this.lblOrchardMaxAngle.Location = new System.Drawing.Point(20, 174);
+            this.lblOrchardMaxAngle.Size = new System.Drawing.Size(310, 26);
+            this.lblOrchardMaxAngle.Text = "Max steer angle in row (deg)";
+            this.lblOrchardMaxAngleHint.Font = new System.Drawing.Font("Tahoma", 9F);
+            this.lblOrchardMaxAngleHint.ForeColor = System.Drawing.Color.DimGray;
+            this.lblOrchardMaxAngleHint.Location = new System.Drawing.Point(22, 198);
+            this.lblOrchardMaxAngleHint.Size = new System.Drawing.Size(420, 20);
+            this.lblOrchardMaxAngleHint.Text = "0 = off";
+            this.nudOrchardMaxAngle.DecimalPlaces = 1;
+            this.nudOrchardMaxAngle.Font = new System.Drawing.Font("Tahoma", 12F);
+            this.nudOrchardMaxAngle.Increment = new decimal(new int[] { 5, 0, 0, 65536 });
+            this.nudOrchardMaxAngle.Location = new System.Drawing.Point(340, 170);
+            this.nudOrchardMaxAngle.Maximum = new decimal(new int[] { 40, 0, 0, 0 });
+            this.nudOrchardMaxAngle.Size = new System.Drawing.Size(120, 30);
+            this.nudOrchardMaxAngle.Click += new System.EventHandler(this.nudOrchard_Click);
             //planter geometry (F50 planting): the seedling drop point, used by the
             //"next tree" HUD and the planted marking - guidance still steers the pivot
-            this.lblPlantLateral.Font = new System.Drawing.Font("Tahoma", 12F);
-            this.lblPlantLateral.Location = new System.Drawing.Point(20, 310);
-            this.lblPlantLateral.Size = new System.Drawing.Size(300, 26);
-            this.lblPlantLateral.Text = "Planter offset - right + / left - (m)";
-            this.nudPlantLateral.DecimalPlaces = 2;
-            this.nudPlantLateral.Font = new System.Drawing.Font("Tahoma", 12F);
-            this.nudPlantLateral.Increment = new decimal(new int[] { 5, 0, 0, 131072 });
-            this.nudPlantLateral.Location = new System.Drawing.Point(340, 306);
-            this.nudPlantLateral.Minimum = new decimal(new int[] { 10, 0, 0, -2147483648 });
-            this.nudPlantLateral.Maximum = new decimal(new int[] { 10, 0, 0, 0 });
-            this.nudPlantLateral.Size = new System.Drawing.Size(120, 30);
-            this.lblPlantBehind.Font = new System.Drawing.Font("Tahoma", 12F);
-            this.lblPlantBehind.Location = new System.Drawing.Point(20, 352);
-            this.lblPlantBehind.Size = new System.Drawing.Size(300, 26);
-            this.lblPlantBehind.Text = "Planter behind rear axle (m)";
-            this.nudPlantBehind.DecimalPlaces = 2;
-            this.nudPlantBehind.Font = new System.Drawing.Font("Tahoma", 12F);
-            this.nudPlantBehind.Increment = new decimal(new int[] { 5, 0, 0, 131072 });
-            this.nudPlantBehind.Location = new System.Drawing.Point(340, 348);
-            this.nudPlantBehind.Maximum = new decimal(new int[] { 15, 0, 0, 0 });
-            this.nudPlantBehind.Size = new System.Drawing.Size(120, 30);
+            this.pnlOrchardSet.Controls.Add(this.lblOrchardPath);
+            this.pnlOrchardSet.Controls.Add(this.cboOrchardPath);
+            this.pnlOrchardSet.Controls.Add(this.lblOrchardPassCount);
+            this.pnlOrchardSet.Controls.Add(this.nudOrchardPassCount);
+            this.pnlOrchardSet.Controls.Add(this.lblOrchardPassWarn);
             this.pnlOrchardSet.Controls.Add(this.lblOrchardMode);
             this.pnlOrchardSet.Controls.Add(this.cboOrchardMode);
-            this.pnlOrchardSet.Controls.Add(this.lblOrchardRowOffset);
-            this.pnlOrchardSet.Controls.Add(this.nudOrchardRowOffset);
             this.pnlOrchardSet.Controls.Add(this.lblOrchardTree);
             this.pnlOrchardSet.Controls.Add(this.nudOrchardTree);
-            this.pnlOrchardSet.Controls.Add(this.lblOrchardSafe);
-            this.pnlOrchardSet.Controls.Add(this.nudOrchardSafe);
             this.pnlOrchardSet.Controls.Add(this.chkOrchardOnePass);
             this.pnlOrchardSet.Controls.Add(this.chkOrchardCenterFirst);
-            this.pnlOrchardSet.Controls.Add(this.lblPlantLateral);
-            this.pnlOrchardSet.Controls.Add(this.nudPlantLateral);
-            this.pnlOrchardSet.Controls.Add(this.lblPlantBehind);
-            this.pnlOrchardSet.Controls.Add(this.nudPlantBehind);
+            this.pnlOrchardSet.Controls.Add(this.lblOrchardMaxAngle);
+            this.pnlOrchardSet.Controls.Add(this.lblOrchardMaxAngleHint);
+            this.pnlOrchardSet.Controls.Add(this.nudOrchardMaxAngle);
             //
             // tabTHitch
             //
             this.tabTHitch.BackColor = System.Drawing.Color.WhiteSmoke;
+            this.tabTHitch.Controls.Add(this.pnlOrchardSet);
             this.tabTHitch.Controls.Add(this.label112);
             this.tabTHitch.Controls.Add(this.labelTractorUnits);
             this.tabTHitch.Controls.Add(this.nudTrailingHitchLength);
@@ -8942,23 +8957,23 @@ namespace AgOpenGPS
         private System.Windows.Forms.RadioButton rbtnFront;
         private System.Windows.Forms.RadioButton rbtnTrailing;
         //F50 orchard tool type + its processing settings (design/image pass comes later)
-        private System.Windows.Forms.RadioButton rbtnOrchard;
+        private System.Windows.Forms.CheckBox rbtnOrchard;
         private System.Windows.Forms.Panel pnlOrchardSet;
+        private System.Windows.Forms.Label lblOrchardPath;
+        private System.Windows.Forms.ComboBox cboOrchardPath;
+        private System.Windows.Forms.Label lblOrchardPassCount;
+        private AgOpenGPS.NudlessNumericUpDown nudOrchardPassCount;
+        private System.Windows.Forms.Label lblOrchardPassWarn;
         private System.Windows.Forms.Label lblOrchardMode;
         private System.Windows.Forms.ComboBox cboOrchardMode;
-        private System.Windows.Forms.Label lblOrchardSafe;
-        private System.Windows.Forms.NumericUpDown nudOrchardSafe;
         private System.Windows.Forms.Label lblOrchardTree;
-        private System.Windows.Forms.NumericUpDown nudOrchardTree;
-        private System.Windows.Forms.Label lblOrchardRowOffset;
-        private System.Windows.Forms.NumericUpDown nudOrchardRowOffset;
+        private AgOpenGPS.NudlessNumericUpDown nudOrchardTree;
+        private System.Windows.Forms.Label lblOrchardMaxAngle;
+        private System.Windows.Forms.Label lblOrchardMaxAngleHint;
+        private AgOpenGPS.NudlessNumericUpDown nudOrchardMaxAngle;
         private System.Windows.Forms.CheckBox chkOrchardOnePass;
         private System.Windows.Forms.CheckBox chkOrchardCenterFirst;
         //F50 planting: planter geometry (seedling drop point)
-        private System.Windows.Forms.Label lblPlantLateral;
-        private System.Windows.Forms.NumericUpDown nudPlantLateral;
-        private System.Windows.Forms.Label lblPlantBehind;
-        private System.Windows.Forms.NumericUpDown nudPlantBehind;
         private NudlessNumericUpDown nudAntennaHeight;
         private NudlessNumericUpDown nudAntennaPivot;
         private System.Windows.Forms.PictureBox pboxAntenna;

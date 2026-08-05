@@ -416,6 +416,17 @@ namespace AgOpenGPS
 
                     #endregion
 
+                    //F50: the tree rows themselves - very thin, they are geometry, not a path
+                    if (orchRows.Count > 0) DrawOrchardRows();
+
+                    //F50 (SIM 0730): the inactive passes are NOT drawn. The row map already
+                    //shows where the machine can go, so a fan of pale violet lines on top of it
+                    //adds nothing - only the line being driven is drawn (DrawCurve).
+
+                    //F50 (SIM 0730): the trees of the orchard rows - a mapped orchard has to be
+                    //visible on the main map too, not only inside the planner
+                    if (orchRows.Count > 0) DrawOrchardTrees();
+
                     //F50 planting: where every seedling goes, and what is already planted
                     if (planting.IsOn) DrawPlantSpots();
 
@@ -504,8 +515,12 @@ namespace AgOpenGPS
 
                     if (trk.idx > -1 && !ct.isContourBtnOn) DrawTrackInfo();
 
-                    //F50 planting: distance to the next seedling
-                    if (planting.IsOn) DrawPlantingHud();
+                    //F50: where the driver is in the orchard, and how far the next tree is
+                    if (trk.IsOrchardAutoOn) DrawOrchardHud();
+
+                    //F50 (SIM 0729 t8): the machine does not fit into the inter-row
+                    if (orchardWarn.Length > 0) DrawOrchardWarn();
+                    if (OrchardDebugHud && tool.isToolOrchard) DrawOrchardLimitLamp();
 
                     if (bnd.bndList.Count > 0 && yt.isYouTurnBtnOn) DrawUTurnBtn();
 
@@ -2144,16 +2159,65 @@ namespace AgOpenGPS
             }
         }
 
-        //F50 planting: the planned seedling spots. Planted ones go green so a glance at
-        //the map shows how far the job got; the one being driven at is ringed.
+        //F50 (SIM 0729 t7): the tree rows. Deliberately the THINNEST line on the map and
+        //a muted green - a row is where the trees stand, not something that gets driven,
+        //so it must never compete with the guidance line.
+        private void DrawOrchardRows()
+        {
+            GL.LineWidth(1);
+            GL.Color4(0.35f, 0.62f, 0.35f, 0.75f);
+            for (int i = 0; i < orchRows.Count; i++)
+            {
+                var c = orchRows[i].curve;
+                if (c.Count < 2) continue;
+                GL.Begin(PrimitiveType.LineStrip);
+                for (int p = 0; p < c.Count; p++) GL.Vertex3(c[p].easting, c[p].northing, 0);
+                GL.End();
+            }
+        }
+
+        //F50 (SIM 0730): trees that belong to the rows (mapped by driving, imported from KML).
+        //Each one is a dot plus a cross line across the row, three dot-widths long, so a tree
+        //cannot be confused with anything else on the map.
+        private void DrawOrchardTrees()
+        {
+            const double halfCross = 0.5;   // metres either side - about three dot widths
+
+            GL.Color3(0.85f, 0.6f, 0.2f);
+            GL.PointSize(6f);
+            GL.Begin(PrimitiveType.Points);
+            for (int i = 0; i < orchRows.Count; i++)
+                foreach (var t in orchRows[i].trees) GL.Vertex3(t.easting, t.northing, 0);
+            GL.End();
+
+            GL.LineWidth(2);
+            GL.Begin(PrimitiveType.Lines);
+            for (int i = 0; i < orchRows.Count; i++)
+            {
+                var d = orchRows[i].Dir();
+                double px = -d.northing * halfCross, py = d.easting * halfCross;   // across the row
+                foreach (var t in orchRows[i].trees)
+                {
+                    GL.Vertex3(t.easting - px, t.northing - py, 0);
+                    GL.Vertex3(t.easting + px, t.northing + py, 0);
+                }
+            }
+            GL.End();
+        }
+
+        //F50 planting: the planned seedling spots.
+        //SIM 0730: ONE colour for every tree, always. Whether a tree is in the ground is
+        //something the driver sees out of the window, and deciding it from the geometry is the
+        //kind of call that should stay with the driver (see CPlanting.Update) - a dot that
+        //changes colour on its own only invites trusting it. Worked ground is what the field
+        //marking is for.
         private void DrawPlantSpots()
         {
             GL.PointSize(6f);
+            GL.Color3(0.85f, 0.7f, 0.25f);
             GL.Begin(PrimitiveType.Points);
             foreach (var s in planting.spots)
             {
-                if (s.planted) GL.Color3(0.25f, 0.85f, 0.3f);
-                else GL.Color3(0.85f, 0.7f, 0.25f);
                 GL.Vertex3(s.pos.easting, s.pos.northing, 0);
             }
             GL.End();
@@ -2166,23 +2230,78 @@ namespace AgOpenGPS
             GL.End();
         }
 
-        //F50 planting HUD: metres to the next seedling (one decimal) + job progress.
-        //Mirrors the turn HUD on the other side of the screen.
-        private void DrawPlantingHud()
+        //F50 (SIM 0729 t8): safety alert - the implement is wider than the inter-row allows
+        //once the row offset and the clearance on the far side are taken off it. Red, with how
+        //many metres are missing in the worst inter-row. Set by OrchardRebuildTracks, so it
+        //appears the moment the machine or a setting changes.
+        //SIM 0730: moved to the LEFT side of the HUD (it sat top centre, where it competed with
+        //the pass/track readouts).
+        private void DrawOrchardWarn()
+        {
+            //x = 0 is the middle of the HUD (GL.Ortho(-W/2 .. +W/2)), so this is 30 px in from the
+            //left edge; y is below the cross-track readout that lives in the top-left corner
+            GL.Color4(1.0f, 0.15f, 0.15f, 0.95f);
+            font.DrawText(-oglMain.Width / 2 + 30, 110, orchardWarn, 1.1);
+        }
+
+        // ─── TEMPORARY, DEBUG ONLY (2026-08-01) ──────────────────────────────────────────
+        // Signal light for the steer cap, so the state can be read off the screen while testing:
+        //   grey  - not capping (orchard off, autosteer off, or outside the limit polygon)
+        //   green - inside the polygon, cap armed, guidance is asking for less than the limit
+        //   red   - the cap is actually cutting, with the angle guidance wanted beside it
+        // Agreed as a debug aid to be removed once the behaviour is confirmed in the field:
+        // delete this method, the constant, and the call in oglMain_Paint.
+        private const bool OrchardDebugHud = true;
+
+        private void DrawOrchardLimitLamp()
+        {
+            int x = -oglMain.Width / 2 + 30;
+            int y = 140;
+
+            bool armed = isBtnAutoSteerOn && trk.IsActiveOrchardPass && OrchardLimitArmed;
+            bool cutting = armed && orchardClampSince != DateTime.MinValue;
+
+            if (cutting) GL.Color4(1.0f, 0.25f, 0.25f, 0.95f);
+            else if (armed) GL.Color4(0.25f, 0.95f, 0.35f, 0.95f);
+            else GL.Color4(0.55f, 0.55f, 0.55f, 0.8f);
+
+            GL.PointSize(16f);
+            GL.Begin(PrimitiveType.Points);
+            GL.Vertex3(x, y, 0);
+            GL.End();
+
+            string txt = cutting ? "LIMIT " + orchardClampPeakDeg.ToString("N1") + "\u00b0"
+                       : armed ? "limit" : "-";
+            font.DrawText(x + 18, y - 10, txt, 0.9);
+        }
+
+        //F50 orchard HUD (SIM 0730). Two readouts, both live whenever the orchard automatics
+        //are on - mulching wants to know where it is just as much as planting does:
+        //  metres to the next tree, measured from the IMPLEMENT (CPlanting.PlantPoint)
+        //  where the driver is: "5/6 - 21/56" = pass 5 of 6, inter-row 21 of 56 (no words, the
+        //  old planted/total counter said nothing once marking became a manual act)
+        private void DrawOrchardHud()
         {
             int rx = oglMain.Width / 4;
 
-            string dist = planting.DistToNext >= 0
-                ? planting.DistToNext.ToString("N1") + " m"
-                : "--";
+            if (planting.HasTrees)
+            {
+                string dist = planting.DistToNext >= 0
+                    ? planting.DistToNext.ToString("N1") + " m"
+                    : "--";
 
-            //inside half a metre the seedling should be going in the ground right now
-            if (planting.DistToNext >= 0 && planting.DistToNext < 0.5) GL.Color4(0.25f, 0.97f, 0.35f, 0.95f);
-            else GL.Color4(0.60f, 0.90f, 0.95f, 0.92f);
-            font.DrawText(rx - 40, 82, dist, 1.5);
+                //inside half a metre the tree is right at the implement
+                if (planting.DistToNext >= 0 && planting.DistToNext < 0.5) GL.Color4(0.25f, 0.97f, 0.35f, 0.95f);
+                else GL.Color4(0.60f, 0.90f, 0.95f, 0.92f);
+                font.DrawText(rx - 40, 82, dist, 1.5);
+            }
 
-            GL.Color4(0.92f, 0.92f, 0.92f, 0.85f);
-            font.DrawText(rx - 40, 130, planting.PlantedCount + "/" + planting.spots.Count, 0.9);
+            string where = OrchardPositionText();
+            if (where.Length > 0)
+            {
+                GL.Color4(0.92f, 0.92f, 0.92f, 0.85f);
+                font.DrawText(rx - 40, 130, where, 0.9);
+            }
         }
 
         private void DrawFlags()

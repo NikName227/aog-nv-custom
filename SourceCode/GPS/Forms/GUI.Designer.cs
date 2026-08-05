@@ -574,6 +574,9 @@ namespace AgOpenGPS
 
             isDirectionMarkers = Properties.ToolSettings.Default.setTool_isDirectionMarkers;
 
+            //F50: the orchard planner sits in the Field tools menu now
+            orchardToolStripMenuItem.Text = gStr.gsOrchard;
+
             isHeadlandDistanceOn = Settings.Default.isHeadlandDistanceOn;
 
             panelNavigation.Location = new System.Drawing.Point(90, 100);
@@ -662,6 +665,11 @@ namespace AgOpenGPS
             // for example, change of tool offset or tool width
             curve.isCurveValid = false;
             ABLine.isABValid = false;
+
+            //F50 (SIM 0729 t5): the orchard path follows the implement. This runs on every
+            //settings close and on every vehicle/tool profile load, so choosing another
+            //machine re-derives the passes from the same rows - no path is defined by hand.
+            if (isJobStarted) OrchardRebuildTracks("implement or settings changed");
 
             fd.UpdateFieldBoundaryGUIAreas();
 
@@ -884,7 +892,7 @@ namespace AgOpenGPS
                 if (trk.idx > -1 && trk.gArr.Count > 0 && !ct.isContourBtnOn)
                 {
                     lblNumCu.Visible = true;
-                    lblNumCu.Text = (trk.idx + 1).ToString() + "/" + trk.gArr.Count.ToString();
+                    lblNumCu.Text = trk.DisplayCounterText;   //F50 t10: orchard = one line
                 }
                 else
                 {

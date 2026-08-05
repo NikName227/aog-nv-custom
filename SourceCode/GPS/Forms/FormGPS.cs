@@ -273,6 +273,28 @@ namespace AgOpenGPS
         public CPlanting planting;
 
         /// <summary>
+        /// NV custom F50 - the orchard rows of the open field (Orchard.txt). The rows are the
+        /// DEFINITION of the orchard; the driving path is derived from them plus the implement
+        /// settings (see OrchardRebuildTracks), and they are drawn as thin lines on the map.
+        /// </summary>
+        public readonly List<OrchRow> orchRows = new List<OrchRow>();
+
+        /// <summary>NV custom F50 - "implement too wide for this inter-row" alert, "" = fits</summary>
+        public string orchardWarn = "";
+
+        /// <summary>
+        /// NV custom F50 (2026-08-01) - RTK gate state. In an orchard a lost fix is not a
+        /// nuisance but a hazard: the position jumps, guidance answers with a hard correction and
+        /// the machine swerves into a tree. While the fix is gone the steer angle is FROZEN at
+        /// what it was the moment before, for OrchardFixFreezeMs, and if the fix has not come back
+        /// by then autosteer is dropped. MinValue = the fix is good and nothing is frozen.
+        /// </summary>
+        public DateTime orchardFixLostUtc = DateTime.MinValue;
+
+        /// <summary>NV custom F50 - the steer angle held while the fix is gone (0.01 deg)</summary>
+        public short orchardFrozenSteerAngle;
+
+        /// <summary>
         /// Building a headland instance
         /// </summary>
         public CHeadLine hdl;
@@ -376,7 +398,9 @@ namespace AgOpenGPS
             //encrypted per-install config unlocks them (basic vs advanced user)
             CFeatureLock.Load();
             mapAppToolStripMenu.Visible = CFeatureLock.IsOn(CFeatureLock.FeatureGeoportal);
-            btnOrchard.Visible = CFeatureLock.IsOn(CFeatureLock.FeatureOrchard);
+            //F50: the planner lives in the Field tools menu (it defines the FIELD), the old
+            //flyout button is gone
+            orchardToolStripMenuItem.Visible = CFeatureLock.IsOn(CFeatureLock.FeatureOrchard);
             //F07 Integration Test — add the Wizards item only when the config unlocks it
             if (CFeatureLock.IsOn(CFeatureLock.FeatureIntegrationTest))
             {
@@ -1227,7 +1251,7 @@ namespace AgOpenGPS
             btnTrack.Enabled = true;
             btnABDraw.Enabled = true;
             btnSmartAB.Enabled = true;
-            btnOrchard.Enabled = true;
+            orchardToolStripMenuItem.Enabled = true;
             btnCycleLines.Image = Properties.Resources.ABLineCycle;
             btnCycleLinesBk.Image = Properties.Resources.ABLineCycleBk;
 
@@ -1290,6 +1314,10 @@ namespace AgOpenGPS
 
             //F50 planting: the job belongs to the field that is being closed
             planting.Clear();
+            //F50: so do the orchard rows (and with them the derived path)
+            orchRows.Clear();
+            orchardWarn = "";
+            trk.isOrchardAuto = false;
 
             //make sure hydraulic lift is off
             p_239.pgn[p_239.hydLift] = 0;
@@ -1429,7 +1457,7 @@ namespace AgOpenGPS
             ct.isContourOn = false;
 
             btnSmartAB.Enabled = false;
-            btnOrchard.Enabled = false;
+            orchardToolStripMenuItem.Enabled = false;
             btnABDraw.Enabled = false;
             btnCycleLines.Image = Properties.Resources.ABLineCycle;
             //btnCycleLines.Enabled = false;

@@ -1736,6 +1736,9 @@ namespace AgOpenGPS
             {
                 var t = mf.trk.gArr[i];
                 if (t.mode != TrackMode.AB && t.curvePts.Count < 2) continue;
+                //t10 G: the derived orchard passes are already the plan - listing all of them
+                //here would drown the hand-made lines these pickers are for
+                if (t.isOrchardDerived) continue;
                 cboTrack.Items.Add(t.name);
                 lstLines.Items.Add(t.name);
             }
@@ -1825,7 +1828,10 @@ namespace AgOpenGPS
             SetZoneOrderVisible(false);
             chkHeadlandClip.Visible = false;
             lblTrack.Visible = cboTrack.Visible = false;
-            btnAddPath.Visible = btnDeletePath.Visible = false;
+            //t10 F: manual passes DO belong in an orchard - a skewed boundary, the strip along
+            //it, the ground around the orchard. Those lines are drawn in Smart AB (they are not
+            //derived, so a path rebuild leaves them alone) and added to the plan from here.
+            btnAddPath.Visible = btnDeletePath.Visible = true;
             btnGeneratePlan.Text = gStr.gsOrchardPlan;
             lblPlanInfo.Text = gStr.gsOrchardModePlanInfo;
         }
@@ -1840,42 +1846,29 @@ namespace AgOpenGPS
                 return;
             }
 
-            double toolW = mf.tool.width > 0.1 ? mf.tool.width : 3.0;
-            var ts = Properties.ToolSettings.Default;
-            var passes = COrchard.BuildPasses(rows, toolW,
-                ts.setTool_orchardWorkMode, ts.setTool_orchardSafeSpace,
-                ts.setTool_orchardTreeSpace, ts.setTool_orchardRowOffset,
-                ts.setTool_orchardOnePass, ts.setTool_orchardCenterFirst,
-                out List<string> warns);
+            // SIM 0729 t5: the passes are derived centrally from the rows + the implement
+            // (path mode included), so the plan uses that one derivation instead of building
+            // its own set - no second copy of the path, no tracks piling up.
+            if (mf.orchRows.Count == 0) mf.OrchardLoadRows(fieldDir);
+            else mf.OrchardRebuildTracks("orchard plan");
+
+            var passes = new List<CTrk>();
+            foreach (var t in mf.trk.gArr) if (t.isOrchardDerived) passes.Add(t);
             if (passes.Count == 0)
             {
-                lblPlanStatus.Text = warns.Count > 0 ? warns[0] : "No passes";
+                lblPlanStatus.Text = "No passes - check the tool width and the path mode";
                 return;
             }
+            mf.trk.idx = mf.trk.gArr.IndexOf(passes[0]);   // first pass
 
-            // regenerate = replace the previous orchard pass tracks ("Row ..." = fixed)
-            mf.trk.gArr.RemoveAll(t => t.name.StartsWith("Row ", StringComparison.Ordinal));
-            foreach (var t in passes) mf.trk.gArr.Add(t);
-            mf.trk.idx = mf.trk.gArr.Count - passes.Count;   // first pass
-            mf.FileSaveTracks();
-            mf.curve.isCurveValid = false;
-            mf.ABLine.isABValid = false;
-
-            // zone (color) = inter-row number from the pass name "Row Mid N [pM]"
-            var zones = new List<int>();
-            foreach (var t in passes)
-            {
-                string[] parts = t.name.Split(' ');
-                zones.Add(parts.Length > 2 && int.TryParse(parts[2], out int z) ? z : 1);
-            }
-
-            mf.plan.GenerateOrchard(passes, zones);
-            mf.FileSaveTurnPlan();
+            //t10 D: one place builds the plan from the passes (zones = inter-row numbers, local
+            //pass order kept, manual passes carried over, saved per working width)
+            mf.OrchardSyncPlan(true);
 
             DrawPlanOverlay();
             UpdatePlanInfo();
             lblPlanStatus.Text = passes.Count + " orchard passes"
-                + (warns.Count > 0 ? "  ·  " + warns.Count + " warning(s): " + warns[0] : "");
+                + (mf.orchardWarn.Length > 0 ? "  ·  " + mf.orchardWarn : "");
         }
 
         //"Generate path" now opens the wizard (line -> zones -> mode); each step
