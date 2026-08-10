@@ -463,7 +463,15 @@ namespace AgOpenGPS
                     var pass = OffsetCurve(mid, offs[k] * bSign);
                     if (pass.Count < 2) continue;
                     CABCurve.CalculateHeadings(ref pass);
+                    SanitizeLine(pass);
+                    if (pass.Count < 2) continue;
+                    SmoothHeadings(pass, HeadingSmoothWin);
+
                     pass = OffsetCurve(pass, -0.5 * toolWidth);
+                    if (pass.Count < 2) continue;
+                    CABCurve.CalculateHeadings(ref pass);
+                    SanitizeLine(pass);
+                    if (pass.Count < 2) continue;
 
                     double head = pass[pass.Count / 2].heading;
                     if (head < 0) head += glm.twoPI;
@@ -489,10 +497,23 @@ namespace AgOpenGPS
             minGap = double.MaxValue;
             var mid = new List<vec3>();
 
-            // one midpoint per point of row A, projected to the nearest point of row B
+            // Row B may have been recorded in the opposite direction - walk a copy that runs
+            // the same way as row A, otherwise a monotone correspondence is impossible.
+            var bCurve = SameDirectionCopy(b.curve, a.curve);
+
+            // One midpoint per point of row A, projected onto row B. The projection index may
+            // only move FORWARD (test 2026-08-10): a free nearest-point search over the whole
+            // row lets the match slide backwards where the rows run near-parallel, and every
+            // such backward match became a kink in the finished guidance line.
+            int fromIdx = 0;
+            bool first = true;
             foreach (vec3 pa in a.curve)
             {
-                vec2 nb = NearestOnCurve(b.curve, pa.easting, pa.northing, out double gap);
+                vec2 nb = NearestOnCurveFrom(bCurve, first ? 0 : fromIdx,
+                    pa.easting, pa.northing, out double gap, out int segIdx);
+                first = false;
+                if (segIdx > fromIdx) fromIdx = segIdx;
+
                 if (gap < minGap) minGap = gap;
                 double me = (pa.easting + nb.easting) * 0.5;
                 double mn = (pa.northing + nb.northing) * 0.5;
@@ -508,7 +529,32 @@ namespace AgOpenGPS
             if (mid.Count < 2) return null;
 
             CABCurve.CalculateHeadings(ref mid);
-            return mid;
+            SanitizeLine(mid);
+            if (mid.Count < 2) return null;
+
+            return PrepareForOffset(mid);
+        }
+
+        /// <summary>
+        /// "other" running the same way as "reference" - reversed copy when the two were
+        /// recorded in opposite directions (driving up one row and back down the next is the
+        /// normal way to record them).
+        /// </summary>
+        private static List<vec3> SameDirectionCopy(List<vec3> other, List<vec3> reference)
+        {
+            if (other == null || other.Count < 2 || reference == null || reference.Count < 2)
+                return other;
+
+            double rx = reference[reference.Count - 1].easting - reference[0].easting;
+            double ry = reference[reference.Count - 1].northing - reference[0].northing;
+            double ox = other[other.Count - 1].easting - other[0].easting;
+            double oy = other[other.Count - 1].northing - other[0].northing;
+
+            if (rx * ox + ry * oy >= 0) return other;
+
+            var rev = new List<vec3>(other);
+            rev.Reverse();
+            return rev;
         }
 
         // laterally offset a headed polyline (positive = right of the heading)
@@ -770,17 +816,30 @@ namespace AgOpenGPS
                     for (int k = 1; k < n - 1; k++) order.Add(k);
                 }
 
-                double signAB = OffsetSignTowardB(a.curve, b);   // + = right of row a's heading
+                //even step + smoothed headings before anything is pushed sideways: these
+                //offsets reach half an inter-row, so heading noise is amplified by it
+                var aPrep = PrepareForOffset(a.curve);
+                if (aPrep.Count < 2) continue;
+
+                double signAB = OffsetSignTowardB(aPrep, b);   // + = right of row a's heading
 
                 int passNo = 0;
                 foreach (int k in order)
                 {
                     passNo++;
 
-                    var line = OffsetCurve(a.curve, signAB * offsets[k]);
+                    var line = OffsetCurve(aPrep, signAB * offsets[k]);
                     if (line.Count < 2) continue;
                     CABCurve.CalculateHeadings(ref line);
+                    SanitizeLine(line);
+                    if (line.Count < 2) continue;
+                    SmoothHeadings(line, HeadingSmoothWin);
+
                     line = OffsetCurve(line, -0.5 * toolWidth);
+                    if (line.Count < 2) continue;
+                    CABCurve.CalculateHeadings(ref line);
+                    SanitizeLine(line);
+                    if (line.Count < 2) continue;
 
                     double head = line[line.Count / 2].heading;
                     if (head < 0) head += glm.twoPI;
@@ -836,8 +895,14 @@ namespace AgOpenGPS
                 var r = sorted[i];
                 if (r.curve.Count < 2) continue;
 
-                var line = OffsetCurve(r.curve, off);
+                var rPrep = PrepareForOffset(r.curve);
+                if (rPrep.Count < 2) continue;
+
+                var line = OffsetCurve(rPrep, off);
+                if (line.Count < 2) continue;
                 CABCurve.CalculateHeadings(ref line);
+                SanitizeLine(line);
+                if (line.Count < 2) continue;
 
                 double head = line[line.Count / 2].heading;
                 if (head < 0) head += glm.twoPI;
@@ -1051,15 +1116,174 @@ namespace AgOpenGPS
 
         private static vec2 NearestOnCurve(List<vec3> curve, double e, double n, out double dist)
         {
-            double best = double.MaxValue; vec2 res = new vec2(e, n);
-            for (int i = 0; i < curve.Count; i++)
+            return NearestOnCurveFrom(curve, 0, e, n, out dist, out _);
+        }
+
+        /// <summary>
+        /// Nearest point on the curve as a POLYLINE - every segment is projected onto and the
+        /// result clamped to it - not the nearest vertex (test 2026-08-10). Snapping to vertices
+        /// made the midline climb a staircase: while the source point advanced the chosen vertex
+        /// stayed put and then jumped a whole vertex spacing, and on near-parallel rows the
+        /// distance minimum is so flat that the pick could even move BACKWARDS. Both landed in
+        /// the guidance line as kinks and reversals.
+        /// Searching starts at fromIdx so a caller can keep the correspondence monotone.
+        /// </summary>
+        private static vec2 NearestOnCurveFrom(List<vec3> curve, int fromIdx,
+            double e, double n, out double dist, out int segIdx)
+        {
+            double best = double.MaxValue;
+            vec2 res = new vec2(e, n);
+            segIdx = fromIdx;
+            if (curve == null || curve.Count == 0) { dist = 0; return res; }
+            if (curve.Count == 1)
             {
-                double de = curve[i].easting - e, dn = curve[i].northing - n;
-                double d = de * de + dn * dn;
-                if (d < best) { best = d; res = new vec2(curve[i].easting, curve[i].northing); }
+                res = new vec2(curve[0].easting, curve[0].northing);
+                dist = glm.Distance(res.easting, res.northing, e, n);
+                return res;
             }
+
+            if (fromIdx < 0) fromIdx = 0;
+            if (fromIdx > curve.Count - 2) fromIdx = curve.Count - 2;
+
+            for (int i = fromIdx; i < curve.Count - 1; i++)
+            {
+                double ax = curve[i].easting, ay = curve[i].northing;
+                double bx = curve[i + 1].easting, by = curve[i + 1].northing;
+                double vx = bx - ax, vy = by - ay;
+                double len2 = vx * vx + vy * vy;
+
+                double px, py;
+                if (len2 < 1e-9) { px = ax; py = ay; }
+                else
+                {
+                    double t = ((e - ax) * vx + (n - ay) * vy) / len2;
+                    if (t < 0) t = 0; else if (t > 1) t = 1;
+                    px = ax + vx * t; py = ay + vy * t;
+                }
+
+                double de = px - e, dn = py - n;
+                double d = de * de + dn * dn;
+                if (d < best) { best = d; res = new vec2(px, py); segIdx = i; }
+            }
+
             dist = Math.Sqrt(best);
             return res;
+        }
+
+        // ── Line conditioning (test 2026-08-10) ───────────────────────────
+        // A pass is the source line pushed sideways by "off", so the lateral error of the
+        // result is roughly off * (heading error). In a wide inter-row off reaches tens of
+        // metres and a couple of degrees of heading noise already throws the line a metre
+        // sideways. Resampling to an even step and smoothing the headings kills that at the
+        // source; SanitizeLine is the net that catches whatever still gets through, because
+        // a guidance line must never step back on itself.
+        private const double LineStep = 1.0;      // resample step (m)
+        private const int HeadingSmoothWin = 2;   // +/- points averaged (≈5 m at LineStep)
+
+        /// <summary>Resample a polyline to an even step, keeping both ends.</summary>
+        private static List<vec3> Resample(List<vec3> src, double step)
+        {
+            var outPts = new List<vec3>();
+            if (src == null || src.Count < 2 || step < 0.05) return outPts;
+
+            outPts.Add(new vec3(src[0].easting, src[0].northing, 0));
+            double carry = 0;
+
+            for (int i = 1; i < src.Count; i++)
+            {
+                double ax = src[i - 1].easting, ay = src[i - 1].northing;
+                double bx = src[i].easting, by = src[i].northing;
+                double segLen = glm.Distance(ax, ay, bx, by);
+                if (segLen < 1e-6) continue;
+
+                double pos = step - carry;
+                while (pos <= segLen)
+                {
+                    double t = pos / segLen;
+                    outPts.Add(new vec3(ax + (bx - ax) * t, ay + (by - ay) * t, 0));
+                    pos += step;
+                }
+                carry = segLen - (pos - step);
+            }
+
+            vec3 last = src[src.Count - 1];
+            if (outPts.Count > 0)
+            {
+                double d = glm.Distance(outPts[outPts.Count - 1].easting,
+                    outPts[outPts.Count - 1].northing, last.easting, last.northing);
+                if (d > step * 0.25) outPts.Add(new vec3(last.easting, last.northing, 0));
+            }
+            return outPts;
+        }
+
+        /// <summary>Moving average of the heading, done on the unit vectors so the 0/2pi wrap
+        /// cannot fold a heading onto its opposite.</summary>
+        private static void SmoothHeadings(List<vec3> pts, int win)
+        {
+            int cnt = pts.Count;
+            if (cnt < 3 || win < 1) return;
+
+            var arr = new vec3[cnt];
+            pts.CopyTo(arr);
+
+            for (int i = 0; i < cnt; i++)
+            {
+                double sx = 0, sy = 0;
+                int lo = Math.Max(0, i - win), hi = Math.Min(cnt - 1, i + win);
+                for (int k = lo; k <= hi; k++)
+                {
+                    sx += Math.Sin(arr[k].heading);
+                    sy += Math.Cos(arr[k].heading);
+                }
+                if (Math.Abs(sx) < 1e-9 && Math.Abs(sy) < 1e-9) continue;
+
+                double h = Math.Atan2(sx, sy);
+                if (h < 0) h += glm.twoPI;
+
+                vec3 p = pts[i];
+                p.heading = h;
+                pts[i] = p;
+            }
+        }
+
+        /// <summary>Even step + smoothed headings: what every line is offset FROM.</summary>
+        private static List<vec3> PrepareForOffset(List<vec3> src)
+        {
+            var line = Resample(src, LineStep);
+            if (line.Count < 2) return new List<vec3>(src);
+            CABCurve.CalculateHeadings(ref line);
+            SmoothHeadings(line, HeadingSmoothWin);
+            return line;
+        }
+
+        /// <summary>
+        /// Drop every point that does not carry the line FORWARD. Offsetting a polyline by more
+        /// than its radius of curvature folds it into a loop, and a single reversed point flips
+        /// the heading by ~180 degrees and throws the offset point to the other side - which is
+        /// exactly the jump seen in the field. Keeping only monotone progress removes both.
+        /// </summary>
+        private static void SanitizeLine(List<vec3> pts)
+        {
+            if (pts.Count < 3) return;
+
+            var kept = new List<vec3>(pts.Count) { pts[0] };
+            for (int i = 1; i < pts.Count; i++)
+            {
+                vec3 prev = kept[kept.Count - 1];
+                double de = pts[i].easting - prev.easting;
+                double dn = pts[i].northing - prev.northing;
+                if (de * de + dn * dn < 0.0025) continue;     // < 5 cm apart
+
+                //forward = along the heading the line already had at the kept point
+                if (de * Math.Sin(prev.heading) + dn * Math.Cos(prev.heading) <= 0) continue;
+
+                kept.Add(pts[i]);
+            }
+
+            if (kept.Count < 2) return;
+            pts.Clear();
+            pts.AddRange(kept);
+            CABCurve.CalculateHeadings(ref pts);
         }
 
         /// <summary>
