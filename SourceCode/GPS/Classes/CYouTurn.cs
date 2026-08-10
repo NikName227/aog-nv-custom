@@ -2245,10 +2245,10 @@ namespace AgOpenGPS
 
             double ps = Math.Max(0.1, youTurnRadius * 0.1);
             double R = KExitRadius; if (R < 1.0) R = 1.0;
-            double d = Properties.Settings.Default.set_turnK_entryStartDist;
+            double d = Properties.VehicleSettings.Default.setTurn_K_entryStartDist;
             if (d < 0.1) d = 0.1;
             if (d > o - 0.2) d = Math.Max(0.1, o - 0.2);
-            double alpha = Properties.Settings.Default.set_turnK_entryAngle * Math.PI / 180.0;
+            double alpha = Properties.VehicleSettings.Default.setTurn_K_entryAngle * Math.PI / 180.0;
             if (alpha < 0.10) alpha = 0.10;
             if (alpha > 1.40) alpha = 1.40;
 
