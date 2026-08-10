@@ -1,3 +1,4 @@
+using AgLibrary.Logging;
 using GMap.NET;
 using GMap.NET.MapProviders;
 using GMap.NET.WindowsForms;
@@ -37,6 +38,11 @@ namespace AgOpenGPS
         // A single WMS request stays modest; servers commonly cap width/height around 4096.
         private const int WmsChunkPx = 2048;
         private const int HttpTimeoutMs = 25000;
+
+        // Ceiling on one capture's tile downloads. A High capture that has to go one zoom
+        // deeper than the budget can ask for a four-figure tile count; beyond this we settle
+        // for the coarser zoom rather than sit on the network for minutes.
+        private const int MaxTiles = 1200;
 
         // Imagery kept around the field on every side. Fixed metres, not a percentage: on a
         // 500 m field 15% would have spent a quarter of the pixels on the neighbour's land.
@@ -188,6 +194,10 @@ namespace AgOpenGPS
             int rows = (int)Math.Ceiling(hPx / (double)WmsChunkPx);
             int total = cols * rows, done = 0, failed = 0;
 
+            Log.EventWriter("Map App capture (WMS): " + wPx + "x" + hPx + " px over "
+                + wM.ToString("N0") + "x" + hM.ToString("N0") + " m = "
+                + (wM / wPx).ToString("N2") + " m/px, " + total + " request(s)");
+
             string baseUrl = Properties.Settings.Default.setMap_customWmsUrl;
             Bitmap canvas = new Bitmap(wPx, hPx, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
 
@@ -244,38 +254,63 @@ namespace AgOpenGPS
             GMapProvider provider = AppMapHelper.GetProvider();
             PureProjection proj = provider.Projection;
 
-            //finest zoom whose image still fits the pixel budget
+            // Which zoom to fetch. Tile zooms go in factor-of-two steps, so the finest one
+            // that FITS the budget can land at little over half of it - measured 2026-08-10:
+            // a High capture came out 2651 px instead of 4096, i.e. 65% of the budget, and a
+            // whole zoom level of real detail was left on the server. So take the first zoom
+            // that REACHES the budget (it may overshoot up to 2x) and scale down to the exact
+            // target: full detail, exact size. The tile count is capped so a deep zoom on a
+            // large field cannot turn into a download of thousands of tiles.
             int zoom = -1;
             long wPx = 0, hPx = 0;
             GPoint topLeft = GPoint.Empty, bottomRight = GPoint.Empty;
 
             int zMax = Math.Min(provider.MaxZoom ?? 20, 20);
-            for (int z = zMax; z >= provider.MinZoom; z--)
+            int tileW = (int)proj.TileSize.Width, tileH = (int)proj.TileSize.Height;
+
+            // Walk zooms from coarse to fine: keep the last affordable one, and stop as soon
+            // as it covers the pixel budget (deeper would only cost more tiles for detail we
+            // would scale away) or as soon as it stops being affordable.
+            for (int z = provider.MinZoom; z <= zMax; z++)
             {
                 GPoint tl = proj.FromLatLngToPixel(maxLat, minLon, z);
                 GPoint br = proj.FromLatLngToPixel(minLat, maxLon, z);
                 long w = br.X - tl.X, h = br.Y - tl.Y;
                 if (w < 2 || h < 2) continue;
 
-                if (Math.Max(w, h) <= maxPx || z == provider.MinZoom)
-                {
-                    zoom = z; wPx = w; hPx = h; topLeft = tl; bottomRight = br;
-                    break;
-                }
+                long tiles = ((br.X - 1) / tileW - tl.X / tileW + 1) *
+                             ((br.Y - 1) / tileH - tl.Y / tileH + 1);
+                if (tiles > MaxTiles && zoom >= 0) break;   //deeper is only more expensive
+
+                zoom = z; wPx = w; hPx = h; topLeft = tl; bottomRight = br;
+                if (Math.Max(w, h) >= maxPx) break;         //budget covered
             }
             if (zoom < 0) { error = "No usable zoom"; return null; }
 
-            int tileW = (int)proj.TileSize.Width, tileH = (int)proj.TileSize.Height;
+            //final size: the budget, or the source size when the source cannot reach it
+            double scale = 1.0;
+            long longSide = Math.Max(wPx, hPx);
+            if (longSide > maxPx) scale = maxPx / (double)longSide;
+
+            int outW = Math.Max(1, (int)Math.Round(wPx * scale));
+            int outH = Math.Max(1, (int)Math.Round(hPx * scale));
+
             long tx0 = topLeft.X / tileW, ty0 = topLeft.Y / tileH;
             long tx1 = (bottomRight.X - 1) / tileW, ty1 = (bottomRight.Y - 1) / tileH;
 
             int total = (int)((tx1 - tx0 + 1) * (ty1 - ty0 + 1));
             int done = 0, failed = 0;
 
-            Bitmap canvas = new Bitmap((int)wPx, (int)hPx, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            Log.EventWriter("Map App capture: zoom " + zoom + ", source " + wPx + "x" + hPx
+                + " px, output " + outW + "x" + outH + " px, " + total + " tiles");
+
+            //tiles are drawn straight into the final-size canvas - no huge intermediate bitmap
+            Bitmap canvas = new Bitmap(outW, outH, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
             using (Graphics g = Graphics.FromImage(canvas))
             {
                 g.Clear(Color.DimGray);
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                g.PixelOffsetMode = PixelOffsetMode.HighQuality;
 
                 for (long ty = ty0; ty <= ty1; ty++)
                 {
@@ -291,10 +326,13 @@ namespace AgOpenGPS
                             if (img == null) failed++;
                             else
                             {
-                                g.DrawImage(img,
-                                    (int)(tx * tileW - topLeft.X),
-                                    (int)(ty * tileH - topLeft.Y),
-                                    tileW, tileH);
+                                //destination in FINAL pixels: float rect so the scaled tiles
+                                //butt up against each other instead of leaving seams
+                                g.DrawImage(img, new RectangleF(
+                                    (float)((tx * tileW - topLeft.X) * scale),
+                                    (float)((ty * tileH - topLeft.Y) * scale),
+                                    (float)(tileW * scale) + 0.5f,
+                                    (float)(tileH * scale) + 0.5f));
                             }
                         }
                         catch { failed++; }

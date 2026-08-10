@@ -25,6 +25,7 @@ namespace AgOpenGPS
     {
         private readonly FormGPS mf;
 
+        private readonly GMapOverlay backPicOverlay = new GMapOverlay("backpic");
         private readonly GMapOverlay boundaryOverlay = new GMapOverlay("bnd");
         private readonly GMapOverlay headlandOverlay = new GMapOverlay("headland");
         private readonly GMapOverlay parcelOverlay = new GMapOverlay("parcels");
@@ -155,11 +156,10 @@ namespace AgOpenGPS
 
         private void FormTurnLine_Load(object sender, EventArgs e)
         {
-            // base map = same WMS as the Map App window (shared config)
-            string wmsUrl = Properties.Settings.Default.setMap_customWmsUrl;
-            GeoportalWmsProvider.Instance.SetBaseUrl(
-                string.IsNullOrWhiteSpace(wmsUrl) ? GeoportalWmsProvider.DefaultBaseUrl : wmsUrl);
-            gMapControl.MapProvider = GeoportalWmsProvider.Instance;
+            // Base map = whichever source the Map App is set to (2026-08-10). It used to be
+            // hard-wired to the DGU WMS, so this window quietly showed a different source than
+            // every other map in the program.
+            gMapControl.MapProvider = AppMapHelper.GetProvider();
 
             gMapControl.Position = new PointLatLng(
                 mf.AppModel.CurrentLatLon.Latitude,
@@ -167,6 +167,13 @@ namespace AgOpenGPS
             gMapControl.Zoom = 16;
             gMapControl.ShowCenter = false;
             gMapControl.DragButton = MouseButtons.Left;
+
+            // The captured field background goes UNDER everything else: once it exists it is
+            // sharper than the live tiles this window can pull (field report 2026-08-10 - the
+            // map here showed none of the resolution that had just been downloaded). Outside
+            // the captured box the live tiles still show, so the surroundings stay visible.
+            gMapControl.Overlays.Add(backPicOverlay);
+            RebuildBackPicOverlay();
 
             gMapControl.Overlays.Add(parcelOverlay);
             gMapControl.Overlays.Add(boundaryOverlay);
@@ -312,6 +319,25 @@ namespace AgOpenGPS
             LoadParcelsFromCache();
             UpdatePreview();
             UpdateWizard();
+        }
+
+        /// <summary>
+        /// Put the field's captured background under the map, in its true place. Called on
+        /// open; silently does nothing when the field has no background yet.
+        /// </summary>
+        private void RebuildBackPicOverlay()
+        {
+            backPicOverlay.Markers.Clear();
+            if (mf == null || !mf.worldGrid.HasBingMap) return;
+
+            var bm = mf.worldGrid.BingMap;
+            if (bm?.Bitmap == null) return;
+
+            //the stored box is in local plane metres - back to lat/lon for the map
+            PointLatLng tl = LocalToLatLng(bm.GeoBoundingBox.MinEasting, bm.GeoBoundingBox.MaxNorthing);
+            PointLatLng br = LocalToLatLng(bm.GeoBoundingBox.MaxEasting, bm.GeoBoundingBox.MinNorthing);
+
+            backPicOverlay.Markers.Add(new BackPicMarker(bm.Bitmap, tl, br));
         }
 
         // fit-to-field zoom: bbox of the fence + a margin, instead of a fixed deep zoom
@@ -1054,6 +1080,8 @@ namespace AgOpenGPS
             mf.tnl.BuildEffectiveLines();
 
             SaveTurnParams();
+            paramsDirty = false;
+            UpdateApplyButton();
 
             mf.plan.isFollowPlan = activateState == 2;   // 3rd state = follow plan
             UpdateZoneOrderLabel();
@@ -2182,6 +2210,7 @@ namespace AgOpenGPS
 
         private void LoadTurnParams()
         {
+            isLoadingParams = true;
             //F51: turn shape follows the VEHICLE profile, the tolerances and the extra
             //boundary offset follow the IMPLEMENT profile - the tablet is not the machine
             var v = Properties.VehicleSettings.Default;
@@ -2199,7 +2228,58 @@ namespace AgOpenGPS
 
             btnStyleK.Checked = true;
             ShowStyle(pnlK);
+
+            isLoadingParams = false;
+            paramsDirty = false;
+            UpdateApplyButton();
         }
+
+        // ── Apply (2026-08-10) ────────────────────────────────────────────
+        // The parameters on this tab only reached the machine through OK - and OK closes the
+        // window, so tuning one meant reopening it every time. Apply commits them and leaves
+        // the window open. It stays greyed out until something actually changes, so it also
+        // tells you at a glance whether there is anything pending.
+        private bool paramsDirty;
+
+        private void MarkParamsDirty()
+        {
+            if (isLoadingParams) return;
+            paramsDirty = true;
+            UpdateApplyButton();
+        }
+
+        private void UpdateApplyButton()
+        {
+            btnApplyParams.Enabled = paramsDirty;
+            btnApplyParams.BackColor = paramsDirty
+                ? System.Drawing.Color.Gold
+                : System.Drawing.Color.Gainsboro;
+        }
+
+        private void btnApplyParams_Click(object sender, EventArgs e)
+        {
+            SaveTurnParams();
+            mf.tnl.BuildEffectiveLines();   //the drawn wheel limit moves with the offset
+            paramsDirty = false;
+            UpdateApplyButton();
+            gMapControl.Invalidate();
+        }
+
+        /// <summary>Hook every parameter field so editing one lights up Apply.</summary>
+        private void WireParamChangeTracking()
+        {
+            var nuds = new System.Windows.Forms.NumericUpDown[]
+            {
+                nudExitK, nudDistK, nudAngleK, nudTransK, nudOutU, nudInU,
+                nudOvershootU, nudTolerance, nudToleranceAfter, nudBndOffset
+            };
+            foreach (var n in nuds) n.ValueChanged += (s, e) => MarkParamsDirty();
+
+            paramsDirty = false;
+            UpdateApplyButton();
+        }
+
+        private bool isLoadingParams;
 
         private void SaveTurnParams()
         {
@@ -2250,6 +2330,8 @@ namespace AgOpenGPS
             MakeKeypadField(nudToleranceAfter, 0.2);
             MakeKeypadField(nudBndOffset, 0.1);
             MakeKeypadField(nudZones, 1, zoneSteppers);   //wizard step 2 shows/hides these
+
+            WireParamChangeTracking();
         }
 
         private void MakeKeypadField(System.Windows.Forms.NumericUpDown nud, double step,

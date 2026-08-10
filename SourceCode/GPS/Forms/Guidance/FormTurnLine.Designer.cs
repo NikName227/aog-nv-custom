@@ -88,6 +88,7 @@
             this.nudMinRS = new System.Windows.Forms.NumericUpDown();
             this.lblTolerance = new System.Windows.Forms.Label();
             this.lblBndOffset = new System.Windows.Forms.Label();
+            this.btnApplyParams = new System.Windows.Forms.Button();
             this.nudBndOffset = new AgOpenGPS.NudlessNumericUpDown();
             this.nudTolerance = new System.Windows.Forms.NumericUpDown();
             this.lblToleranceAfter = new System.Windows.Forms.Label();
@@ -430,6 +431,7 @@
             this.pnlParams.Controls.Add(this.btnStyleK);
             this.pnlParams.Controls.Add(this.btnStyleU);
             this.pnlParams.Controls.Add(this.btnStyleRS);
+            this.pnlParams.Controls.Add(this.btnApplyParams);
             this.pnlParams.Controls.Add(this.lblBndOffset);
             this.pnlParams.Controls.Add(this.nudBndOffset);
             this.pnlParams.Controls.Add(this.lblTolerance);
@@ -888,7 +890,7 @@
             // trigger tolerance (common) - split before/after the turn start
             //
             this.lblTolerance.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
-            this.lblTolerance.Location = new System.Drawing.Point(496, 80);
+            this.lblTolerance.Location = new System.Drawing.Point(436, 80);
             this.lblTolerance.Name = "lblTolerance";
             this.lblTolerance.Size = new System.Drawing.Size(206, 30);
             this.lblTolerance.TabIndex = 6;
@@ -897,15 +899,26 @@
             this.nudTolerance.DecimalPlaces = 1;
             this.nudTolerance.Font = new System.Drawing.Font("Tahoma", 12F);
             this.nudTolerance.Increment = new decimal(new int[] { 2, 0, 0, 65536 });
-            this.nudTolerance.Location = new System.Drawing.Point(712, 76);
+            this.nudTolerance.Location = new System.Drawing.Point(652, 76);
             this.nudTolerance.Maximum = new decimal(new int[] { 10, 0, 0, 0 });
             this.nudTolerance.Minimum = new decimal(new int[] { 2, 0, 0, 65536 });
             this.nudTolerance.Name = "nudTolerance";
             this.nudTolerance.Size = new System.Drawing.Size(110, 34);
             this.nudTolerance.TabIndex = 7;
             //
-            this.lblBndOffset.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Regular);
-            this.lblBndOffset.Location = new System.Drawing.Point(466, 8);
+            this.btnApplyParams.BackColor = System.Drawing.Color.Gainsboro;
+            this.btnApplyParams.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnApplyParams.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.btnApplyParams.Location = new System.Drawing.Point(846, 20);
+            this.btnApplyParams.Name = "btnApplyParams";
+            this.btnApplyParams.Size = new System.Drawing.Size(150, 54);
+            this.btnApplyParams.TabIndex = 32;
+            this.btnApplyParams.Text = "Apply";
+            this.btnApplyParams.UseVisualStyleBackColor = false;
+            this.btnApplyParams.Click += new System.EventHandler(this.btnApplyParams_Click);
+            //
+            this.lblBndOffset.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.lblBndOffset.Location = new System.Drawing.Point(406, 8);
             this.lblBndOffset.Name = "lblBndOffset";
             this.lblBndOffset.Size = new System.Drawing.Size(236, 30);
             this.lblBndOffset.TabIndex = 30;
@@ -913,9 +926,9 @@
             this.lblBndOffset.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             //
             this.nudBndOffset.DecimalPlaces = 1;
-            this.nudBndOffset.Font = new System.Drawing.Font("Tahoma", 15.75F, System.Drawing.FontStyle.Bold);
+            this.nudBndOffset.Font = new System.Drawing.Font("Tahoma", 12F);
             this.nudBndOffset.Increment = new decimal(new int[] { 1, 0, 0, 65536 });
-            this.nudBndOffset.Location = new System.Drawing.Point(712, 4);
+            this.nudBndOffset.Location = new System.Drawing.Point(652, 4);
             this.nudBndOffset.Maximum = new decimal(new int[] { 20, 0, 0, 0 });
             this.nudBndOffset.Name = "nudBndOffset";
             this.nudBndOffset.Size = new System.Drawing.Size(110, 34);
@@ -923,7 +936,7 @@
             this.nudBndOffset.Value = new decimal(new int[] { 5, 0, 0, 65536 });
             //
             this.lblToleranceAfter.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
-            this.lblToleranceAfter.Location = new System.Drawing.Point(496, 44);
+            this.lblToleranceAfter.Location = new System.Drawing.Point(436, 44);
             this.lblToleranceAfter.Name = "lblToleranceAfter";
             this.lblToleranceAfter.Size = new System.Drawing.Size(206, 30);
             this.lblToleranceAfter.TabIndex = 8;
@@ -932,7 +945,7 @@
             this.nudToleranceAfter.DecimalPlaces = 1;
             this.nudToleranceAfter.Font = new System.Drawing.Font("Tahoma", 12F);
             this.nudToleranceAfter.Increment = new decimal(new int[] { 2, 0, 0, 65536 });
-            this.nudToleranceAfter.Location = new System.Drawing.Point(712, 40);
+            this.nudToleranceAfter.Location = new System.Drawing.Point(652, 40);
             this.nudToleranceAfter.Maximum = new decimal(new int[] { 10, 0, 0, 0 });
             this.nudToleranceAfter.Minimum = new decimal(new int[] { 2, 0, 0, 65536 });
             this.nudToleranceAfter.Name = "nudToleranceAfter";
@@ -1087,6 +1100,7 @@
         private System.Windows.Forms.NumericUpDown nudMinRS;
         private System.Windows.Forms.Label lblTolerance;
         private System.Windows.Forms.Label lblBndOffset;
+        private System.Windows.Forms.Button btnApplyParams;
         private AgOpenGPS.NudlessNumericUpDown nudBndOffset;
         private System.Windows.Forms.NumericUpDown nudTolerance;
         private System.Windows.Forms.Label lblToleranceAfter;

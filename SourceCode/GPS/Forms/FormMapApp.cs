@@ -376,8 +376,21 @@ namespace AgOpenGPS
             SetAndSaveBingMap(map);
             ApplyParcelsToMainMap();
 
+            //say what actually arrived: pixels, ground resolution, and whether the GPU could
+            //take it whole. Guessing at "it looks blurry" cost us a field test once already.
+            double wM = map.GeoBoundingBox.MaxEasting - map.GeoBoundingBox.MinEasting;
+            string res = wM > 1 ? " " + (wM / map.Bitmap.Width).ToString("N2") + " m/px" : "";
+
+            string capped = "";
+            int glMax = AgOpenGPS.Core.DrawLib.Texture2D.LastMaxTextureSize;
+            if (glMax > 0 && Math.Max(map.Bitmap.Width, map.Bitmap.Height) > glMax)
+                capped = " - GPU limit " + glMax + " px";
+
             lblStatus.Text = gStr.gsBackgroundSet
-                + " (" + map.Bitmap.Width + "x" + map.Bitmap.Height + ")";
+                + " " + map.Bitmap.Width + "x" + map.Bitmap.Height + res + capped;
+
+            Log.EventWriter("Map App: background set " + map.Bitmap.Width + "x" + map.Bitmap.Height
+                + res + ", GL max texture " + glMax);
         }
 
         private void SetBusy(bool busy)

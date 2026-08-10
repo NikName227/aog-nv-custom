@@ -12,6 +12,12 @@ namespace AgOpenGPS.Core.DrawLib
         private int _textureId;
         private bool isDisposed;
 
+        /// <summary>What the GPU reported the last time a texture was uploaded, and whether it
+        /// had to be shrunk to fit. Diagnostics for the Map App: a High capture that silently
+        /// halves on upload looks exactly like a capture that never worked.</summary>
+        public static int LastMaxTextureSize { get; private set; }
+        public static bool WasDownscaled { get; private set; }
+
         public Texture2D(Bitmap bitmap)
         {
             _bitmap = bitmap;
@@ -69,8 +75,12 @@ namespace AgOpenGPS.Core.DrawLib
             Bitmap scaled = null;
             int maxSize = 0;
             GL.GetInteger(GetPName.MaxTextureSize, out maxSize);
+            LastMaxTextureSize = maxSize;
             if (maxSize > 0 && (bitmap.Width > maxSize || bitmap.Height > maxSize))
             {
+                WasDownscaled = true;
+                AgLibrary.Logging.Log.EventWriter("Texture " + bitmap.Width + "x" + bitmap.Height
+                    + " exceeds GL_MAX_TEXTURE_SIZE " + maxSize + " - scaled down for upload");
                 double f = Math.Min((double)maxSize / bitmap.Width, (double)maxSize / bitmap.Height);
                 int w = Math.Max(1, (int)(bitmap.Width * f));
                 int h = Math.Max(1, (int)(bitmap.Height * f));
