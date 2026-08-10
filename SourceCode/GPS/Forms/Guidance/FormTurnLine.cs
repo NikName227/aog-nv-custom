@@ -149,6 +149,7 @@ namespace AgOpenGPS
             lblMinRS.Text = gStr.gsMinTurnRadius;
             lblTolerance.Text = gStr.gsTriggerTolBefore;
             lblToleranceAfter.Text = gStr.gsTriggerTolAfter;
+            lblBndOffset.Text = gStr.gsBndOffsetExtra;
             lblOvershootU.Text = gStr.gsOvershootDist;
         }
 
@@ -2181,16 +2182,20 @@ namespace AgOpenGPS
 
         private void LoadTurnParams()
         {
-            var s = Properties.Settings.Default;
-            SetNud(nudExitK, s.set_turnK_exitRadius);
-            SetNud(nudDistK, s.set_turnK_entryStartDist);
-            SetNud(nudAngleK, s.set_turnK_entryAngle);
-            SetNud(nudTransK, s.set_turnK_transitionRadius);
-            SetNud(nudOutU, s.set_turnU_exitRadius);
-            SetNud(nudInU, s.set_turnU_entryRadius);
-            SetNud(nudTolerance, s.set_turnTriggerTolerance);
-            SetNud(nudToleranceAfter, s.set_turnTriggerToleranceAfter);
-            SetNud(nudOvershootU, s.set_turnU_overshootDist);
+            //F51: turn shape follows the VEHICLE profile, the tolerances and the extra
+            //boundary offset follow the IMPLEMENT profile - the tablet is not the machine
+            var v = Properties.VehicleSettings.Default;
+            var t = Properties.ToolSettings.Default;
+            SetNud(nudExitK, v.setTurn_K_exitRadius);
+            SetNud(nudDistK, v.setTurn_K_entryStartDist);
+            SetNud(nudAngleK, v.setTurn_K_entryAngle);
+            SetNud(nudTransK, v.setTurn_K_transitionRadius);
+            SetNud(nudOutU, v.setTurn_U_exitRadius);
+            SetNud(nudInU, v.setTurn_U_entryRadius);
+            SetNud(nudOvershootU, v.setTurn_U_overshootDist);
+            SetNud(nudTolerance, t.setTurn_triggerTolerance);
+            SetNud(nudToleranceAfter, t.setTurn_triggerToleranceAfter);
+            SetNud(nudBndOffset, t.setTurn_boundaryOffset);
 
             btnStyleK.Checked = true;
             ShowStyle(pnlK);
@@ -2198,17 +2203,29 @@ namespace AgOpenGPS
 
         private void SaveTurnParams()
         {
-            var s = Properties.Settings.Default;
-            s.set_turnK_exitRadius = (double)nudExitK.Value;
-            s.set_turnK_entryStartDist = (double)nudDistK.Value;
-            s.set_turnK_entryAngle = (double)nudAngleK.Value;
-            s.set_turnK_transitionRadius = (double)nudTransK.Value;
-            s.set_turnU_exitRadius = (double)nudOutU.Value;
-            s.set_turnU_entryRadius = (double)nudInU.Value;
-            s.set_turnTriggerTolerance = (double)nudTolerance.Value;
-            s.set_turnTriggerToleranceAfter = (double)nudToleranceAfter.Value;
-            s.set_turnU_overshootDist = (double)nudOvershootU.Value;
-            s.Save();
+            var v = Properties.VehicleSettings.Default;
+            v.setTurn_K_exitRadius = (double)nudExitK.Value;
+            v.setTurn_K_entryStartDist = (double)nudDistK.Value;
+            v.setTurn_K_entryAngle = (double)nudAngleK.Value;
+            v.setTurn_K_transitionRadius = (double)nudTransK.Value;
+            v.setTurn_U_exitRadius = (double)nudOutU.Value;
+            v.setTurn_U_entryRadius = (double)nudInU.Value;
+            v.setTurn_U_overshootDist = (double)nudOvershootU.Value;
+            v.Save();
+
+            var t = Properties.ToolSettings.Default;
+            double oldOffset = t.setTurn_boundaryOffset;
+            t.setTurn_triggerTolerance = (double)nudTolerance.Value;
+            t.setTurn_triggerToleranceAfter = (double)nudToleranceAfter.Value;
+            t.setTurn_boundaryOffset = (double)nudBndOffset.Value;
+            t.Save();
+
+            //the dashed wheel limit is drawn with this offset baked in - redraw it at once
+            if (Math.Abs(oldOffset - t.setTurn_boundaryOffset) > 0.001)
+            {
+                mf.tnl.BuildEffectiveLines();
+                mf.yt.ReloadTurnSettings();
+            }
         }
 
         // right-hand diagram area inside a style panel (left side holds the number inputs + steppers)
@@ -2231,6 +2248,7 @@ namespace AgOpenGPS
             MakeKeypadField(nudOvershootU, 0.5);
             MakeKeypadField(nudTolerance, 0.2);
             MakeKeypadField(nudToleranceAfter, 0.2);
+            MakeKeypadField(nudBndOffset, 0.1);
             MakeKeypadField(nudZones, 1, zoneSteppers);   //wizard step 2 shows/hides these
         }
 

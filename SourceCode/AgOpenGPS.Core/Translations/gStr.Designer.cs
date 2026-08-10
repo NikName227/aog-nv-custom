@@ -4975,6 +4975,12 @@ namespace AgOpenGPS.Core.Translations {
             }
         }
 
+        public static string gsBndOffsetExtra {
+            get {
+                return ResourceManager.GetString("gsBndOffsetExtra", resourceCulture);
+            }
+        }
+
         public static string gsOvershootDist {
             get {
                 return ResourceManager.GetString("gsOvershootDist", resourceCulture);

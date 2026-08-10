@@ -1122,8 +1122,8 @@ namespace AgOpenGPS
                                 //straight along the current line, so pure pursuit just tracks
                                 //that lead-in. Firing LATE pushes the whole maneuver toward the
                                 //turn limit line, so the "after" half stays tight (Params tab).
-                                double tolBefore = Properties.Settings.Default.set_turnTriggerTolerance;
-                                double tolAfter = Properties.Settings.Default.set_turnTriggerToleranceAfter;
+                                double tolBefore = Properties.ToolSettings.Default.setTurn_triggerTolerance;
+                                double tolAfter = Properties.ToolSettings.Default.setTurn_triggerToleranceAfter;
                                 if (tolBefore < 0.2) tolBefore = 0.2;
                                 if (tolAfter < 0.2) tolAfter = 0.2;
                                 bool inTriggerWindow = fwd >= -tolBefore && fwd <= tolAfter;

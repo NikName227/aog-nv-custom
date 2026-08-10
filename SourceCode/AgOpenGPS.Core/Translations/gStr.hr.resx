@@ -1541,6 +1541,9 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsTriggerTolAfter" xml:space="preserve">
     <value>Tolerancija poslije (m)</value>
   </data>
+  <data name="gsBndOffsetExtra" xml:space="preserve">
+    <value>Dodatni odmak od granice (m)</value>
+  </data>
   <data name="gsOvershootDist" xml:space="preserve">
     <value>Overshoot udaljenost (m)</value>
   </data>

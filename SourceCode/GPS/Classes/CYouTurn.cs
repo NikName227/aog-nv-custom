@@ -139,17 +139,27 @@ namespace AgOpenGPS
         {
             mf = _f;
 
+            ytList.Capacity = 128;
+            ReloadTurnSettings();
+            Set_Alternate_skips();
+        }
+
+        /// <summary>
+        /// Re-read everything the turn geometry is built from. Called on start AND after a
+        /// profile switch (F51): the turn radii now live in the VEHICLE profile, so changing
+        /// tractor has to change them here too - otherwise the new tractor keeps turning with
+        /// the old one's radius.
+        /// </summary>
+        public void ReloadTurnSettings()
+        {
             uturnDistanceFromBoundary = Properties.Settings.Default.set_youTurnDistanceFromBoundary;
 
             //how far before or after boundary line should turn happen
             youTurnStartOffset = Properties.Settings.Default.set_youTurnExtensionLength;
 
             rowSkipsWidth = Properties.Settings.Default.set_youSkipWidth;
-            Set_Alternate_skips();
 
-            ytList.Capacity = 128;
-
-            youTurnRadius = Properties.Settings.Default.set_youTurnRadius;
+            youTurnRadius = Properties.VehicleSettings.Default.setTurn_youTurnRadius;
 
             uTurnStyle = Properties.Settings.Default.set_uTurnStyle;
             activeTurnStyle = uTurnStyle;
@@ -222,15 +232,15 @@ namespace AgOpenGPS
         // youturn geometry is left exactly as it was.
         private double KExitRadius
         {
-            get { double v = Properties.Settings.Default.set_turnK_exitRadius; return v > 0.5 ? v : youTurnRadius; }
+            get { double v = Properties.VehicleSettings.Default.setTurn_K_exitRadius; return v > 0.5 ? v : youTurnRadius; }
         }
         private double UOutRadius
         {
-            get { double v = Properties.Settings.Default.set_turnU_exitRadius; return v > 0.5 ? v : youTurnRadius; }
+            get { double v = Properties.VehicleSettings.Default.setTurn_U_exitRadius; return v > 0.5 ? v : youTurnRadius; }
         }
         private double UInRadius
         {
-            get { double v = Properties.Settings.Default.set_turnU_entryRadius; return v > 0.5 ? v : youTurnRadius; }
+            get { double v = Properties.VehicleSettings.Default.setTurn_U_entryRadius; return v > 0.5 ? v : youTurnRadius; }
         }
 
         // Spacing (turnOffset) at/above which a clean U-turn fits. Stock = 2x the general
@@ -1299,7 +1309,7 @@ namespace AgOpenGPS
                     //(driver) then aligns onto the real row. 0 = tangent the real line (stock).
                     if (mf.tnl.IsFeatureOn)
                     {
-                        double over = Properties.Settings.Default.set_turnU_overshootDist;
+                        double over = Properties.VehicleSettings.Default.setTurn_U_overshootDist;
                         if (over > 0.01)
                             distAway += ((isTurnLeft ^ mf.ABLine.isHeadingSameWay) ? over : -over);
                     }
@@ -2149,7 +2159,7 @@ namespace AgOpenGPS
 
             double ps = Math.Max(0.1, youTurnRadius * 0.1);
             double Rout = UOutRadius, Rin = UInRadius;
-            double over = Properties.Settings.Default.set_turnU_overshootDist;
+            double over = Properties.VehicleSettings.Default.setTurn_U_overshootDist;
             if (over < 0) over = 0;
 
             // auto-shrink both radii (max -30%), then automatic overshoot for the rest

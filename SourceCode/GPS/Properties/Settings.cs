@@ -154,6 +154,15 @@ namespace AgOpenGPS.Properties
         public int set_youSkipWidth = 1;
         public double set_youTurnRadius = 8.1;
         public int set_uTurnStyle = 0;
+
+        // F51 (2026-08-10): everything below up to set_turnTriggerToleranceAfter has MOVED.
+        // Turn shape now lives in the vehicle profile (VehicleSettings.setTurn_*), the trigger
+        // tolerances in the implement profile (ToolSettings.setTurn_*), because they describe
+        // the machine and not the tablet. These fields are kept ONLY so the values a user
+        // already had can be copied across once - see CTurnProfileMigration. Nothing reads
+        // them at runtime any more.
+        public bool set_turnParamsMovedToProfiles = false;
+
         // Turn limit lines (NV custom) — per-vehicle turn shape parameters.
         // Radii of 0 mean "use the general turn radius (set_youTurnRadius)".
         public double set_turnK_exitRadius = 8;         // K: exit arc radius
