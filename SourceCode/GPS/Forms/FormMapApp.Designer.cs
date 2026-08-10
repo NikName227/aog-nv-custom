@@ -35,6 +35,9 @@ namespace AgOpenGPS
             this.btnWinClose = new System.Windows.Forms.Button();
             this.btnZoomIn = new System.Windows.Forms.Button();
             this.btnZoomOut = new System.Windows.Forms.Button();
+            this.lblQuality = new System.Windows.Forms.Label();
+            this.btnQuality = new System.Windows.Forms.Button();
+            this.btnRecapture = new System.Windows.Forms.Button();
             this.grpSource.SuspendLayout();
             this.SuspendLayout();
             //
@@ -152,6 +155,41 @@ namespace AgOpenGPS
             this.btnParcelRefresh.Text = "⟳";
             this.btnParcelRefresh.UseVisualStyleBackColor = true;
             this.btnParcelRefresh.Click += new System.EventHandler(this.btnParcelRefresh_Click);
+            //
+            // lblQuality
+            //
+            this.lblQuality.AutoSize = true;
+            this.lblQuality.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
+            this.lblQuality.Location = new System.Drawing.Point(330, 153);
+            this.lblQuality.Name = "lblQuality";
+            this.lblQuality.Size = new System.Drawing.Size(90, 18);
+            this.lblQuality.TabIndex = 10;
+            this.lblQuality.Text = "Resolution:";
+            //
+            // btnQuality
+            //
+            this.btnQuality.BackColor = System.Drawing.Color.AliceBlue;
+            this.btnQuality.FlatAppearance.BorderColor = System.Drawing.Color.Black;
+            this.btnQuality.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.btnQuality.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Bold);
+            this.btnQuality.Location = new System.Drawing.Point(450, 144);
+            this.btnQuality.Name = "btnQuality";
+            this.btnQuality.Size = new System.Drawing.Size(150, 36);
+            this.btnQuality.TabIndex = 11;
+            this.btnQuality.Text = "Low";
+            this.btnQuality.UseVisualStyleBackColor = false;
+            this.btnQuality.Click += new System.EventHandler(this.btnQuality_Click);
+            //
+            // btnRecapture
+            //
+            this.btnRecapture.Font = new System.Drawing.Font("Tahoma", 14F, System.Drawing.FontStyle.Bold);
+            this.btnRecapture.Location = new System.Drawing.Point(610, 144);
+            this.btnRecapture.Name = "btnRecapture";
+            this.btnRecapture.Size = new System.Drawing.Size(40, 36);
+            this.btnRecapture.TabIndex = 12;
+            this.btnRecapture.Text = "⟳";
+            this.btnRecapture.UseVisualStyleBackColor = true;
+            this.btnRecapture.Click += new System.EventHandler(this.btnRecapture_Click);
             //
             // lblParcelUrl
             //
@@ -291,6 +329,9 @@ namespace AgOpenGPS
             this.Controls.Add(this.gMapControl);
             this.Controls.Add(this.tboxParcelUrl);
             this.Controls.Add(this.lblParcelUrl);
+            this.Controls.Add(this.btnRecapture);
+            this.Controls.Add(this.btnQuality);
+            this.Controls.Add(this.lblQuality);
             this.Controls.Add(this.btnParcelRefresh);
             this.Controls.Add(this.chkParcels);
             this.Controls.Add(this.tboxWmsUrl);
@@ -331,5 +372,8 @@ namespace AgOpenGPS
         private System.Windows.Forms.Button btnWinClose;
         private System.Windows.Forms.Button btnZoomIn;
         private System.Windows.Forms.Button btnZoomOut;
+        private System.Windows.Forms.Label lblQuality;
+        private System.Windows.Forms.Button btnQuality;
+        private System.Windows.Forms.Button btnRecapture;
     }
 }

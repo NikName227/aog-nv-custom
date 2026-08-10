@@ -74,6 +74,44 @@ namespace AgOpenGPS
             DbIdField?.SetValue(this, h == int.MinValue ? 1 : Math.Abs(h));
         }
 
+        /// <summary>
+        /// GetMap URL for an arbitrary box and pixel size - what the background capture uses
+        /// (2026-08-10). A WMS is not tied to a 256 px tile grid, so the whole field can be
+        /// asked for in one request at whatever resolution we want, with no seams and no
+        /// per-tile overhead. Same parameters as the tile path: CRS:84, lon/lat order.
+        /// </summary>
+        public static string MakeGetMapUrl(string baseUrl,
+            double minLon, double minLat, double maxLon, double maxLat, int width, int height)
+        {
+            if (string.IsNullOrWhiteSpace(baseUrl)) baseUrl = DefaultBaseUrl;
+            baseUrl = baseUrl.Trim().TrimEnd('?', '&');
+
+            return baseUrl +
+                "?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap" +
+                "&LAYERS=" + WmsLayer +
+                "&STYLES=&CRS=CRS:84" +
+                "&BBOX=" + CMapCapture.Num(minLon) + "," + CMapCapture.Num(minLat) +
+                       "," + CMapCapture.Num(maxLon) + "," + CMapCapture.Num(maxLat) +
+                "&WIDTH=" + width.ToString(CultureInfo.InvariantCulture) +
+                "&HEIGHT=" + height.ToString(CultureInfo.InvariantCulture) +
+                "&FORMAT=image/jpeg";
+        }
+
+        /// <summary>Referer to send with a capture request (some endpoints check it).</summary>
+        public static string RefererFor(string baseUrl)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(baseUrl)) baseUrl = DefaultBaseUrl;
+                Uri u = new Uri(baseUrl.Trim());
+                return u.Scheme + "://" + u.Host + "/";
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         #region GMapProvider members
 
         public override Guid Id => id;

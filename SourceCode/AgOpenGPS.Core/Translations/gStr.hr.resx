@@ -1313,6 +1313,21 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsBackgroundSet" xml:space="preserve">
     <value>Pozadina postavljena.</value>
   </data>
+  <data name="gsResolution" xml:space="preserve">
+    <value>Rezolucija:</value>
+  </data>
+  <data name="gsLow" xml:space="preserve">
+    <value>Low</value>
+  </data>
+  <data name="gsHigh" xml:space="preserve">
+    <value>High</value>
+  </data>
+  <data name="gsResolutionNeedsBoundary" xml:space="preserve">
+    <value>Napravi granicu polja za bolju rezoluciju pozadine.</value>
+  </data>
+  <data name="gsMapCaptureFailed" xml:space="preserve">
+    <value>Skidanje nije uspjelo - zadržana prethodna pozadina.</value>
+  </data>
   <data name="gsAreaTooLarge" xml:space="preserve">
     <value>Područje preveliko — približi pa ponovo uključi.</value>
   </data>

@@ -44,6 +44,11 @@ namespace AgOpenGPS.Properties
         public string setMap_parcelWfsUrl = "https://api.uredjenazemlja.hr/services/inspire/cp/wfs";
         public bool setMap_showParcelsOnMain = true;
 
+        // Background capture quality: false = Low (1536 px, JPEG 75), true = High (4096 px,
+        // JPEG 88). Low is the default - High is a deliberate press, because it downloads a lot
+        // more. Only usable once the field has a boundary to frame the capture by.
+        public bool setMap_captureHighQuality = false;
+
         public Point setWindow_QuickABLocation = new Point(100, 100);
         public Size setWindow_gridSize = new Size(400, 400);
         public Point setWindow_gridLocation = new Point(20, 20);

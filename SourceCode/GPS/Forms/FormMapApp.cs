@@ -75,8 +75,10 @@ namespace AgOpenGPS
             lblUrl.Text = gStr.gsWmsUrl;
             lblParcelUrl.Text = gStr.gsParcelWfsUrl;
             btnClose.Text = gStr.gsApplyAndClose;
+            lblQuality.Text = gStr.gsResolution;
             UpdateToggleText();
             UpdateParcelToggleText();
+            UpdateQualityButton();
         }
 
         // ── Window controls (touch, like the main window) ─────────────────
@@ -153,6 +155,8 @@ namespace AgOpenGPS
                 chkParcels.Enabled = false;
                 tboxParcelUrl.Enabled = false;
                 gMapControl.Enabled = false;
+                btnQuality.Enabled = false;
+                btnRecapture.Enabled = false;
                 lblStatus.Text = gStr.gsOpenFieldFirst;
                 isLoading = false;
                 return;
@@ -218,6 +222,10 @@ namespace AgOpenGPS
 
             chkBackgroundOn.Checked = mf.worldGrid.HasBingMap;
             UpdateToggleText();
+            UpdateQualityButton();
+
+            if (!HasBoundary)
+                lblStatus.Text = gStr.gsResolutionNeedsBoundary;
 
             isLoading = false;
         }
@@ -273,13 +281,148 @@ namespace AgOpenGPS
         }
 
         // ── Capture flow ──────────────────────────────────────────────────
+        // Two paths, decided by whether the field already has a boundary:
+        //
+        //  boundary -> the capture is framed by the FIELD (bbox + BoundaryMargin) and fetched
+        //              straight from the source at the chosen resolution. Independent of the
+        //              window, of where the vehicle stands and of where the preview is panned.
+        //  no boundary (new field) -> the old behaviour: screenshot the preview, centred on the
+        //              vehicle. There is nothing to frame by yet, and this is the rough
+        //              background the driver traces the boundary over in the first place.
+        private bool capturing;
+
+        private bool HasBoundary { get { return CMapCapture.HasBoundary(mf); } }
+
         private void BeginCapture(string status)
         {
+            if (HasBoundary)
+            {
+                StartBoxCapture(status);
+                return;
+            }
+
             pendingCapture = true;
             lblStatus.Text = status;
             captureTimer.Stop();
             captureTimer.Start();
             gMapControl.ReloadMap();
+        }
+
+        /// <summary>
+        /// Download the field's imagery on a worker thread. The old picture is only replaced
+        /// once a new one has actually arrived - a failed download must never leave the driver
+        /// without a background.
+        /// </summary>
+        private void StartBoxCapture(string status)
+        {
+            if (capturing) return;
+
+            bool high = Properties.Settings.Default.setMap_captureHighQuality;
+
+            capturing = true;
+            SetBusy(true);
+            lblStatus.Text = status;
+
+            Task.Run(() =>
+            {
+                BingMap map = CMapCapture.CaptureField(mf,
+                    (done, total) =>
+                    {
+                        if (!IsHandleCreated) return;
+                        try
+                        {
+                            BeginInvoke((MethodInvoker)(() =>
+                                lblStatus.Text = gStr.gsLoadingImagery + " " + done + "/" + total));
+                        }
+                        catch { }
+                    },
+                    out string error, out bool tooLarge);
+
+                if (!IsHandleCreated) return;
+                try
+                {
+                    BeginInvoke((MethodInvoker)(() => FinishBoxCapture(map, error, tooLarge, high)));
+                }
+                catch { }
+            });
+        }
+
+        private void FinishBoxCapture(BingMap map, string error, bool tooLarge, bool high)
+        {
+            capturing = false;
+            SetBusy(false);
+
+            if (tooLarge)
+            {
+                lblStatus.Text = gStr.gsAreaTooLarge;
+                Log.EventWriter("Map App: field box too large");
+                return;
+            }
+
+            if (map == null)
+            {
+                //keep the existing background; drop back to Low so the next press is the
+                //cheap one (a failed High is usually a slow or refusing server)
+                if (high)
+                {
+                    Properties.Settings.Default.setMap_captureHighQuality = false;
+                    UpdateQualityButton();
+                }
+                lblStatus.Text = gStr.gsMapCaptureFailed + (string.IsNullOrEmpty(error) ? "" : " - " + error);
+                Log.EventWriter("Map App: capture failed - " + error);
+                return;
+            }
+
+            SetAndSaveBingMap(map);
+            ApplyParcelsToMainMap();
+
+            lblStatus.Text = gStr.gsBackgroundSet
+                + " (" + map.Bitmap.Width + "x" + map.Bitmap.Height + ")";
+        }
+
+        private void SetBusy(bool busy)
+        {
+            chkBackgroundOn.Enabled = !busy;
+            btnQuality.Enabled = !busy && HasBoundary;
+            btnRecapture.Enabled = !busy;
+            grpSource.Enabled = !busy;
+            btnClose.Enabled = !busy;
+            Cursor = busy ? Cursors.WaitCursor : Cursors.Default;
+        }
+
+        // ── Resolution: Low (default) / High ──────────────────────────────
+        private void btnQuality_Click(object sender, EventArgs e)
+        {
+            if (!HasBoundary) return;
+
+            Properties.Settings.Default.setMap_captureHighQuality =
+                !Properties.Settings.Default.setMap_captureHighQuality;
+            UpdateQualityButton();
+
+            //the press IS the request for a new picture at that resolution
+            if (chkBackgroundOn.Checked) BeginCapture(gStr.gsLoadingImagery);
+        }
+
+        private void btnRecapture_Click(object sender, EventArgs e)
+        {
+            if (mf == null || !mf.isJobStarted) return;
+            if (!chkBackgroundOn.Checked)
+            {
+                lblStatus.Text = gStr.gsBackgroundRemoved;
+                return;
+            }
+            BeginCapture(gStr.gsUpdatingBackground);
+        }
+
+        private void UpdateQualityButton()
+        {
+            bool high = Properties.Settings.Default.setMap_captureHighQuality;
+            btnQuality.Text = high ? gStr.gsHigh : gStr.gsLow;
+            btnQuality.BackColor = !HasBoundary
+                ? System.Drawing.Color.Gainsboro
+                : (high ? System.Drawing.Color.MediumAquamarine : System.Drawing.Color.AliceBlue);
+            btnQuality.Enabled = HasBoundary && !capturing;
+            lblQuality.Text = gStr.gsResolution;
         }
 
         private void gMap_OnTileLoadComplete(long elapsedMilliseconds)
@@ -350,7 +493,11 @@ namespace AgOpenGPS
         private void SetAndSaveBingMap(BingMap bingMap)
         {
             mf.worldGrid.BingMap = bingMap;
-            new BingMapStreamer().TryWrite(bingMap, mf.AppCore.ActiveField.FieldDirectory);
+
+            var streamer = new BingMapStreamer();
+            streamer.JpegQuality = CMapCapture.JpegQuality(
+                Properties.Settings.Default.setMap_captureHighQuality);
+            streamer.TryWrite(bingMap, mf.AppCore.ActiveField.FieldDirectory);
         }
 
         // ── Overlay: boundary + vehicle (display only) ────────────────────
@@ -550,10 +697,17 @@ namespace AgOpenGPS
 
         private void btnClose_Click(object sender, EventArgs e)
         {
-            // Apply: if the background is ON, capture the current (panned/zoomed)
-            // view. The parcel overlay (if visible) is baked into the captured image.
-            if (chkBackgroundOn.Checked && mf != null && mf.isJobStarted)
+            // Apply and close. It deliberately does NOT re-capture: a background that already
+            // exists is kept as it is (2026-08-10). Re-capturing on every close was harmless
+            // while a capture was a screenshot, but it now means a real download - so a new
+            // picture is only ever fetched when something changed or the driver asked for it.
+            if (capturing) return;
+
+            if (chkBackgroundOn.Checked && mf != null && mf.isJobStarted
+                && !mf.worldGrid.HasBingMap && !HasBoundary)
             {
+                //no boundary yet and nothing captured: take the view as it stands, that is
+                //what this window was opened for
                 pendingCapture = false;
                 captureTimer.Stop();
 

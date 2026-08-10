@@ -61,6 +61,29 @@ namespace AgOpenGPS.Core.DrawLib
         public void SetBitmap(Bitmap bitmap)
         {
             Bind();
+
+            // A background map captured in High quality can be 4096 px on its long side,
+            // while GL_MAX_TEXTURE_SIZE is 2048 on some tablet/embedded GPUs. Uploading an
+            // oversized texture silently yields a black quad, so scale it down to what this
+            // GPU actually accepts. Only ever shrinks - normal textures pass untouched.
+            Bitmap scaled = null;
+            int maxSize = 0;
+            GL.GetInteger(GetPName.MaxTextureSize, out maxSize);
+            if (maxSize > 0 && (bitmap.Width > maxSize || bitmap.Height > maxSize))
+            {
+                double f = Math.Min((double)maxSize / bitmap.Width, (double)maxSize / bitmap.Height);
+                int w = Math.Max(1, (int)(bitmap.Width * f));
+                int h = Math.Max(1, (int)(bitmap.Height * f));
+
+                scaled = new Bitmap(w, h, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                using (Graphics g = Graphics.FromImage(scaled))
+                {
+                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                    g.DrawImage(bitmap, 0, 0, w, h);
+                }
+                bitmap = scaled;
+            }
+
             BitmapData bitmapData = bitmap.LockBits(
                 new Rectangle(0, 0, bitmap.Width, bitmap.Height),
                 ImageLockMode.ReadOnly,
@@ -79,6 +102,7 @@ namespace AgOpenGPS.Core.DrawLib
             GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, 9729);
             GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, 9729);
             GL.BindTexture(TextureTarget.Texture2D, 0);
+            scaled?.Dispose();
         }
 
         private void CreateTexture()

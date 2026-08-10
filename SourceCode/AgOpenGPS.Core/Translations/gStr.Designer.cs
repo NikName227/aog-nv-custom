@@ -4531,6 +4531,36 @@ namespace AgOpenGPS.Core.Translations {
             }
         }
 
+        public static string gsResolution {
+            get {
+                return ResourceManager.GetString("gsResolution", resourceCulture);
+            }
+        }
+
+        public static string gsLow {
+            get {
+                return ResourceManager.GetString("gsLow", resourceCulture);
+            }
+        }
+
+        public static string gsHigh {
+            get {
+                return ResourceManager.GetString("gsHigh", resourceCulture);
+            }
+        }
+
+        public static string gsResolutionNeedsBoundary {
+            get {
+                return ResourceManager.GetString("gsResolutionNeedsBoundary", resourceCulture);
+            }
+        }
+
+        public static string gsMapCaptureFailed {
+            get {
+                return ResourceManager.GetString("gsMapCaptureFailed", resourceCulture);
+            }
+        }
+
         public static string gsAreaTooLarge {
             get {
                 return ResourceManager.GetString("gsAreaTooLarge", resourceCulture);

@@ -1686,6 +1686,21 @@ USE AT OWN RISK.</value>
   <data name="gsBackgroundSet" xml:space="preserve">
     <value>Background set.</value>
   </data>
+  <data name="gsResolution" xml:space="preserve">
+    <value>Resolution:</value>
+  </data>
+  <data name="gsLow" xml:space="preserve">
+    <value>Low</value>
+  </data>
+  <data name="gsHigh" xml:space="preserve">
+    <value>High</value>
+  </data>
+  <data name="gsResolutionNeedsBoundary" xml:space="preserve">
+    <value>Make a field boundary for a higher resolution background.</value>
+  </data>
+  <data name="gsMapCaptureFailed" xml:space="preserve">
+    <value>Download failed - previous background kept.</value>
+  </data>
   <data name="gsAreaTooLarge" xml:space="preserve">
     <value>Area too large — zoom in, then toggle again.</value>
   </data>
