@@ -509,6 +509,9 @@ namespace AgOpenGPS
             return BuildMidline(a, b, out minGap);
         }
 
+        /// <summary>F50 recorder: plain point list -> dense curve with headings (single pass).</summary>
+        public static List<vec3> CurveFromPoints(List<vec2> pts) => EdgeToCurve(pts);
+
         /// <summary>Recorded edge -> dense curve with headings. The points are already in
         /// driving order, so no end-to-end reordering (that would scramble a hairpin).</summary>
         private static List<vec3> EdgeToCurve(List<vec2> pts)

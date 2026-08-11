@@ -255,17 +255,31 @@ namespace AgOpenGPS
             err = "";
             var ps = FinishedPasses();
 
-            if (ps.Count < 2) { err = gStr.gsOrchRecNeedTwo; return null; }
+            if (ps.Count == 0) { err = gStr.gsOrchRecNeedTwo; return null; }
             if (ps.Count > 2) { err = gStr.gsOrchRecTooMany; return null; }
 
-            List<vec2> outerA = OuterEdge(ps[0], ps[1]);
-            List<vec2> outerB = OuterEdge(ps[1], ps[0]);
-            if (outerA == null || outerB == null) { err = gStr.gsOrchRecNeedTwo; return null; }
+            List<vec3> mid;
 
-            double ov = OverlapFraction(ps[0], ps[1]);
-            if (ov < 0.10) { err = gStr.gsOrchRecNoOverlap; return null; }
+            if (ps.Count == 1)
+            {
+                // One pass per row: the quick way to survey an orchard (decision 2026-08-11).
+                // With a single strip there are no two outer edges, so the row is the centre of
+                // that strip - which is where the row is IF the implement is set to straddle it.
+                var only = ps[0].Mid();
+                if (only.Count < 2) { err = gStr.gsOrchRecNoLine; return null; }
+                mid = COrchard.CurveFromPoints(only);
+            }
+            else
+            {
+                List<vec2> outerA = OuterEdge(ps[0], ps[1]);
+                List<vec2> outerB = OuterEdge(ps[1], ps[0]);
+                if (outerA == null || outerB == null) { err = gStr.gsOrchRecNeedTwo; return null; }
 
-            var mid = COrchard.MidlineOfEdges(outerA, outerB, out _);
+                double ov = OverlapFraction(ps[0], ps[1]);
+                if (ov < 0.10) { err = gStr.gsOrchRecNoOverlap; return null; }
+
+                mid = COrchard.MidlineOfEdges(outerA, outerB, out _);
+            }
             if (mid == null || mid.Count < 2) { err = gStr.gsOrchRecNoLine; return null; }
 
             var row = new OrchRow { source = RowSource.Recorded, name = name };

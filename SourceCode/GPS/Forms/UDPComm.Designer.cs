@@ -1,4 +1,4 @@
-using AgLibrary.Logging;
+﻿using AgLibrary.Logging;
 using AgOpenGPS.Core.Models;
 using AgOpenGPS.Core.Translations;
 using AgOpenGPS.Forms;
@@ -545,6 +545,11 @@ namespace AgOpenGPS
             // Guard clauses: do not handle until initialized / prevent NREs during early dialogs
             if (!_uiReady || hotkeys == null || hotkeys.Length < 19)
                 return base.ProcessCmdKey(ref msg, keyData);
+
+            // NV custom F50: the orchard recorder never takes focus, so its trigger key has to be
+            // caught here and handed over. Only while that window is up.
+            if (orchRecWin != null && !orchRecWin.IsDisposed && orchRecWin.HandleTriggerKey(keyData))
+                return true;
 
             if ((char)keyData == hotkeys[0]) // autosteer button on/off
             {

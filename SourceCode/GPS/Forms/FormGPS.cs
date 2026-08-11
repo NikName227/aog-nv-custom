@@ -292,6 +292,10 @@ namespace AgOpenGPS
         /// </summary>
         public readonly List<OrchRow> orchStagedRows = new List<OrchRow>();
 
+        /// <summary>NV custom F50 - the recorder window while it is open, so the main form can
+        /// pass the trigger key to it (the window itself never takes focus).</summary>
+        public FormOrchardRecord orchRecWin;
+
         /// <summary>NV custom F50 - "implement too wide for this inter-row" alert, "" = fits</summary>
         public string orchardWarn = "";
 

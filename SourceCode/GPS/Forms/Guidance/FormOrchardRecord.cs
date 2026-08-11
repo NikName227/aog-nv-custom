@@ -1,4 +1,4 @@
-// FormOrchardRecord.cs - the small orchard row recorder (F50, 2026-08-11).
+﻿// FormOrchardRecord.cs - the small orchard row recorder (F50, 2026-08-11).
 //
 // The big planner window is no place to be while driving: it covers the map and it steals the
 // keyboard. Pressing "Record row" there hands over to this window - small, ALWAYS ON TOP, and
@@ -13,6 +13,7 @@ using AgOpenGPS.Core.Translations;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace AgOpenGPS
@@ -27,7 +28,8 @@ namespace AgOpenGPS
         /// <summary>True when the window was closed with the tick, not with the X.</summary>
         public bool isAccepted;
 
-        private Button btnCancel, btnOk, btnSection, btnRow, btnDiscard, btnTree, btnDelTree;
+        private Button btnCancel, btnOk, btnSection, btnRow, btnDiscard, btnTree, btnDelTree, btnKey;
+        private bool capturingKey;
         private NumericUpDown nudTreeMin;
         private Label lblTreeMin, lblStatus;
         private readonly Timer tick = new Timer();
@@ -37,6 +39,10 @@ namespace AgOpenGPS
             mf = _f;
             existing = existingRows;
             BuildUi(treeMinDist);
+
+            // every row starts on a clean map: the strips of this row are the only thing on it
+            // (decision 2026-08-11 - rows are never recorded while the field is being worked)
+            mf.DeleteAppliedArea();
 
             mf.orchRec.isArmed = true;
             mf.orchRec.StartRow();
@@ -70,7 +76,7 @@ namespace AgOpenGPS
             ControlBox = false;
             StartPosition = FormStartPosition.Manual;
             TopMost = true;
-            ClientSize = new Size(300, 292);
+            ClientSize = new Size(300, 348);
             BackColor = Color.WhiteSmoke;
 
             var big = new Font("Tahoma", 12F, FontStyle.Bold);
@@ -115,20 +121,31 @@ namespace AgOpenGPS
             btnDelTree = Btn(gStr.gsOrchDeleteLastTree, 8, 156, 284, 40, mid, Color.Gainsboro);
             btnDelTree.Click += (s, e) => { mf.orchRec.DeleteLastTree(); UpdateUi(); };
 
-            btnTree = Btn(gStr.gsOrchTree, 8, 204, 284, 52, big, Color.Khaki);
+            btnKey = Btn("", 8, 202, 284, 30, new Font("Tahoma", 9F, FontStyle.Bold), Color.Gainsboro);
+            btnKey.Click += BtnKey_Click;
+
+            btnTree = Btn(gStr.gsOrchTree, 8, 238, 284, 76, big, Color.Khaki);
             btnTree.Click += (s, e) => { mf.orchRec.MarkTree(); UpdateUi(); };
 
             lblStatus = new Label
             {
                 Text = gStr.gsOrchRecStatusIdle,
                 Font = new Font("Tahoma", 9F),
-                Location = new Point(8, 262),
+                Location = new Point(8, 318),
                 Size = new Size(284, 24),
                 TextAlign = ContentAlignment.MiddleLeft
             };
 
             Controls.AddRange(new Control[] { btnCancel, btnOk, btnSection, btnRow, btnDiscard,
-                lblTreeMin, nudTreeMin, btnDelTree, btnTree, lblStatus });
+                lblTreeMin, nudTreeMin, btnDelTree, btnKey, btnTree, lblStatus });
+
+            // no title bar to grab, so the window is dragged by its own background - and by the
+            // labels, which would otherwise be dead spots (field call 2026-08-11)
+            MouseDown += Drag_MouseDown;
+            lblStatus.MouseDown += Drag_MouseDown;
+            lblTreeMin.MouseDown += Drag_MouseDown;
+
+            UpdateKeyLabel();
         }
 
         private static Button Btn(string text, int x, int y, int w, int h, Font f, Color back)
@@ -179,7 +196,7 @@ namespace AgOpenGPS
             }
 
             recordedRows.Add(row);
-            mf.orchRec.ClearPaint();      // the strips have done their job
+            mf.DeleteAppliedArea();       // clean map for the next row, as asked 2026-08-11
             mf.orchRec.StartRow();
             lblStatus.Text = row.name + " OK (" + row.trees.Count + " " + gStr.gsOrchTrees + ")";
             UpdateUi();
@@ -187,6 +204,7 @@ namespace AgOpenGPS
 
         private void BtnDiscard_Click(object sender, EventArgs e)
         {
+            mf.DeleteAppliedArea();
             mf.orchRec.DiscardRow();
             lblStatus.Text = gStr.gsOrchRecStatusIdle;
             UpdateUi();
@@ -197,6 +215,7 @@ namespace AgOpenGPS
             isAccepted = accept;
             if (!accept)
             {
+                mf.DeleteAppliedArea();
                 mf.orchRec.DiscardRow();
                 recordedRows.Clear();
             }
@@ -209,6 +228,67 @@ namespace AgOpenGPS
             tick.Dispose();
             mf.orchRec.isArmed = false;
             base.OnFormClosed(e);
+        }
+
+        // ── Dragging ──────────────────────────────────────────────────────
+
+        [DllImport("user32.dll")] private static extern bool ReleaseCapture();
+        [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
+
+        private void Drag_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left) return;
+            const int WM_NCLBUTTONDOWN = 0xA1, HTCAPTION = 0x2;
+            ReleaseCapture();
+            SendMessage(Handle, WM_NCLBUTTONDOWN, HTCAPTION, 0);
+        }
+
+        // ── Trigger key ───────────────────────────────────────────────────
+        // A keypad key is easier to hit than the screen while driving. This window never takes
+        // the focus, so the main form catches the key and hands it here (ProcessCmdKey).
+
+        private void BtnKey_Click(object sender, EventArgs e)
+        {
+            capturingKey = true;
+            btnKey.Text = gStr.gsOrchPressKey;
+            btnKey.BackColor = Color.Orange;
+        }
+
+        /// <summary>Key seen by the main form. True when this window used it.</summary>
+        public bool HandleTriggerKey(Keys keyData)
+        {
+            if (capturingKey)
+            {
+                if (keyData == Keys.Escape) { capturingKey = false; UpdateKeyLabel(); return true; }
+                Properties.Settings.Default.setDisplay_orchardTreeKey = (int)keyData;
+                try { Properties.Settings.Default.Save(); } catch { }
+                capturingKey = false;
+                UpdateKeyLabel();
+                return true;
+            }
+
+            int k = Properties.Settings.Default.setDisplay_orchardTreeKey;
+            if (k != 0 && (int)keyData == k)
+            {
+                mf.orchRec.MarkTree();
+                UpdateUi();
+                return true;
+            }
+            return false;
+        }
+
+        private void UpdateKeyLabel()
+        {
+            int k = Properties.Settings.Default.setDisplay_orchardTreeKey;
+            if (k == 0)
+            {
+                // never set before - Space is the one key every keypad has
+                k = (int)Keys.Space;
+                Properties.Settings.Default.setDisplay_orchardTreeKey = k;
+                try { Properties.Settings.Default.Save(); } catch { }
+            }
+            btnKey.Text = gStr.gsOrchKeyTrigger + ": " + ((Keys)k);
+            btnKey.BackColor = Color.Gainsboro;
         }
 
         // ── Live state ────────────────────────────────────────────────────

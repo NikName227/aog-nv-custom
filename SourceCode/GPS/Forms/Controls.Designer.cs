@@ -619,8 +619,14 @@ namespace AgOpenGPS
                 if (rec.isAccepted)
                     foreach (OrchRow r in rec.recordedRows) orchStagedRows.Add(r);
 
-                OpenOrchardPlanner();      // back to the planner, with what was just recorded
+                orchRecWin = null;
+
+                // NOT straight from here: OpenOrchardPlanner goes modal, and a modal loop started
+                // inside FormClosed leaves this window on screen with the planner on top of it
+                // (bug 2026-08-11). Let the close finish first.
+                BeginInvoke((MethodInvoker)OpenOrchardPlanner);
             };
+            orchRecWin = rec;
 
             rec.Location = new System.Drawing.Point(
                 Math.Max(0, Left + Width - rec.Width - 24), Top + 96);
@@ -2254,55 +2260,7 @@ namespace AgOpenGPS
 
                     if (result == DialogResult.OK)
                     {
-                        //FileCreateElevation();
-
-                        if (tool.isSectionsNotZones)
-                        {
-                            //Update the button colors and text
-                            AllSectionsAndButtonsToState(btnStates.Off);
-
-                            //enable disable manual buttons
-                            LineUpIndividualSectionBtns();
-                        }
-                        else
-                        {
-                            AllZonesAndButtonsToState(btnStates.Off);
-                            LineUpAllZoneButtons();
-                        }
-
-                        //turn manual button off
-                        manualBtnState = btnStates.Off;
-                        btnSectionMasterManual.Image = Properties.Resources.ManualOff;
-
-                        //turn auto button off
-                        autoBtnState = btnStates.Off;
-                        btnSectionMasterAuto.Image = Properties.Resources.SectionMasterOff;
-
-
-                        //clear out the contour Lists
-                        ct.StopContourLine();
-                        ct.ResetContour();
-                        fd.workedAreaTotal = 0;
-                        fd.workedAreaTotalUser = 0;
-                        fd.distanceUser = 0;
-
-                        //clear the section lists
-                        for (int j = 0; j < triStrip.Count; j++)
-                        {
-                            //clean out the lists
-                            triStrip[j].patchList?.Clear();
-                            triStrip[j].triangleList?.Clear();
-                        }
-                        patchSaveList?.Clear();
-
-                        //delete all worked Lanes too
-                        foreach (CTrk TrackItem in trk.gArr)
-                        {
-                            TrackItem.workedTracks.Clear();
-                        }
-
-                        FileCreateContour();
-                        FileCreateSections();
+                        DeleteAppliedArea();
 
                         Log.EventWriter("All Section Mapping Deleted");
                     }
@@ -2317,6 +2275,67 @@ namespace AgOpenGPS
                 }
             }
         }
+
+        /// <summary>
+        /// Wipe every painted section off the field - the body behind "Delete applied area".
+        /// F50 (2026-08-11): the orchard recorder needs the same clean slate for every row, so
+        /// this lives on its own instead of inside the menu handler.
+        /// </summary>
+        public void DeleteAppliedArea()
+        {
+            //FileCreateElevation();
+
+            if (tool.isSectionsNotZones)
+            {
+                //Update the button colors and text
+                AllSectionsAndButtonsToState(btnStates.Off);
+
+                //enable disable manual buttons
+                LineUpIndividualSectionBtns();
+            }
+            else
+            {
+                AllZonesAndButtonsToState(btnStates.Off);
+                LineUpAllZoneButtons();
+            }
+
+            //turn manual button off
+            manualBtnState = btnStates.Off;
+            btnSectionMasterManual.Image = Properties.Resources.ManualOff;
+
+            //turn auto button off
+            autoBtnState = btnStates.Off;
+            btnSectionMasterAuto.Image = Properties.Resources.SectionMasterOff;
+
+
+            //clear out the contour Lists
+            ct.StopContourLine();
+            ct.ResetContour();
+            fd.workedAreaTotal = 0;
+            fd.workedAreaTotalUser = 0;
+            fd.distanceUser = 0;
+
+            //clear the section lists
+            for (int j = 0; j < triStrip.Count; j++)
+            {
+                //clean out the lists
+                triStrip[j].patchList?.Clear();
+                triStrip[j].triangleList?.Clear();
+            }
+            patchSaveList?.Clear();
+
+            //delete all worked Lanes too
+            foreach (CTrk TrackItem in trk.gArr)
+            {
+                TrackItem.workedTracks.Clear();
+            }
+
+            FileCreateContour();
+            FileCreateSections();
+
+            Log.EventWriter("All Section Mapping Deleted");
+        }
+
         private void headingChartToolStripMenuItem_Click(object sender, EventArgs e)
         {
             //check if window already exists
