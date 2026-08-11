@@ -78,8 +78,6 @@
             this.btnGenerate = new System.Windows.Forms.Button();
             this.lblGenResult = new System.Windows.Forms.Label();
             this.btnGenClose = new System.Windows.Forms.Button();
-            this.nudRefLong = new AgOpenGPS.NudlessNumericUpDown();
-            this.btnRefDir = new System.Windows.Forms.Button();
             this.btnMarkTree = new System.Windows.Forms.Button();
             this.btnEditTrees = new System.Windows.Forms.Button();
             this.btnDeleteLastTree = new System.Windows.Forms.Button();
@@ -479,8 +477,6 @@
             // safe distance from the tree line / slope)
             //
             this.btnRecordRow = new System.Windows.Forms.Button();
-            this.nudRecOffset = new AgOpenGPS.NudlessNumericUpDown();
-            this.btnRecSide = new System.Windows.Forms.Button();
             this.btnRecordRow.BackColor = System.Drawing.Color.MistyRose;
             this.btnRecordRow.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnRecordRow.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
@@ -490,23 +486,6 @@
             this.btnRecordRow.Text = "Record row";
             this.btnRecordRow.UseVisualStyleBackColor = false;
             this.btnRecordRow.Click += new System.EventHandler(this.btnRecordRow_Click);
-            this.nudRecOffset.DecimalPlaces = 1;
-            this.nudRecOffset.Font = new System.Drawing.Font("Tahoma", 12F);
-            this.nudRecOffset.Increment = new decimal(new int[] { 5, 0, 0, 65536 });
-            this.nudRecOffset.Location = new System.Drawing.Point(835, 486);
-            this.nudRecOffset.Maximum = new decimal(new int[] { 10, 0, 0, 0 });
-            this.nudRecOffset.Name = "nudRecOffset";
-            this.nudRecOffset.Size = new System.Drawing.Size(70, 28);
-            this.nudRecOffset.Click += new System.EventHandler(this.nudOrchard_Click);
-            this.nudRecOffset.Value = new decimal(new int[] { 2, 0, 0, 0 });
-            this.btnRecSide.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnRecSide.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
-            this.btnRecSide.Location = new System.Drawing.Point(908, 486);
-            this.btnRecSide.Name = "btnRecSide";
-            this.btnRecSide.Size = new System.Drawing.Size(72, 28);
-            this.btnRecSide.Text = "R →";
-            this.btnRecSide.UseVisualStyleBackColor = true;
-            this.btnRecSide.Click += new System.EventHandler(this.btnRecSide_Click);
             //
             // btnNewRow
             //
@@ -759,8 +738,6 @@
             this.BackColor = System.Drawing.Color.WhiteSmoke;
             this.ClientSize = new System.Drawing.Size(1000, 760);
             this.Controls.Add(this.btnRecordRow);
-            this.Controls.Add(this.nudRecOffset);
-            this.Controls.Add(this.btnRecSide);
             this.Controls.Add(this.btnZoomIn);
             this.Controls.Add(this.btnZoomOut);
             this.Controls.Add(this.btnZoomRestore);
@@ -875,21 +852,6 @@
             // recorded row line, a marked tree) comes from it, so mapping with a pole needs no
             // change to the implement profile.
             //
-            this.nudRefLong.DecimalPlaces = 1;
-            this.nudRefLong.Font = new System.Drawing.Font("Tahoma", 12F);
-            this.nudRefLong.Increment = new decimal(new int[] { 1, 0, 0, 65536 });
-            this.nudRefLong.Location = new System.Drawing.Point(835, 518);
-            this.nudRefLong.Maximum = new decimal(new int[] { 15, 0, 0, 0 });
-            this.nudRefLong.Name = "nudRefLong";
-            this.nudRefLong.Size = new System.Drawing.Size(70, 28);
-            this.nudRefLong.Click += new System.EventHandler(this.nudOrchard_Click);
-            this.btnRefDir.Font = new System.Drawing.Font("Tahoma", 11F, System.Drawing.FontStyle.Bold);
-            this.btnRefDir.Location = new System.Drawing.Point(908, 518);
-            this.btnRefDir.Name = "btnRefDir";
-            this.btnRefDir.Size = new System.Drawing.Size(72, 28);
-            this.btnRefDir.Text = "^ F";
-            this.btnRefDir.UseVisualStyleBackColor = true;
-            this.btnRefDir.Click += new System.EventHandler(this.btnRefDir_Click);
             //
             // Tree marking (SIM 0730): big button over the map, and the recording-only controls
             // that take the place of the point/import/filter block while a row is being recorded.
@@ -963,8 +925,6 @@
             this.Controls.Add(this.nudTreeMinDist);
             this.Controls.Add(this.btnKeyTrigger);
             this.Controls.Add(this.lblKeyTrigger);
-            this.Controls.Add(this.nudRefLong);
-            this.Controls.Add(this.btnRefDir);
             this.Controls.Add(this.lblThin);
             this.Controls.Add(this.btnThinDown);
             this.Controls.Add(this.lblThinVal);
@@ -1021,8 +981,6 @@
         private System.Windows.Forms.Button btnImportKml;
         private System.Windows.Forms.Button btnMakePath;
         private System.Windows.Forms.Button btnRecordRow;
-        private AgOpenGPS.NudlessNumericUpDown nudRecOffset;
-        private System.Windows.Forms.Button btnRecSide;
         private System.Windows.Forms.Label lblWarn;
         private System.Windows.Forms.Button btnNewRow;
         private System.Windows.Forms.Button btnEdit;
@@ -1035,8 +993,6 @@
         private System.Windows.Forms.Button btnNewOrchard;
         private System.Windows.Forms.Button btnTreesOnRow;
         private System.Windows.Forms.Label lblFilterCap;
-        private AgOpenGPS.NudlessNumericUpDown nudRefLong;
-        private System.Windows.Forms.Button btnRefDir;
         private System.Windows.Forms.Button btnEditTrees;
         private System.Windows.Forms.Button btnMarkTree;
         private System.Windows.Forms.Button btnDeleteLastTree;

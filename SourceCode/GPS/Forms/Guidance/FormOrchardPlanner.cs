@@ -140,13 +140,7 @@ namespace AgOpenGPS
             //SIM 0730: the reference point of this window - where the thing that measures sits
             //(a pole on the front, or the recorder's own offset). Not the implement geometry.
             var ts0 = Properties.ToolSettings.Default;
-            recSideRight = ts0.setTool_orchardRefLateral >= 0;
-            nudRecOffset.Value = NudClamp(nudRecOffset, (decimal)Math.Abs(ts0.setTool_orchardRefLateral));
-            refForward = ts0.setTool_orchardRefLong >= 0;
-            nudRefLong.Value = NudClamp(nudRefLong, (decimal)Math.Abs(ts0.setTool_orchardRefLong));
             nudTreeMinDist.Value = NudClamp(nudTreeMinDist, (decimal)ts0.setTool_orchardTreeMinDist);
-            btnRecSide.Text = recSideRight ? "R ->" : "<- L";
-            btnRefDir.Text = refForward ? "^ F" : "v B";
             UpdateKeyLabel();
 
             mf.CalculateMinMax();
@@ -156,7 +150,7 @@ namespace AgOpenGPS
             foreach (var r in loaded) rows.Add(r);
 
             redraw.Interval = 250;
-            redraw.Tick += (s, e) => { RecordSample(); if (recOn) CenterOnVehicle(); oglSelf.Invalidate(); };
+            redraw.Tick += (s, e) => oglSelf.Invalidate();
 
             this.KeyPreview = true;
             this.KeyDown += (s, e) =>
@@ -171,7 +165,9 @@ namespace AgOpenGPS
                     return;
                 }
 
-                if (recOn && (int)e.KeyCode == Properties.Settings.Default.setDisplay_orchardTreeKey
+                // the keypad trigger now serves tree editing in this window; while driving it
+                // is the recorder window that listens (F50 2026-08-11)
+                if (treeEditMode && (int)e.KeyCode == Properties.Settings.Default.setDisplay_orchardTreeKey
                     && Properties.Settings.Default.setDisplay_orchardTreeKey != 0)
                 {
                     MarkTree();
@@ -849,14 +845,11 @@ namespace AgOpenGPS
             oglSelf.Invalidate();
         }
 
-        // ── Record row by driving (phase 2) ───────────────────────────────
-        // Boundary-recorder style: every >=1 m of travel drops a point laterally
-        // OFFSET from the pivot (nudRecOffset m, btnRecSide side), so the tractor
-        // drives a safe line while the recorded row lands on the tree line.
-        private bool recOn;
-        private bool recSideRight = true;
-        private bool refForward = true;          // longitudinal direction of the reference point
-        private double recLastE = double.MaxValue, recLastN;
+        // ── Record row ────────────────────────────────────────────────────
+        // F50 (2026-08-11): the row is recorded from the painted sections in the small
+        // always-on-top recorder (FormOrchardRecord), not from a hand-typed reference point.
+        // The lateral/longitudinal offset controls that used to live here are gone; the
+        // settings behind them stay in the profile only so older files still load.
 
         // tree editing (SIM 0730): the same point tools, aimed at the trees of the active row
         private bool treeEditMode;
@@ -957,46 +950,22 @@ namespace AgOpenGPS
         private vec2 lastTree;
         private bool hasLastTree;
 
-        private void btnRecSide_Click(object sender, EventArgs e)
-        {
-            recSideRight = !recSideRight;
-            btnRecSide.Text = recSideRight ? "R ->" : "<- L";
-            SaveRefPoint();
-        }
-
-        private void btnRefDir_Click(object sender, EventArgs e)
-        {
-            refForward = !refForward;
-            btnRefDir.Text = refForward ? "^ F" : "v B";
-            SaveRefPoint();
-        }
-
         private static decimal NudClamp(NudlessNumericUpDown nud, decimal v)
             => v < nud.Minimum ? nud.Minimum : (v > nud.Maximum ? nud.Maximum : v);
 
         private void SaveRefPoint()
         {
             var ts = Properties.ToolSettings.Default;
-            ts.setTool_orchardRefLateral = (double)nudRecOffset.Value * (recSideRight ? 1 : -1);
-            ts.setTool_orchardRefLong = (double)nudRefLong.Value * (refForward ? 1 : -1);
             ts.setTool_orchardTreeMinDist = (double)nudTreeMinDist.Value;
             try { ts.Save(); } catch { }
         }
 
-        /// <summary>
-        /// The measuring point of this window: the pivot shifted sideways and along by the
-        /// reference offsets. A row line is recorded from it and a marked tree is placed on it,
-        /// so a pole on the front is described here instead of in the implement profile.
-        /// </summary>
+        /// <summary>Measuring point for a tree marked from this window: the pivot itself.
+        /// The offsets are gone - the recorder takes the centre of the painted strip.</summary>
         private vec2 RefPoint()
         {
             vec3 piv = mf.pivotAxlePos;
-            double lat = (double)nudRecOffset.Value * (recSideRight ? 1.0 : -1.0);
-            double lon = (double)nudRefLong.Value * (refForward ? 1.0 : -1.0);
-
-            return new vec2(
-                piv.easting + Math.Sin(piv.heading) * lon + Math.Sin(piv.heading + glm.PIBy2) * lat,
-                piv.northing + Math.Cos(piv.heading) * lon + Math.Cos(piv.heading + glm.PIBy2) * lat);
+            return new vec2(piv.easting, piv.northing);
         }
 
         // ── Mark a tree (SIM 0730) ────────────────────────────────────────
@@ -1119,28 +1088,6 @@ namespace AgOpenGPS
             vec3 piv = mf.pivotAxlePos;
             sX = (mf.fieldCenterX - piv.easting) / mf.maxFieldDistance;
             sY = (mf.fieldCenterY - piv.northing) / mf.maxFieldDistance;
-        }
-
-        private void RecordSample()
-        {
-            if (!recOn || mf == null || !mf.isJobStarted) return;
-
-            // the row line is recorded at the window's reference point (pole / recorder offset)
-            vec2 rp = RefPoint();
-            double e = rp.easting;
-            double n = rp.northing;
-
-            if (recLastE != double.MaxValue)
-            {
-                double de = e - recLastE, dn = n - recLastN;
-                //SIM 0730: half the sampling density - a metre apart was denser than the row
-                //shape needs and only made the filter work harder
-                if (de * de + dn * dn < 4.0) return;   // need >= 2 m of travel
-            }
-            recLastE = e; recLastN = n;
-
-            pts.Add(new vec2(e, n));
-            if (pts.Count >= 2) { EnsureWorkRow(); BuildActiveRow(); }
         }
 
         // ── Row build ─────────────────────────────────────────────────────
