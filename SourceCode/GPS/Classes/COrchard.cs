@@ -492,6 +492,33 @@ namespace AgOpenGPS
         }
 
         // midline between two neighbouring rows + their minimal gap; null when degenerate
+        /// <summary>
+        /// F50 (2026-08-11) - midline between two free polylines, for the row recorder: it hands
+        /// in the OUTER edges of the two painted passes and gets the row centre back. Same
+        /// BuildMidline the pass generators use, so the 2026-08-10 kink fixes apply here too.
+        /// </summary>
+        public static List<vec3> MidlineOfEdges(List<vec2> edgeA, List<vec2> edgeB, out double minGap)
+        {
+            minGap = double.MaxValue;
+            if (edgeA == null || edgeB == null || edgeA.Count < 2 || edgeB.Count < 2) return null;
+
+            var a = new OrchRow { curve = EdgeToCurve(edgeA) };
+            var b = new OrchRow { curve = EdgeToCurve(edgeB) };
+            if (a.curve.Count < 2 || b.curve.Count < 2) return null;
+
+            return BuildMidline(a, b, out minGap);
+        }
+
+        /// <summary>Recorded edge -> dense curve with headings. The points are already in
+        /// driving order, so no end-to-end reordering (that would scramble a hairpin).</summary>
+        private static List<vec3> EdgeToCurve(List<vec2> pts)
+        {
+            var des = Densify(pts, 1.0);
+            if (des.Count < 2) return des;
+            CABCurve.CalculateHeadings(ref des);
+            return des;
+        }
+
         private static List<vec3> BuildMidline(OrchRow a, OrchRow b, out double minGap)
         {
             minGap = double.MaxValue;

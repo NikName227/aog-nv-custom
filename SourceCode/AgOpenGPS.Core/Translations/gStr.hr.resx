@@ -1814,4 +1814,31 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsOrchEditTrees" xml:space="preserve">
     <value>Uredi stabla</value>
   </data>
+  <data name="gsOrchRecNeedTwo" xml:space="preserve">
+    <value>Trebaju dva prolaza - odvezi obje strane reda</value>
+  </data>
+  <data name="gsOrchRecTooMany" xml:space="preserve">
+    <value>Snimljeno vise od dva prolaza - odbaci red i snimi ponovno</value>
+  </data>
+  <data name="gsOrchRecNoOverlap" xml:space="preserve">
+    <value>Prolazi se gotovo ne preklapaju - to nije jedan red</value>
+  </data>
+  <data name="gsOrchRecNoLine" xml:space="preserve">
+    <value>Iz ovih prolaza se ne moze izgraditi linija</value>
+  </data>
+  <data name="gsOrchRecNewRow" xml:space="preserve">
+    <value>Novi red</value>
+  </data>
+  <data name="gsOrchRecFinishRow" xml:space="preserve">
+    <value>Zavrsi red</value>
+  </data>
+  <data name="gsOrchRecDiscardRow" xml:space="preserve">
+    <value>Odbaci red</value>
+  </data>
+  <data name="gsOrchRecSection" xml:space="preserve">
+    <value>Sekcija</value>
+  </data>
+  <data name="gsOrchRecStatusIdle" xml:space="preserve">
+    <value>Spremno - pritisni Novi red</value>
+  </data>
 </root>

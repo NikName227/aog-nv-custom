@@ -2181,4 +2181,31 @@ USE AT OWN RISK.</value>
   <data name="gsOrchEditTrees" xml:space="preserve">
     <value>Edit trees</value>
   </data>
+  <data name="gsOrchRecNeedTwo" xml:space="preserve">
+    <value>Two passes are needed - drive both sides of the row</value>
+  </data>
+  <data name="gsOrchRecTooMany" xml:space="preserve">
+    <value>More than two passes recorded - discard the row and drive it again</value>
+  </data>
+  <data name="gsOrchRecNoOverlap" xml:space="preserve">
+    <value>The two passes barely overlap - they do not describe one row</value>
+  </data>
+  <data name="gsOrchRecNoLine" xml:space="preserve">
+    <value>Could not build a line from these passes</value>
+  </data>
+  <data name="gsOrchRecNewRow" xml:space="preserve">
+    <value>New row</value>
+  </data>
+  <data name="gsOrchRecFinishRow" xml:space="preserve">
+    <value>Finish row</value>
+  </data>
+  <data name="gsOrchRecDiscardRow" xml:space="preserve">
+    <value>Discard row</value>
+  </data>
+  <data name="gsOrchRecSection" xml:space="preserve">
+    <value>Section</value>
+  </data>
+  <data name="gsOrchRecStatusIdle" xml:space="preserve">
+    <value>Ready - press New row</value>
+  </data>
 </root>

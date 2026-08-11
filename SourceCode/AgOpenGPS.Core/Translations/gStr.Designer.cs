@@ -5502,6 +5502,60 @@ public static string gsOrchPlanterBehind {
             }
         }
         
+        public static string gsOrchRecNeedTwo {
+            get {
+                return ResourceManager.GetString("gsOrchRecNeedTwo", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchRecTooMany {
+            get {
+                return ResourceManager.GetString("gsOrchRecTooMany", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchRecNoOverlap {
+            get {
+                return ResourceManager.GetString("gsOrchRecNoOverlap", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchRecNoLine {
+            get {
+                return ResourceManager.GetString("gsOrchRecNoLine", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchRecNewRow {
+            get {
+                return ResourceManager.GetString("gsOrchRecNewRow", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchRecFinishRow {
+            get {
+                return ResourceManager.GetString("gsOrchRecFinishRow", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchRecDiscardRow {
+            get {
+                return ResourceManager.GetString("gsOrchRecDiscardRow", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchRecSection {
+            get {
+                return ResourceManager.GetString("gsOrchRecSection", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchRecStatusIdle {
+            get {
+                return ResourceManager.GetString("gsOrchRecStatusIdle", resourceCulture);
+            }
+        }
+        
         public static string gsOrchTree {
             get {
                 return ResourceManager.GetString("gsOrchTree", resourceCulture);

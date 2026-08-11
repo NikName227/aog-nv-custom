@@ -1,4 +1,4 @@
-// COrchardRecorder.cs - orchard row recording from the painted sections (F50, 2026-08-11).
+﻿// COrchardRecorder.cs - orchard row recording from the painted sections (F50, 2026-08-11).
 //
 // The row is no longer typed in as a lateral/longitudinal offset of a reference point. The
 // implement is parked far out to one side, the driver goes down BOTH sides of the row, and the
@@ -11,6 +11,7 @@
 // last one. This class samples exactly those two points.
 //
 // Spec: features/50_orchard-navigation/RECORD_ROW.md
+using AgOpenGPS.Core.Translations;
 using System;
 using System.Collections.Generic;
 
@@ -238,6 +239,180 @@ namespace AgOpenGPS
         public void DeleteLastTree()
         {
             if (treeMarks.Count > 0) treeMarks.RemoveAt(treeMarks.Count - 1);
+        }
+
+        // ── Row build ─────────────────────────────────────────────────────
+        // Exactly two passes, driven up one side of the row and back down the other. Their
+        // strips overlap over the row, so the row centre is the middle between the two OUTER
+        // edges - the edge of each strip that faces AWAY from the other pass.
+
+        /// <summary>
+        /// Turn what was recorded into a row. Returns null and fills <paramref name="err"/>
+        /// when the drive does not describe a row (wrong number of passes, no overlap).
+        /// </summary>
+        public OrchRow BuildRow(string name, double treeMinDist, out string err)
+        {
+            err = "";
+            var ps = FinishedPasses();
+
+            if (ps.Count < 2) { err = gStr.gsOrchRecNeedTwo; return null; }
+            if (ps.Count > 2) { err = gStr.gsOrchRecTooMany; return null; }
+
+            List<vec2> outerA = OuterEdge(ps[0], ps[1]);
+            List<vec2> outerB = OuterEdge(ps[1], ps[0]);
+            if (outerA == null || outerB == null) { err = gStr.gsOrchRecNeedTwo; return null; }
+
+            double ov = OverlapFraction(ps[0], ps[1]);
+            if (ov < 0.10) { err = gStr.gsOrchRecNoOverlap; return null; }
+
+            var mid = COrchard.MidlineOfEdges(outerA, outerB, out _);
+            if (mid == null || mid.Count < 2) { err = gStr.gsOrchRecNoLine; return null; }
+
+            var row = new OrchRow { source = RowSource.Recorded, name = name };
+
+            // control points every ~2.5 m: dense enough for the shape, sparse enough to edit
+            double step = 2.5;
+            vec2 last = new vec2(double.MaxValue, double.MaxValue);
+            foreach (vec3 p in mid)
+            {
+                if (last.easting != double.MaxValue && glm.Distance(new vec2(p.easting, p.northing), last) < step)
+                    continue;
+                last = new vec2(p.easting, p.northing);
+                row.pts.Add(last);
+            }
+            if (row.pts.Count < 2) { err = gStr.gsOrchRecNoLine; return null; }
+
+            row.curve = new List<vec3>(mid);
+            row.trees = BuildTrees(row, treeMinDist);
+            return row;
+        }
+
+        /// <summary>The edge of <paramref name="p"/> that faces away from <paramref name="other"/>.</summary>
+        private static List<vec2> OuterEdge(OrchPass p, OrchPass other)
+        {
+            if (p == null || p.left.Count < 2 || p.right.Count < 2) return null;
+
+            vec2 c = Centroid(other.Mid());
+            double dl = MeanDistance(p.left, c);
+            double dr = MeanDistance(p.right, c);
+            return dl >= dr ? p.left : p.right;
+        }
+
+        private static vec2 Centroid(List<vec2> pts)
+        {
+            double e = 0, n = 0;
+            if (pts.Count == 0) return new vec2(0, 0);
+            foreach (vec2 p in pts) { e += p.easting; n += p.northing; }
+            return new vec2(e / pts.Count, n / pts.Count);
+        }
+
+        private static double MeanDistance(List<vec2> line, vec2 c)
+        {
+            if (line.Count == 0) return 0;
+            double d = 0;
+            foreach (vec2 p in line) d += glm.Distance(p, c);
+            return d / line.Count;
+        }
+
+        /// <summary>
+        /// How much of the shorter pass runs alongside the other one, measured along the first
+        /// pass' direction. Two passes that barely meet do not describe a row.
+        /// </summary>
+        private static double OverlapFraction(OrchPass a, OrchPass b)
+        {
+            var ma = a.Mid();
+            var mb = b.Mid();
+            if (ma.Count < 2 || mb.Count < 2) return 0;
+
+            vec2 dir = new vec2(ma[ma.Count - 1].easting - ma[0].easting,
+                                ma[ma.Count - 1].northing - ma[0].northing);
+            double len = Math.Sqrt(dir.easting * dir.easting + dir.northing * dir.northing);
+            if (len < 1.0) return 0;
+            dir = new vec2(dir.easting / len, dir.northing / len);
+
+            Span(ma, ma[0], dir, out double a0, out double a1);
+            Span(mb, ma[0], dir, out double b0, out double b1);
+
+            double lo = Math.Max(a0, b0), hi = Math.Min(a1, b1);
+            double shared = hi - lo;
+            if (shared <= 0) return 0;
+
+            double shorter = Math.Min(a1 - a0, b1 - b0);
+            return shorter < 1.0 ? 0 : shared / shorter;
+        }
+
+        private static void Span(List<vec2> line, vec2 origin, vec2 dir, out double lo, out double hi)
+        {
+            lo = double.MaxValue; hi = double.MinValue;
+            foreach (vec2 p in line)
+            {
+                double t = (p.easting - origin.easting) * dir.easting + (p.northing - origin.northing) * dir.northing;
+                if (t < lo) lo = t;
+                if (t > hi) hi = t;
+            }
+        }
+
+        // ── Trees ─────────────────────────────────────────────────────────
+        // The same tree gets marked once per pass and never at the same spot, so marks that sit
+        // closer together than HALF the minimum spacing are one tree, averaged ALONG the row.
+        // A tree marked in only one pass keeps its single mark.
+
+        private List<vec2> BuildTrees(OrchRow row, double treeMinDist)
+        {
+            var trees = new List<vec2>();
+            if (treeMarks.Count == 0 || row.curve.Count < 2) return trees;
+
+            var byAlong = new List<KeyValuePair<double, vec2>>();
+            foreach (OrchTreeMark m in treeMarks)
+                byAlong.Add(new KeyValuePair<double, vec2>(AlongRow(row, m.pos), m.pos));
+            byAlong.Sort((x, y) => x.Key.CompareTo(y.Key));
+
+            double half = Math.Max(0.2, treeMinDist * 0.5);
+
+            int i = 0;
+            while (i < byAlong.Count)
+            {
+                double sum = byAlong[i].Key;
+                double e = byAlong[i].Value.easting, n = byAlong[i].Value.northing;
+                int cnt = 1;
+                int j = i + 1;
+                while (j < byAlong.Count && (byAlong[j].Key - byAlong[j - 1].Key) < half)
+                {
+                    sum += byAlong[j].Key;
+                    e += byAlong[j].Value.easting;
+                    n += byAlong[j].Value.northing;
+                    cnt++; j++;
+                }
+                trees.Add(new vec2(e / cnt, n / cnt));
+                i = j;
+            }
+
+            var tmp = new OrchRow { curve = row.curve, trees = trees };
+            COrchard.ProjectTreesOntoRow(tmp);      // sideways onto the line, position along kept
+            return tmp.trees;
+        }
+
+        /// <summary>Distance of a point along the row, measured on the row curve.</summary>
+        private static double AlongRow(OrchRow row, vec2 p)
+        {
+            double best = double.MaxValue, bestAlong = 0, along = 0;
+            for (int i = 1; i < row.curve.Count; i++)
+            {
+                vec2 a = new vec2(row.curve[i - 1].easting, row.curve[i - 1].northing);
+                vec2 b = new vec2(row.curve[i].easting, row.curve[i].northing);
+                double dx = b.easting - a.easting, dy = b.northing - a.northing;
+                double seg = Math.Sqrt(dx * dx + dy * dy);
+                if (seg < 0.001) continue;
+
+                double t = ((p.easting - a.easting) * dx + (p.northing - a.northing) * dy) / (seg * seg);
+                if (t < 0) t = 0; else if (t > 1) t = 1;
+
+                double qe = a.easting + t * dx, qn = a.northing + t * dy;
+                double d = (p.easting - qe) * (p.easting - qe) + (p.northing - qn) * (p.northing - qn);
+                if (d < best) { best = d; bestAlong = along + t * seg; }
+                along += seg;
+            }
+            return bestAlong;
         }
     }
 }
