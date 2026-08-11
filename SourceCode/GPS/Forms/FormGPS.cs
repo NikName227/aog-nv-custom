@@ -285,6 +285,13 @@ namespace AgOpenGPS
         /// </summary>
         public COrchardRecorder orchRec;
 
+        /// <summary>
+        /// NV custom F50 - rows the recorder window built while the planner was closed. The
+        /// planner drains this list when it reopens, so a recorded row survives the handover
+        /// without going through the field file first.
+        /// </summary>
+        public readonly List<OrchRow> orchStagedRows = new List<OrchRow>();
+
         /// <summary>NV custom F50 - "implement too wide for this inter-row" alert, "" = fits</summary>
         public string orchardWarn = "";
 

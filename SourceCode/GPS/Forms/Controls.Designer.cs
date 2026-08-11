@@ -1,4 +1,4 @@
-//Please, if you use this, share the improvements
+﻿//Please, if you use this, share the improvements
 
 using AgLibrary.Logging;
 using AgOpenGPS.Core.AgShare;
@@ -590,12 +590,41 @@ namespace AgOpenGPS
 
             if (flp1.Visible) flp1.Visible = false;
 
+            OpenOrchardPlanner();
+        }
+
+        /// <summary>
+        /// Planner and row recorder take turns. The planner is modal, so it cannot stay up while
+        /// a row is driven - it closes, this puts the small recorder on top of a fully usable
+        /// main screen, and when that closes the planner comes back with the new rows.
+        /// </summary>
+        public void OpenOrchardPlanner()
+        {
+            bool wantsRecorder;
+            double treeMin;
+
             using (var form = new FormOrchardPlanner(this))
             {
                 form.ShowDialog(this);
+                wantsRecorder = form.wantsRecorder;
+                treeMin = form.recorderTreeMin;
             }
 
             PanelUpdateRightAndBottom();
+            if (!wantsRecorder) return;
+
+            var rec = new FormOrchardRecord(this, treeMin, orchRows);
+            rec.FormClosed += (s2, e2) =>
+            {
+                if (rec.isAccepted)
+                    foreach (OrchRow r in rec.recordedRows) orchStagedRows.Add(r);
+
+                OpenOrchardPlanner();      // back to the planner, with what was just recorded
+            };
+
+            rec.Location = new System.Drawing.Point(
+                Math.Max(0, Left + Width - rec.Width - 24), Top + 96);
+            rec.Show(this);
         }
 
         private void btnABDraw_Click(object sender, EventArgs e)

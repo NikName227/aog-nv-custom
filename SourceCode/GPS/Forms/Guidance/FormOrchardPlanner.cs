@@ -149,6 +149,10 @@ namespace AgOpenGPS
             var loaded = COrchard.LoadRows(FieldDir(), trees);
             foreach (var r in loaded) rows.Add(r);
 
+            // rows recorded while this window was closed (F50 recorder handover)
+            foreach (var r in mf.orchStagedRows) rows.Add(r);
+            mf.orchStagedRows.Clear();
+
             redraw.Interval = 250;
             redraw.Tick += (s, e) => oglSelf.Invalidate();
 
@@ -1137,39 +1141,28 @@ namespace AgOpenGPS
             if (rec) { btnMarkTree.BringToFront(); UpdateKeyLabel(); }
         }
 
-        // F50 (2026-08-11): recording moved out of this window. The row is no longer driven as a
-        // line under a hand-typed reference point - it is derived from the painted sections, and
-        // that is done from the small always-on-top recorder so the map stays usable while driving.
+        // F50 (2026-08-11): recording moved out of this window, and this window cannot simply
+        // hide while it happens - it runs as ShowDialog inside a using (Controls.Designer.cs),
+        // so hiding ends the dialog and disposes the form (crash 2026-08-11). It also blocks the
+        // main screen while it is up, which is exactly what the driver needs back. So: close,
+        // let the MAIN form put up the recorder, and come back when recording is done.
+        public bool wantsRecorder;
+        public double recorderTreeMin;
+
         private void btnRecordRow_Click(object sender, EventArgs e)
         {
             if (mf == null || !mf.isJobStarted) { lblActiveOp.Text = "Open a field first"; return; }
 
-            double treeMin = (double)nudTreeMinDist.Value;
+            // nothing edited here may be lost across the handover
+            string nm = tboxName.Text.Trim();
+            int target = (mode == ViewMode.Browse) ? activeIdx : workIdx;
+            if (nm.Length > 0 && target >= 0 && target < rows.Count) rows[target].name = nm;
+            try { COrchard.SaveRows(FieldDir(), rows, trees); }
+            catch (Exception ex) { Log.EventWriter("Orchard SaveRows (record handover): " + ex); }
 
-            var rec = new FormOrchardRecord(mf, treeMin, rows);
-            rec.FormClosed += (s2, e2) =>
-            {
-                if (rec.isAccepted && rec.recordedRows.Count > 0)
-                {
-                    foreach (OrchRow r in rec.recordedRows) rows.Add(r);
-                    activeIdx = rows.Count - 1;
-                    workIdx = -1;
-                    SetMode(ViewMode.Browse);
-                    RefreshActiveName();
-                    lblActiveOp.Text = rec.recordedRows.Count + " row(s) recorded";
-                    // not persisted here on purpose: the driver comes back to this window to
-                    // tidy the rows up, and Accept is what writes Orchard.txt
-                }
-                Show();
-                oglSelf.Invalidate();
-            };
-
-            // top right of the main window, out of the way of the HUD
-            rec.Location = new System.Drawing.Point(
-                Math.Max(0, mf.Left + mf.Width - rec.Width - 24), mf.Top + 96);
-
-            Hide();
-            rec.Show(mf);
+            wantsRecorder = true;
+            recorderTreeMin = (double)nudTreeMinDist.Value;
+            Close();
         }
 
         // SIM 0729 t1: while a row is being recorded the driver is steering, not panning -
