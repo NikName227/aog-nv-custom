@@ -1841,4 +1841,13 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsOrchRecStatusIdle" xml:space="preserve">
     <value>Spremno - pritisni Novi red</value>
   </data>
+  <data name="gsOrchTrees" xml:space="preserve">
+    <value>stabala</value>
+  </data>
+  <data name="gsOrchRecPass" xml:space="preserve">
+    <value>Prolaz</value>
+  </data>
+  <data name="gsOrchRecDriveFirst" xml:space="preserve">
+    <value>Odvezi jednu stranu reda, pa drugu</value>
+  </data>
 </root>

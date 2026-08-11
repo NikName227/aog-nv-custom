@@ -5556,6 +5556,24 @@ public static string gsOrchPlanterBehind {
             }
         }
         
+        public static string gsOrchTrees {
+            get {
+                return ResourceManager.GetString("gsOrchTrees", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchRecPass {
+            get {
+                return ResourceManager.GetString("gsOrchRecPass", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchRecDriveFirst {
+            get {
+                return ResourceManager.GetString("gsOrchRecDriveFirst", resourceCulture);
+            }
+        }
+        
         public static string gsOrchTree {
             get {
                 return ResourceManager.GetString("gsOrchTree", resourceCulture);

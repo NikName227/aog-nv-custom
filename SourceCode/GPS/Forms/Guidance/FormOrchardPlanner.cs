@@ -1075,42 +1075,39 @@ namespace AgOpenGPS
             if (rec) { btnMarkTree.BringToFront(); UpdateKeyLabel(); }
         }
 
+        // F50 (2026-08-11): recording moved out of this window. The row is no longer driven as a
+        // line under a hand-typed reference point - it is derived from the painted sections, and
+        // that is done from the small always-on-top recorder so the map stays usable while driving.
         private void btnRecordRow_Click(object sender, EventArgs e)
         {
-            if (!recOn)
+            if (mf == null || !mf.isJobStarted) { lblActiveOp.Text = "Open a field first"; return; }
+
+            double treeMin = (double)nudTreeMinDist.Value;
+
+            var rec = new FormOrchardRecord(mf, treeMin, rows);
+            rec.FormClosed += (s2, e2) =>
             {
-                if (mf == null || !mf.isJobStarted) { lblActiveOp.Text = "Open a field first"; return; }
-                // fresh row buffer, then sampling fills it live
-                pts.Clear(); workIdx = -1; selIndex = -1;
-                tboxName.Text = "";
-                SetMode(ViewMode.Build);
-                recLastE = double.MaxValue;
-                recOn = true;
-                btnRecordRow.Text = gStr.gsOrchRecordStop;
-                btnRecordRow.BackColor = System.Drawing.Color.LightGreen;
-                hasLastTree = false;
-                ShowRecordingControls(true);
-                lblActiveOp.Text = "Recording row - drive along it";
-            }
-            else
-            {
-                recOn = false;
-                btnRecordRow.Text = gStr.gsOrchRecordRow;
-                btnRecordRow.BackColor = System.Drawing.Color.MistyRose;
-                ShowRecordingControls(false);
-                SaveRefPoint();
-                if (pts.Count >= 2)
+                if (rec.isAccepted && rec.recordedRows.Count > 0)
                 {
-                    EnsureWorkRow();
-                    rows[workIdx].source = RowSource.Recorded;
-                    BuildActiveRow();
-                    activeIdx = workIdx;
+                    foreach (OrchRow r in rec.recordedRows) rows.Add(r);
+                    activeIdx = rows.Count - 1;
+                    workIdx = -1;
                     SetMode(ViewMode.Browse);
                     RefreshActiveName();
-                    lblActiveOp.Text = "Row recorded (" + pts.Count + " pts)";
+                    lblActiveOp.Text = rec.recordedRows.Count + " row(s) recorded";
+                    // not persisted here on purpose: the driver comes back to this window to
+                    // tidy the rows up, and Accept is what writes Orchard.txt
                 }
-                else lblActiveOp.Text = "Recording too short - discarded";
-            }
+                Show();
+                oglSelf.Invalidate();
+            };
+
+            // top right of the main window, out of the way of the HUD
+            rec.Location = new System.Drawing.Point(
+                Math.Max(0, mf.Left + mf.Width - rec.Width - 24), mf.Top + 96);
+
+            Hide();
+            rec.Show(mf);
         }
 
         // SIM 0729 t1: while a row is being recorded the driver is steering, not panning -

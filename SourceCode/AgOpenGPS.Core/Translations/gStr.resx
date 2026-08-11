@@ -2208,4 +2208,13 @@ USE AT OWN RISK.</value>
   <data name="gsOrchRecStatusIdle" xml:space="preserve">
     <value>Ready - press New row</value>
   </data>
+  <data name="gsOrchTrees" xml:space="preserve">
+    <value>trees</value>
+  </data>
+  <data name="gsOrchRecPass" xml:space="preserve">
+    <value>Pass</value>
+  </data>
+  <data name="gsOrchRecDriveFirst" xml:space="preserve">
+    <value>Drive one side of the row, then the other</value>
+  </data>
 </root>
