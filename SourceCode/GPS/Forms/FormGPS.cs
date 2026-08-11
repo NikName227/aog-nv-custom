@@ -279,6 +279,12 @@ namespace AgOpenGPS
         /// </summary>
         public readonly List<OrchRow> orchRows = new List<OrchRow>();
 
+        /// <summary>
+        /// NV custom F50 (2026-08-11) - records an orchard row from the painted sections while
+        /// the small recorder window is open. Idle (isArmed = false) unless that window is up.
+        /// </summary>
+        public COrchardRecorder orchRec;
+
         /// <summary>NV custom F50 - "implement too wide for this inter-row" alert, "" = fits</summary>
         public string orchardWarn = "";
 
@@ -463,6 +469,8 @@ namespace AgOpenGPS
             {
                 new CPatches(this)
             };
+
+            orchRec = new COrchardRecorder(this);
 
             //our NMEA parser
             pn = new CNMEA(this);

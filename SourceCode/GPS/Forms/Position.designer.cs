@@ -1241,6 +1241,10 @@ namespace AgOpenGPS
             //calculate lookahead at full speed, no sentence misses
             CalculateSectionLookAhead(toolPos.northing, toolPos.easting, cosSectionHeading, sinSectionHeading);
 
+            //NV custom F50: while the orchard recorder window is open, sample the outer edges
+            //of the painted strip - the row is built from them later (COrchardRecorder)
+            orchRec?.Sample();
+
             //To prevent drawing high numbers of triangles, determine and test before drawing vertex
             sectionTriggerDistance = glm.Distance(pn.fix, prevSectionPos);
             contourTriggerDistance = glm.Distance(pn.fix, prevContourPos);
