@@ -5592,6 +5592,30 @@ public static string gsOrchPlanterBehind {
             }
         }
         
+        public static string gsOrchStateNew {
+            get {
+                return ResourceManager.GetString("gsOrchStateNew", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchStateRecording {
+            get {
+                return ResourceManager.GetString("gsOrchStateRecording", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchStatePause {
+            get {
+                return ResourceManager.GetString("gsOrchStatePause", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchStateSaved {
+            get {
+                return ResourceManager.GetString("gsOrchStateSaved", resourceCulture);
+            }
+        }
+        
         public static string gsOrchTree {
             get {
                 return ResourceManager.GetString("gsOrchTree", resourceCulture);

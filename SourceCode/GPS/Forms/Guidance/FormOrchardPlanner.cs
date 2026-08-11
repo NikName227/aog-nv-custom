@@ -149,9 +149,6 @@ namespace AgOpenGPS
             var loaded = COrchard.LoadRows(FieldDir(), trees);
             foreach (var r in loaded) rows.Add(r);
 
-            // rows recorded while this window was closed (F50 recorder handover)
-            foreach (var r in mf.orchStagedRows) rows.Add(r);
-            mf.orchStagedRows.Clear();
 
             redraw.Interval = 250;
             redraw.Tick += (s, e) => oglSelf.Invalidate();
@@ -1488,7 +1485,10 @@ namespace AgOpenGPS
             //F50: the point tools belong to row editing, hence the Build gate - but the steer
             //limit borrows them, and it can be opened from Browse. Without this a row-mode change
             //made mid-edit would switch them off under the driver's hand.
-            bool pointTools = build || limitEditMode;
+            //F50 (2026-08-11): tree editing lives in Browse, and it needs the very same two
+            //buttons - without this the Add/Delete pair is greyed out and trees can only be
+            //dragged, never added or removed.
+            bool pointTools = build || limitEditMode || treeEditMode;
             btnAddPoint.Enabled = pointTools;
             btnDeletePoint.Enabled = pointTools;
             btnPoint.Enabled = build;
@@ -1550,7 +1550,15 @@ namespace AgOpenGPS
                 ResetAddStage();
                 selIndex = -1;
                 SetPointMode(PointEdit.Off);
+                //the point tools serve the trees while this mode is on
+                btnAddPoint.Enabled = btnDeletePoint.Enabled = true;
                 lblActiveOp.Text = gStr.gsOrchEditTrees;
+            }
+            else
+            {
+                ResetAddStage();
+                btnDeletePoint.Checked = false;
+                btnAddPoint.Enabled = btnDeletePoint.Enabled = (mode == ViewMode.Build) || limitEditMode;
             }
             oglSelf.Invalidate();
         }

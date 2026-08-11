@@ -2226,4 +2226,16 @@ USE AT OWN RISK.</value>
   <data name="gsOrchAddedAtEnd" xml:space="preserve">
     <value>Point added at the end</value>
   </data>
+  <data name="gsOrchStateNew" xml:space="preserve">
+    <value>New</value>
+  </data>
+  <data name="gsOrchStateRecording" xml:space="preserve">
+    <value>Recording</value>
+  </data>
+  <data name="gsOrchStatePause" xml:space="preserve">
+    <value>Pause</value>
+  </data>
+  <data name="gsOrchStateSaved" xml:space="preserve">
+    <value>Saved</value>
+  </data>
 </root>

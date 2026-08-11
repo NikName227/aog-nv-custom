@@ -616,9 +616,8 @@ namespace AgOpenGPS
             var rec = new FormOrchardRecord(this, treeMin, orchRows);
             rec.FormClosed += (s2, e2) =>
             {
-                if (rec.isAccepted)
-                    foreach (OrchRow r in rec.recordedRows) orchStagedRows.Add(r);
-
+                // nothing to hand over any more: the recorder writes each row to Orchard.txt the
+                // moment it is finished, and the planner reads that file when it opens
                 orchRecWin = null;
 
                 // NOT straight from here: OpenOrchardPlanner goes modal, and a modal loop started

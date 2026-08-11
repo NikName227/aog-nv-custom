@@ -30,8 +30,19 @@ namespace AgOpenGPS
 
         private Button btnCancel, btnOk, btnSection, btnRow, btnDiscard, btnTree, btnDelTree, btnKey;
         private bool capturingKey;
+
+        // the field as it stands on disk: rows already saved plus the loose trees that live in
+        // the same file - both are needed for every save, or saving would drop the trees
+        private readonly List<OrchRow> savedRows = new List<OrchRow>();
+        private readonly List<vec2> looseTrees = new List<vec2>();
+
+        // the name is reserved when the row is started, so the status line and the saved row
+        // always show the same number
+        private string pendingName = "";
+        private DateTime savedUntil = DateTime.MinValue;
+        private string savedName = "";
         private NumericUpDown nudTreeMin;
-        private Label lblTreeMin, lblStatus;
+        private Label lblTreeMin, lblStatus, lblState;
         private readonly Timer tick = new Timer();
 
         public FormOrchardRecord(FormGPS _f, double treeMinDist, List<OrchRow> existingRows)
@@ -43,6 +54,8 @@ namespace AgOpenGPS
             // every row starts on a clean map: the strips of this row are the only thing on it
             // (decision 2026-08-11 - rows are never recorded while the field is being worked)
             mf.DeleteAppliedArea();
+
+            LoadFieldRows();
 
             mf.orchRec.isArmed = true;
             mf.orchRec.StartRow();
@@ -76,7 +89,7 @@ namespace AgOpenGPS
             ControlBox = false;
             StartPosition = FormStartPosition.Manual;
             TopMost = true;
-            ClientSize = new Size(300, 348);
+            ClientSize = new Size(300, 392);
             BackColor = Color.WhiteSmoke;
 
             var big = new Font("Tahoma", 12F, FontStyle.Bold);
@@ -88,27 +101,27 @@ namespace AgOpenGPS
             btnOk = Btn("OK", 166, 8, 60, 40, mid, Color.PaleGreen);
             btnOk.Click += (s, e) => Finish(true);
 
-            btnSection = Btn(gStr.gsOrchRecSection + ": OFF", 8, 56, 140, 46, mid, Color.Gainsboro);
+            btnSection = Btn(gStr.gsOrchRecSection + ": OFF", 8, 100, 140, 46, mid, Color.Gainsboro);
             btnSection.Click += BtnSection_Click;
 
-            btnRow = Btn(gStr.gsOrchRecNewRow, 156, 56, 136, 46, mid, Color.Gainsboro);
+            btnRow = Btn(gStr.gsOrchRecNewRow, 156, 100, 136, 46, mid, Color.Gainsboro);
             btnRow.Click += BtnRow_Click;
 
-            btnDiscard = Btn(gStr.gsOrchRecDiscardRow, 156, 108, 136, 40, mid, Color.MistyRose);
+            btnDiscard = Btn(gStr.gsOrchRecDiscardRow, 156, 152, 136, 40, mid, Color.MistyRose);
             btnDiscard.Click += BtnDiscard_Click;
 
             lblTreeMin = new Label
             {
                 Text = gStr.gsOrchTreeMinDist,
                 Font = new Font("Tahoma", 9F),
-                Location = new Point(8, 116),
+                Location = new Point(8, 160),
                 Size = new Size(96, 32),
                 TextAlign = ContentAlignment.MiddleLeft
             };
 
             nudTreeMin = new NumericUpDown
             {
-                Location = new Point(104, 112),
+                Location = new Point(104, 156),
                 Size = new Size(44, 30),
                 Font = new Font("Tahoma", 10F),
                 DecimalPlaces = 1,
@@ -118,31 +131,42 @@ namespace AgOpenGPS
                 Value = (decimal)Math.Min(30, Math.Max(0.5, treeMinDist))
             };
 
-            btnDelTree = Btn(gStr.gsOrchDeleteLastTree, 8, 156, 284, 40, mid, Color.Gainsboro);
+            btnDelTree = Btn(gStr.gsOrchDeleteLastTree, 8, 200, 284, 40, mid, Color.Gainsboro);
             btnDelTree.Click += (s, e) => { mf.orchRec.DeleteLastTree(); UpdateUi(); };
 
-            btnKey = Btn("", 8, 202, 284, 30, new Font("Tahoma", 9F, FontStyle.Bold), Color.Gainsboro);
+            btnKey = Btn("", 8, 246, 284, 30, new Font("Tahoma", 9F, FontStyle.Bold), Color.Gainsboro);
             btnKey.Click += BtnKey_Click;
 
-            btnTree = Btn(gStr.gsOrchTree, 8, 238, 284, 76, big, Color.Khaki);
+            btnTree = Btn(gStr.gsOrchTree, 8, 282, 284, 76, big, Color.Khaki);
             btnTree.Click += (s, e) => { mf.orchRec.MarkTree(); UpdateUi(); };
+
+            // which row is being recorded, in two lines - empty until a row is started
+            lblState = new Label
+            {
+                Text = "",
+                Font = new Font("Tahoma", 11F, FontStyle.Bold),
+                Location = new Point(8, 52),
+                Size = new Size(284, 44),
+                TextAlign = ContentAlignment.MiddleCenter
+            };
 
             lblStatus = new Label
             {
                 Text = gStr.gsOrchRecStatusIdle,
                 Font = new Font("Tahoma", 9F),
-                Location = new Point(8, 318),
+                Location = new Point(8, 362),
                 Size = new Size(284, 24),
                 TextAlign = ContentAlignment.MiddleLeft
             };
 
             Controls.AddRange(new Control[] { btnCancel, btnOk, btnSection, btnRow, btnDiscard,
-                lblTreeMin, nudTreeMin, btnDelTree, btnKey, btnTree, lblStatus });
+                lblTreeMin, nudTreeMin, btnDelTree, btnKey, btnTree, lblStatus, lblState });
 
             // no title bar to grab, so the window is dragged by its own background - and by the
             // labels, which would otherwise be dead spots (field call 2026-08-11)
             MouseDown += Drag_MouseDown;
             lblStatus.MouseDown += Drag_MouseDown;
+            lblState.MouseDown += Drag_MouseDown;
             lblTreeMin.MouseDown += Drag_MouseDown;
 
             UpdateKeyLabel();
@@ -179,16 +203,14 @@ namespace AgOpenGPS
             if (!mf.orchRec.HasData)
             {
                 mf.orchRec.StartRow();
+                savedUntil = DateTime.MinValue;
+                pendingName = RowName();          // shown in the state line from now on
                 lblStatus.Text = gStr.gsOrchRecDriveFirst;
                 UpdateUi();
                 return;
             }
 
-            var all = new List<OrchRow>(existing);
-            all.AddRange(recordedRows);
-
-            OrchRow row = mf.orchRec.BuildRow(COrchard.NextRowName(all),
-                                              (double)nudTreeMin.Value, out string err);
+            OrchRow row = mf.orchRec.BuildRow(RowName(), (double)nudTreeMin.Value, out string err);
             if (row == null)
             {
                 lblStatus.Text = err;
@@ -196,8 +218,14 @@ namespace AgOpenGPS
             }
 
             recordedRows.Add(row);
+            SaveRow(row);                 // straight to Orchard.txt - the planner is not needed
             mf.DeleteAppliedArea();       // clean map for the next row, as asked 2026-08-11
             mf.orchRec.StartRow();
+
+            savedName = row.name;
+            savedUntil = DateTime.Now.AddSeconds(5);
+            pendingName = "";             // the next row picks the next free number
+
             lblStatus.Text = row.name + " OK (" + row.trees.Count + " " + gStr.gsOrchTrees + ")";
             UpdateUi();
         }
@@ -213,11 +241,12 @@ namespace AgOpenGPS
         private void Finish(bool accept)
         {
             isAccepted = accept;
+            // rows are written the moment they are finished, so cancelling only means "stop
+            // recording" - the unfinished row goes, the saved ones stay (decision 2026-08-11)
             if (!accept)
             {
                 mf.DeleteAppliedArea();
                 mf.orchRec.DiscardRow();
-                recordedRows.Clear();
             }
             Close();
         }
@@ -228,6 +257,45 @@ namespace AgOpenGPS
             tick.Dispose();
             mf.orchRec.isArmed = false;
             base.OnFormClosed(e);
+        }
+
+        // ── Field file ────────────────────────────────────────────────────
+        // The row is saved as soon as it is finished. Anything else means a driver who closes
+        // the planner with the X loses the row he just drove (call 2026-08-11).
+
+        private string FieldDir() => mf?.AppCore?.ActiveField?.FieldDirectory?.FullName;
+
+        private void LoadFieldRows()
+        {
+            savedRows.Clear();
+            looseTrees.Clear();
+            try
+            {
+                var loaded = COrchard.LoadRows(FieldDir(), looseTrees);
+                foreach (OrchRow r in loaded) savedRows.Add(r);
+            }
+            catch { }
+        }
+
+        private void SaveRow(OrchRow row)
+        {
+            savedRows.Add(row);
+            try { COrchard.SaveRows(FieldDir(), savedRows, looseTrees); }
+            catch { }
+
+            // and straight onto the map, without waiting for the planner
+            mf.orchRows.Clear();
+            foreach (OrchRow r in savedRows) mf.orchRows.Add(new OrchRow(r));
+        }
+
+        /// <summary>Name of the row being recorded - reserved on New row so the status line and
+        /// the saved row cannot disagree.</summary>
+        private string RowName()
+        {
+            if (pendingName.Length > 0) return pendingName;
+
+            var all = new List<OrchRow>(savedRows);
+            return COrchard.NextRowName(all);
         }
 
         // ── Dragging ──────────────────────────────────────────────────────
@@ -304,12 +372,43 @@ namespace AgOpenGPS
             btnRow.BackColor = has ? Color.Khaki : Color.Gainsboro;
             btnDiscard.Enabled = has;
 
+            UpdateStateLine(has);
+
             if (has)
             {
                 lblStatus.Text = gStr.gsOrchRecPass + " " + mf.orchRec.PassCount
                     + " - " + mf.orchRec.CurrentLength().ToString("0") + " m, "
                     + mf.orchRec.treeMarks.Count + " " + gStr.gsOrchTrees;
             }
+        }
+
+        /// <summary>
+        /// Two lines above the section button: what the recorder is doing and to which row.
+        /// Empty until a row is started; "Saved / Row N" holds for five seconds after finishing
+        /// and then rolls straight into "New / Row N+1".
+        /// </summary>
+        private void UpdateStateLine(bool has)
+        {
+            if (DateTime.Now < savedUntil)
+            {
+                lblState.Text = gStr.gsOrchStateSaved + Environment.NewLine + savedName;
+                return;
+            }
+
+            if (savedUntil != DateTime.MinValue && DateTime.Now >= savedUntil)
+            {
+                // the five seconds are up - the next row is already the live one
+                savedUntil = DateTime.MinValue;
+                pendingName = RowName();
+            }
+
+            if (pendingName.Length == 0 && !has) { lblState.Text = ""; return; }
+
+            string what = has
+                ? (mf.manualBtnState == btnStates.On ? gStr.gsOrchStateRecording : gStr.gsOrchStatePause)
+                : gStr.gsOrchStateNew;
+
+            lblState.Text = what + Environment.NewLine + RowName();
         }
     }
 }

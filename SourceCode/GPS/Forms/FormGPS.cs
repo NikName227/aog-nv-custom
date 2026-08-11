@@ -285,12 +285,6 @@ namespace AgOpenGPS
         /// </summary>
         public COrchardRecorder orchRec;
 
-        /// <summary>
-        /// NV custom F50 - rows the recorder window built while the planner was closed. The
-        /// planner drains this list when it reopens, so a recorded row survives the handover
-        /// without going through the field file first.
-        /// </summary>
-        public readonly List<OrchRow> orchStagedRows = new List<OrchRow>();
 
         /// <summary>NV custom F50 - the recorder window while it is open, so the main form can
         /// pass the trigger key to it (the window itself never takes focus).</summary>
