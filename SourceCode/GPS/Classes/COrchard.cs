@@ -1403,23 +1403,40 @@ namespace AgOpenGPS
         }
 
         /// <summary>
-        /// Centre-weighted moving average over "window" points (same idea as Smart AB's smooth,
-        /// on vec2 control points). The first and last half-window keep their place, so the row
-        /// ends do not creep.
+        /// Moving average over the row's control points. ONLY the first and the last point are
+        /// anchored (call 2026-08-11) - every point in between moves, with a window that narrows
+        /// towards the ends, so the ends cannot creep and nothing sits untouched behind them.
+        ///
+        /// The old version kept the whole first and last half-window in place, and skipped the
+        /// filtering altogether when the window was wider than the row had points - which is why
+        /// SMALLER values appeared to smooth more: the big ones quietly did nothing. The window is
+        /// now clamped to what the row can carry, so the largest value is the strongest smooth.
+        ///
+        /// Smart AB has its own smoothing over the dense curve and is deliberately left alone.
         /// </summary>
         public static List<vec2> SmoothPoints(List<vec2> pts, int window)
         {
             var outPts = new List<vec2>();
             if (pts == null) return outPts;
             outPts.AddRange(pts);
-            if (window < 2 || pts.Count < window) return outPts;
+            if (window < 2 || pts.Count < 3) return outPts;
 
             int half = window / 2;
-            for (int i = half; i < pts.Count - half; i++)
+            int maxHalf = (pts.Count - 1) / 2;
+            if (half > maxHalf) half = maxHalf;
+            if (half < 1) return outPts;
+
+            int last = pts.Count - 1;
+            for (int i = 1; i < last; i++)
             {
+                // how many neighbours this point actually has on BOTH sides
+                int w = Math.Min(half, Math.Min(i, last - i));
+                if (w < 1) continue;
+
                 double e = 0, n = 0;
-                for (int j = -half; j < half; j++) { e += pts[i + j].easting; n += pts[i + j].northing; }
-                outPts[i] = new vec2(e / window, n / window);
+                for (int j = -w; j <= w; j++) { e += pts[i + j].easting; n += pts[i + j].northing; }
+                int cnt = 2 * w + 1;
+                outPts[i] = new vec2(e / cnt, n / cnt);
             }
             return outPts;
         }
