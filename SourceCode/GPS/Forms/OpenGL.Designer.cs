@@ -426,6 +426,7 @@ namespace AgOpenGPS
                     //F50 (SIM 0730): the trees of the orchard rows - a mapped orchard has to be
                     //visible on the main map too, not only inside the planner
                     if (orchRows.Count > 0) DrawOrchardTrees();
+                    if (orchRec != null && orchRec.isArmed) DrawOrchardTreeMarks();
 
                     //F50 planting: where every seedling goes, and what is already planted
                     if (planting.IsOn) DrawPlantSpots();
@@ -2174,6 +2175,24 @@ namespace AgOpenGPS
                 for (int p = 0; p < c.Count; p++) GL.Vertex3(c[p].easting, c[p].northing, 0);
                 GL.End();
             }
+        }
+
+        /// <summary>
+        /// F50 (2026-08-11): the marks dropped while a row is being recorded. Without them the
+        /// driver presses TREE and sees nothing happen. Brighter green than a saved tree, because
+        /// a mark is not a tree yet - it becomes one when the row is finished.
+        /// </summary>
+        private void DrawOrchardTreeMarks()
+        {
+            var marks = orchRec.treeMarks;
+            if (marks.Count == 0) return;
+
+            GL.Color3(0.35f, 0.95f, 0.35f);
+            GL.PointSize(10f);
+            GL.Begin(PrimitiveType.Points);
+            for (int i = 0; i < marks.Count; i++)
+                GL.Vertex3(marks[i].pos.easting, marks[i].pos.northing, 0);
+            GL.End();
         }
 
         //F50 (SIM 0730): trees that belong to the rows (mapped by driving, imported from KML).

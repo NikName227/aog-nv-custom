@@ -140,13 +140,7 @@ namespace AgOpenGPS
             //SIM 0730: the reference point of this window - where the thing that measures sits
             //(a pole on the front, or the recorder's own offset). Not the implement geometry.
             var ts0 = Properties.ToolSettings.Default;
-            recSideRight = ts0.setTool_orchardRefLateral >= 0;
-            nudRecOffset.Value = NudClamp(nudRecOffset, (decimal)Math.Abs(ts0.setTool_orchardRefLateral));
-            refForward = ts0.setTool_orchardRefLong >= 0;
-            nudRefLong.Value = NudClamp(nudRefLong, (decimal)Math.Abs(ts0.setTool_orchardRefLong));
             nudTreeMinDist.Value = NudClamp(nudTreeMinDist, (decimal)ts0.setTool_orchardTreeMinDist);
-            btnRecSide.Text = recSideRight ? "R ->" : "<- L";
-            btnRefDir.Text = refForward ? "^ F" : "v B";
             UpdateKeyLabel();
 
             mf.CalculateMinMax();
@@ -155,8 +149,9 @@ namespace AgOpenGPS
             var loaded = COrchard.LoadRows(FieldDir(), trees);
             foreach (var r in loaded) rows.Add(r);
 
+
             redraw.Interval = 250;
-            redraw.Tick += (s, e) => { RecordSample(); if (recOn) CenterOnVehicle(); oglSelf.Invalidate(); };
+            redraw.Tick += (s, e) => oglSelf.Invalidate();
 
             this.KeyPreview = true;
             this.KeyDown += (s, e) =>
@@ -171,7 +166,9 @@ namespace AgOpenGPS
                     return;
                 }
 
-                if (recOn && (int)e.KeyCode == Properties.Settings.Default.setDisplay_orchardTreeKey
+                // the keypad trigger now serves tree editing in this window; while driving it
+                // is the recorder window that listens (F50 2026-08-11)
+                if (treeEditMode && (int)e.KeyCode == Properties.Settings.Default.setDisplay_orchardTreeKey
                     && Properties.Settings.Default.setDisplay_orchardTreeKey != 0)
                 {
                     MarkTree();
@@ -810,6 +807,13 @@ namespace AgOpenGPS
             {
                 int th = HitTestTree(e.X, e.Y);
                 int t = TargetRow();
+                if (AddActive && t >= 0)
+                {
+                    AddTreeSmart(t, ScreenToWorld(e.X, e.Y));
+                    dragIndex = -1; panning = false; moved = false;
+                    oglSelf.Invalidate();
+                    return;
+                }
                 if (btnDeletePoint.Checked && th >= 0 && t >= 0)
                 {
                     rows[t].trees.RemoveAt(th);
@@ -828,7 +832,8 @@ namespace AgOpenGPS
                 if (AddActive)
                 {
                     if (!genMode) EnsureWorkRow();   // in genMode the points are the reference line
-                    pts.Add(ScreenToWorld(e.X, e.Y));
+                    if (genMode) pts.Add(ScreenToWorld(e.X, e.Y));
+                    else AddPointSmart(ScreenToWorld(e.X, e.Y));
                     BuildActiveRow();
                     lblActiveOp.Text = genMode ? "Reference line: " + pts.Count + " points" : "Add point";
                 }
@@ -849,14 +854,96 @@ namespace AgOpenGPS
             oglSelf.Invalidate();
         }
 
-        // ── Record row by driving (phase 2) ───────────────────────────────
-        // Boundary-recorder style: every >=1 m of travel drops a point laterally
-        // OFFSET from the pivot (nudRecOffset m, btnRecSide side), so the tractor
-        // drives a safe line while the recorded row lands on the tree line.
-        private bool recOn;
-        private bool recSideRight = true;
-        private bool refForward = true;          // longitudinal direction of the reference point
-        private double recLastE = double.MaxValue, recLastN;
+        // ── Adding at the ends (F50 2026-08-11) ───────────────────────────
+        // Marking often starts a little late or stops a little early, so the ends need to be
+        // extendable. No new buttons (order 2026-08-10 20:27): the existing Add button does
+        // both jobs - a click ALONGSIDE the line goes into the nearest segment as before, a
+        // click BEYOND either end extends that end.
+
+        /// <summary>Add a control point: into the nearest segment, or onto the nearest end.</summary>
+        private void AddPointSmart(vec2 p)
+        {
+            if (pts.Count < 2) { pts.Add(p); BuildActiveRow(); return; }
+
+            int bestSeg = -1;
+            double bestDist = double.MaxValue;
+            for (int i = 1; i < pts.Count; i++)
+            {
+                double t = SegParam(pts[i - 1], pts[i], p, out double d);
+                if (t <= 0.02 || t >= 0.98) continue;      // that is an end, not a segment
+                if (d < bestDist) { bestDist = d; bestSeg = i; }
+            }
+
+            // 4 m is about how close a finger lands on the line it means to hit
+            if (bestSeg >= 0 && bestDist < 4.0)
+            {
+                pts.Insert(bestSeg, p);
+                lblActiveOp.Text = gStr.gsOrchAddedInSegment;
+            }
+            else
+            {
+                bool toStart = glm.Distance(p, pts[0]) < glm.Distance(p, pts[pts.Count - 1]);
+                if (toStart) pts.Insert(0, p); else pts.Add(p);
+                lblActiveOp.Text = toStart ? gStr.gsOrchAddedAtStart : gStr.gsOrchAddedAtEnd;
+            }
+            BuildActiveRow();
+        }
+
+        /// <summary>Add a tree, drop it onto the row line and keep the trees in row order.</summary>
+        private void AddTreeSmart(int rowIdx, vec2 p)
+        {
+            if (rowIdx < 0 || rowIdx >= rows.Count) return;
+            OrchRow r = rows[rowIdx];
+
+            r.trees.Add(p);
+            COrchard.ProjectTreesOntoRow(r);          // sideways onto the line
+            SortTreesAlongRow(r);                     // first/last stay first/last
+
+            selTree = -1;
+            lblActiveOp.Text = gStr.gsOrchTree + " " + r.trees.Count;
+        }
+
+        private static void SortTreesAlongRow(OrchRow r)
+        {
+            if (r.curve.Count < 2 || r.trees.Count < 2) return;
+            r.trees.Sort((a, b) => AlongCurve(r.curve, a).CompareTo(AlongCurve(r.curve, b)));
+        }
+
+        private static double AlongCurve(List<vec3> curve, vec2 p)
+        {
+            double best = double.MaxValue, bestAlong = 0, along = 0;
+            for (int i = 1; i < curve.Count; i++)
+            {
+                vec2 a = new vec2(curve[i - 1].easting, curve[i - 1].northing);
+                vec2 b = new vec2(curve[i].easting, curve[i].northing);
+                double t = SegParam(a, b, p, out double d);
+                double seg = glm.Distance(a, b);
+                if (d < best) { best = d; bestAlong = along + t * seg; }
+                along += seg;
+            }
+            return bestAlong;
+        }
+
+        /// <summary>Where p falls on segment a-b (0..1, clamped) and how far it is from it.</summary>
+        private static double SegParam(vec2 a, vec2 b, vec2 p, out double dist)
+        {
+            double dx = b.easting - a.easting, dy = b.northing - a.northing;
+            double len2 = dx * dx + dy * dy;
+            if (len2 < 0.0001) { dist = glm.Distance(a, p); return 0; }
+
+            double t = ((p.easting - a.easting) * dx + (p.northing - a.northing) * dy) / len2;
+            if (t < 0) t = 0; else if (t > 1) t = 1;
+
+            double qe = a.easting + t * dx, qn = a.northing + t * dy;
+            dist = Math.Sqrt((p.easting - qe) * (p.easting - qe) + (p.northing - qn) * (p.northing - qn));
+            return t;
+        }
+
+        // ── Record row ────────────────────────────────────────────────────
+        // F50 (2026-08-11): the row is recorded from the painted sections in the small
+        // always-on-top recorder (FormOrchardRecord), not from a hand-typed reference point.
+        // The lateral/longitudinal offset controls that used to live here are gone; the
+        // settings behind them stay in the profile only so older files still load.
 
         // tree editing (SIM 0730): the same point tools, aimed at the trees of the active row
         private bool treeEditMode;
@@ -957,46 +1044,22 @@ namespace AgOpenGPS
         private vec2 lastTree;
         private bool hasLastTree;
 
-        private void btnRecSide_Click(object sender, EventArgs e)
-        {
-            recSideRight = !recSideRight;
-            btnRecSide.Text = recSideRight ? "R ->" : "<- L";
-            SaveRefPoint();
-        }
-
-        private void btnRefDir_Click(object sender, EventArgs e)
-        {
-            refForward = !refForward;
-            btnRefDir.Text = refForward ? "^ F" : "v B";
-            SaveRefPoint();
-        }
-
         private static decimal NudClamp(NudlessNumericUpDown nud, decimal v)
             => v < nud.Minimum ? nud.Minimum : (v > nud.Maximum ? nud.Maximum : v);
 
         private void SaveRefPoint()
         {
             var ts = Properties.ToolSettings.Default;
-            ts.setTool_orchardRefLateral = (double)nudRecOffset.Value * (recSideRight ? 1 : -1);
-            ts.setTool_orchardRefLong = (double)nudRefLong.Value * (refForward ? 1 : -1);
             ts.setTool_orchardTreeMinDist = (double)nudTreeMinDist.Value;
             try { ts.Save(); } catch { }
         }
 
-        /// <summary>
-        /// The measuring point of this window: the pivot shifted sideways and along by the
-        /// reference offsets. A row line is recorded from it and a marked tree is placed on it,
-        /// so a pole on the front is described here instead of in the implement profile.
-        /// </summary>
+        /// <summary>Measuring point for a tree marked from this window: the pivot itself.
+        /// The offsets are gone - the recorder takes the centre of the painted strip.</summary>
         private vec2 RefPoint()
         {
             vec3 piv = mf.pivotAxlePos;
-            double lat = (double)nudRecOffset.Value * (recSideRight ? 1.0 : -1.0);
-            double lon = (double)nudRefLong.Value * (refForward ? 1.0 : -1.0);
-
-            return new vec2(
-                piv.easting + Math.Sin(piv.heading) * lon + Math.Sin(piv.heading + glm.PIBy2) * lat,
-                piv.northing + Math.Cos(piv.heading) * lon + Math.Cos(piv.heading + glm.PIBy2) * lat);
+            return new vec2(piv.easting, piv.northing);
         }
 
         // ── Mark a tree (SIM 0730) ────────────────────────────────────────
@@ -1075,42 +1138,28 @@ namespace AgOpenGPS
             if (rec) { btnMarkTree.BringToFront(); UpdateKeyLabel(); }
         }
 
+        // F50 (2026-08-11): recording moved out of this window, and this window cannot simply
+        // hide while it happens - it runs as ShowDialog inside a using (Controls.Designer.cs),
+        // so hiding ends the dialog and disposes the form (crash 2026-08-11). It also blocks the
+        // main screen while it is up, which is exactly what the driver needs back. So: close,
+        // let the MAIN form put up the recorder, and come back when recording is done.
+        public bool wantsRecorder;
+        public double recorderTreeMin;
+
         private void btnRecordRow_Click(object sender, EventArgs e)
         {
-            if (!recOn)
-            {
-                if (mf == null || !mf.isJobStarted) { lblActiveOp.Text = "Open a field first"; return; }
-                // fresh row buffer, then sampling fills it live
-                pts.Clear(); workIdx = -1; selIndex = -1;
-                tboxName.Text = "";
-                SetMode(ViewMode.Build);
-                recLastE = double.MaxValue;
-                recOn = true;
-                btnRecordRow.Text = gStr.gsOrchRecordStop;
-                btnRecordRow.BackColor = System.Drawing.Color.LightGreen;
-                hasLastTree = false;
-                ShowRecordingControls(true);
-                lblActiveOp.Text = "Recording row - drive along it";
-            }
-            else
-            {
-                recOn = false;
-                btnRecordRow.Text = gStr.gsOrchRecordRow;
-                btnRecordRow.BackColor = System.Drawing.Color.MistyRose;
-                ShowRecordingControls(false);
-                SaveRefPoint();
-                if (pts.Count >= 2)
-                {
-                    EnsureWorkRow();
-                    rows[workIdx].source = RowSource.Recorded;
-                    BuildActiveRow();
-                    activeIdx = workIdx;
-                    SetMode(ViewMode.Browse);
-                    RefreshActiveName();
-                    lblActiveOp.Text = "Row recorded (" + pts.Count + " pts)";
-                }
-                else lblActiveOp.Text = "Recording too short - discarded";
-            }
+            if (mf == null || !mf.isJobStarted) { lblActiveOp.Text = "Open a field first"; return; }
+
+            // nothing edited here may be lost across the handover
+            string nm = tboxName.Text.Trim();
+            int target = (mode == ViewMode.Browse) ? activeIdx : workIdx;
+            if (nm.Length > 0 && target >= 0 && target < rows.Count) rows[target].name = nm;
+            try { COrchard.SaveRows(FieldDir(), rows, trees); }
+            catch (Exception ex) { Log.EventWriter("Orchard SaveRows (record handover): " + ex); }
+
+            wantsRecorder = true;
+            recorderTreeMin = (double)nudTreeMinDist.Value;
+            Close();
         }
 
         // SIM 0729 t1: while a row is being recorded the driver is steering, not panning -
@@ -1122,28 +1171,6 @@ namespace AgOpenGPS
             vec3 piv = mf.pivotAxlePos;
             sX = (mf.fieldCenterX - piv.easting) / mf.maxFieldDistance;
             sY = (mf.fieldCenterY - piv.northing) / mf.maxFieldDistance;
-        }
-
-        private void RecordSample()
-        {
-            if (!recOn || mf == null || !mf.isJobStarted) return;
-
-            // the row line is recorded at the window's reference point (pole / recorder offset)
-            vec2 rp = RefPoint();
-            double e = rp.easting;
-            double n = rp.northing;
-
-            if (recLastE != double.MaxValue)
-            {
-                double de = e - recLastE, dn = n - recLastN;
-                //SIM 0730: half the sampling density - a metre apart was denser than the row
-                //shape needs and only made the filter work harder
-                if (de * de + dn * dn < 4.0) return;   // need >= 2 m of travel
-            }
-            recLastE = e; recLastN = n;
-
-            pts.Add(new vec2(e, n));
-            if (pts.Count >= 2) { EnsureWorkRow(); BuildActiveRow(); }
         }
 
         // ── Row build ─────────────────────────────────────────────────────
@@ -1458,7 +1485,10 @@ namespace AgOpenGPS
             //F50: the point tools belong to row editing, hence the Build gate - but the steer
             //limit borrows them, and it can be opened from Browse. Without this a row-mode change
             //made mid-edit would switch them off under the driver's hand.
-            bool pointTools = build || limitEditMode;
+            //F50 (2026-08-11): tree editing lives in Browse, and it needs the very same two
+            //buttons - without this the Add/Delete pair is greyed out and trees can only be
+            //dragged, never added or removed.
+            bool pointTools = build || limitEditMode || treeEditMode;
             btnAddPoint.Enabled = pointTools;
             btnDeletePoint.Enabled = pointTools;
             btnPoint.Enabled = build;
@@ -1520,7 +1550,15 @@ namespace AgOpenGPS
                 ResetAddStage();
                 selIndex = -1;
                 SetPointMode(PointEdit.Off);
+                //the point tools serve the trees while this mode is on
+                btnAddPoint.Enabled = btnDeletePoint.Enabled = true;
                 lblActiveOp.Text = gStr.gsOrchEditTrees;
+            }
+            else
+            {
+                ResetAddStage();
+                btnDeletePoint.Checked = false;
+                btnAddPoint.Enabled = btnDeletePoint.Enabled = (mode == ViewMode.Build) || limitEditMode;
             }
             oglSelf.Invalidate();
         }

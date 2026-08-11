@@ -309,6 +309,8 @@ namespace AgOpenGPS
             mf.worldGrid.BingMap = bingMap;
 
             BingMapStreamer streamer = new BingMapStreamer();
+            streamer.JpegQuality = CMapCapture.JpegQuality(
+                Properties.Settings.Default.setMap_captureHighQuality);
             streamer.TryWrite(bingMap, mf.AppCore.ActiveField.FieldDirectory);
         }
 
@@ -324,6 +326,32 @@ namespace AgOpenGPS
             if (cboxDrawMap.Checked)
             {
                 cboxDrawMap.Image = Properties.Resources.MappingOn;
+
+                // Once the field has a boundary this window uses the SAME capture as the Map
+                // App - framed by the field, at the resolution set there (2026-08-10).
+                // Before that it would overwrite a good background with a 692x388 screenshot
+                // of its own window.
+                if (CMapCapture.HasBoundary(mf))
+                {
+                    Cursor.Current = Cursors.WaitCursor;
+                    BingMap fieldMap = CMapCapture.CaptureField(mf, null, out string err, out bool tooLarge);
+                    Cursor.Current = Cursors.Default;
+
+                    if (fieldMap == null)
+                    {
+                        FormDialog.Show("BingMap Error",
+                            tooLarge ? "Map Too Large" : "Download failed - background kept",
+                            DialogSeverity.Error);
+                        Log.EventWriter("BingMap, field capture failed: " + err);
+                        cboxDrawMap.Checked = mf.worldGrid.HasBingMap;
+                        cboxDrawMap.Image = mf.worldGrid.HasBingMap
+                            ? Properties.Resources.MappingOn : Properties.Resources.MappingOff;
+                        return;
+                    }
+                    SetAndSaveBingMap(fieldMap);
+                    return;
+                }
+
                 BingMap bingMap = CreateBingMap();
                 if (bingMap == null)
                 {

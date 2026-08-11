@@ -3,6 +3,7 @@ using AgOpenGPS.Core.Models;
 using AgOpenGPS.Core.Translations;
 using AgOpenGPS.Forms;
 using GMap.NET;
+using GMap.NET.MapProviders;
 using GMap.NET.WindowsForms;
 using System;
 using System.Collections.Generic;
@@ -25,6 +26,7 @@ namespace AgOpenGPS
     {
         private readonly FormGPS mf;
 
+        private readonly GMapOverlay backPicOverlay = new GMapOverlay("backpic");
         private readonly GMapOverlay boundaryOverlay = new GMapOverlay("bnd");
         private readonly GMapOverlay headlandOverlay = new GMapOverlay("headland");
         private readonly GMapOverlay parcelOverlay = new GMapOverlay("parcels");
@@ -149,16 +151,22 @@ namespace AgOpenGPS
             lblMinRS.Text = gStr.gsMinTurnRadius;
             lblTolerance.Text = gStr.gsTriggerTolBefore;
             lblToleranceAfter.Text = gStr.gsTriggerTolAfter;
+            lblBndOffset.Text = gStr.gsBndOffsetExtra;
             lblOvershootU.Text = gStr.gsOvershootDist;
         }
 
         private void FormTurnLine_Load(object sender, EventArgs e)
         {
-            // base map = same WMS as the Map App window (shared config)
-            string wmsUrl = Properties.Settings.Default.setMap_customWmsUrl;
-            GeoportalWmsProvider.Instance.SetBaseUrl(
-                string.IsNullOrWhiteSpace(wmsUrl) ? GeoportalWmsProvider.DefaultBaseUrl : wmsUrl);
-            gMapControl.MapProvider = GeoportalWmsProvider.Instance;
+            // No live tiles here at all (field report 2026-08-10). Drawing the captured field
+            // background ON TOP of live tiles showed two different photographs of the same
+            // ground at once, and the turn plan needs a boundary anyway - so this window shows
+            // exactly what Smart AB shows: the captured picture around the field, nothing else.
+            // No background captured yet = black.
+            gMapControl.MapProvider = GMapProviders.EmptyProvider;
+            gMapControl.EmptyMapBackground = Color.Black;
+            gMapControl.EmptyTileColor = Color.Black;
+            gMapControl.EmptyTileBorders = new Pen(Color.Black);
+            gMapControl.ShowTileGridLines = false;
 
             gMapControl.Position = new PointLatLng(
                 mf.AppModel.CurrentLatLon.Latitude,
@@ -166,6 +174,13 @@ namespace AgOpenGPS
             gMapControl.Zoom = 16;
             gMapControl.ShowCenter = false;
             gMapControl.DragButton = MouseButtons.Left;
+
+            // The captured field background goes UNDER everything else: once it exists it is
+            // sharper than the live tiles this window can pull (field report 2026-08-10 - the
+            // map here showed none of the resolution that had just been downloaded). Outside
+            // the captured box the live tiles still show, so the surroundings stay visible.
+            gMapControl.Overlays.Add(backPicOverlay);
+            RebuildBackPicOverlay();
 
             gMapControl.Overlays.Add(parcelOverlay);
             gMapControl.Overlays.Add(boundaryOverlay);
@@ -311,6 +326,25 @@ namespace AgOpenGPS
             LoadParcelsFromCache();
             UpdatePreview();
             UpdateWizard();
+        }
+
+        /// <summary>
+        /// Put the field's captured background under the map, in its true place. Called on
+        /// open; silently does nothing when the field has no background yet.
+        /// </summary>
+        private void RebuildBackPicOverlay()
+        {
+            backPicOverlay.Markers.Clear();
+            if (mf == null || !mf.worldGrid.HasBingMap) return;
+
+            var bm = mf.worldGrid.BingMap;
+            if (bm?.Bitmap == null) return;
+
+            //the stored box is in local plane metres - back to lat/lon for the map
+            PointLatLng tl = LocalToLatLng(bm.GeoBoundingBox.MinEasting, bm.GeoBoundingBox.MaxNorthing);
+            PointLatLng br = LocalToLatLng(bm.GeoBoundingBox.MaxEasting, bm.GeoBoundingBox.MinNorthing);
+
+            backPicOverlay.Markers.Add(new BackPicMarker(bm.Bitmap, tl, br));
         }
 
         // fit-to-field zoom: bbox of the fence + a margin, instead of a fixed deep zoom
@@ -1053,6 +1087,8 @@ namespace AgOpenGPS
             mf.tnl.BuildEffectiveLines();
 
             SaveTurnParams();
+            paramsDirty = false;
+            UpdateApplyButton();
 
             mf.plan.isFollowPlan = activateState == 2;   // 3rd state = follow plan
             UpdateZoneOrderLabel();
@@ -2151,6 +2187,10 @@ namespace AgOpenGPS
             pnlK.Visible = (p == pnlK);
             pnlU.Visible = (p == pnlU);
             pnlRS.Visible = (p == pnlRS);
+
+            // Apply sits below the parameters, which is inside the style panels' band -
+            // the panels are opaque, so it has to stay on top of whichever one is shown.
+            btnApplyParams.BringToFront();
         }
 
         private void btnStyleK_CheckedChanged(object sender, EventArgs e)
@@ -2181,34 +2221,102 @@ namespace AgOpenGPS
 
         private void LoadTurnParams()
         {
-            var s = Properties.Settings.Default;
-            SetNud(nudExitK, s.set_turnK_exitRadius);
-            SetNud(nudDistK, s.set_turnK_entryStartDist);
-            SetNud(nudAngleK, s.set_turnK_entryAngle);
-            SetNud(nudTransK, s.set_turnK_transitionRadius);
-            SetNud(nudOutU, s.set_turnU_exitRadius);
-            SetNud(nudInU, s.set_turnU_entryRadius);
-            SetNud(nudTolerance, s.set_turnTriggerTolerance);
-            SetNud(nudToleranceAfter, s.set_turnTriggerToleranceAfter);
-            SetNud(nudOvershootU, s.set_turnU_overshootDist);
+            isLoadingParams = true;
+            //F51: turn shape follows the VEHICLE profile, the tolerances and the extra
+            //boundary offset follow the IMPLEMENT profile - the tablet is not the machine
+            var v = Properties.VehicleSettings.Default;
+            var t = Properties.ToolSettings.Default;
+            SetNud(nudExitK, v.setTurn_K_exitRadius);
+            SetNud(nudDistK, v.setTurn_K_entryStartDist);
+            SetNud(nudAngleK, v.setTurn_K_entryAngle);
+            SetNud(nudTransK, v.setTurn_K_transitionRadius);
+            SetNud(nudOutU, v.setTurn_U_exitRadius);
+            SetNud(nudInU, v.setTurn_U_entryRadius);
+            SetNud(nudOvershootU, v.setTurn_U_overshootDist);
+            SetNud(nudTolerance, t.setTurn_triggerTolerance);
+            SetNud(nudToleranceAfter, t.setTurn_triggerToleranceAfter);
+            SetNud(nudBndOffset, t.setTurn_boundaryOffset);
 
             btnStyleK.Checked = true;
             ShowStyle(pnlK);
+
+            isLoadingParams = false;
+            paramsDirty = false;
+            UpdateApplyButton();
         }
+
+        // ── Apply (2026-08-10) ────────────────────────────────────────────
+        // The parameters on this tab only reached the machine through OK - and OK closes the
+        // window, so tuning one meant reopening it every time. Apply commits them and leaves
+        // the window open. It stays greyed out until something actually changes, so it also
+        // tells you at a glance whether there is anything pending.
+        private bool paramsDirty;
+
+        private void MarkParamsDirty()
+        {
+            if (isLoadingParams) return;
+            paramsDirty = true;
+            UpdateApplyButton();
+        }
+
+        private void UpdateApplyButton()
+        {
+            btnApplyParams.Enabled = paramsDirty;
+            btnApplyParams.BackColor = paramsDirty
+                ? System.Drawing.Color.Gold
+                : System.Drawing.Color.Gainsboro;
+        }
+
+        private void btnApplyParams_Click(object sender, EventArgs e)
+        {
+            SaveTurnParams();
+            mf.tnl.BuildEffectiveLines();   //the drawn wheel limit moves with the offset
+            paramsDirty = false;
+            UpdateApplyButton();
+            gMapControl.Invalidate();
+        }
+
+        /// <summary>Hook every parameter field so editing one lights up Apply.</summary>
+        private void WireParamChangeTracking()
+        {
+            var nuds = new System.Windows.Forms.NumericUpDown[]
+            {
+                nudExitK, nudDistK, nudAngleK, nudTransK, nudOutU, nudInU,
+                nudOvershootU, nudTolerance, nudToleranceAfter, nudBndOffset
+            };
+            foreach (var n in nuds) n.ValueChanged += (s, e) => MarkParamsDirty();
+
+            paramsDirty = false;
+            UpdateApplyButton();
+        }
+
+        private bool isLoadingParams;
 
         private void SaveTurnParams()
         {
-            var s = Properties.Settings.Default;
-            s.set_turnK_exitRadius = (double)nudExitK.Value;
-            s.set_turnK_entryStartDist = (double)nudDistK.Value;
-            s.set_turnK_entryAngle = (double)nudAngleK.Value;
-            s.set_turnK_transitionRadius = (double)nudTransK.Value;
-            s.set_turnU_exitRadius = (double)nudOutU.Value;
-            s.set_turnU_entryRadius = (double)nudInU.Value;
-            s.set_turnTriggerTolerance = (double)nudTolerance.Value;
-            s.set_turnTriggerToleranceAfter = (double)nudToleranceAfter.Value;
-            s.set_turnU_overshootDist = (double)nudOvershootU.Value;
-            s.Save();
+            var v = Properties.VehicleSettings.Default;
+            v.setTurn_K_exitRadius = (double)nudExitK.Value;
+            v.setTurn_K_entryStartDist = (double)nudDistK.Value;
+            v.setTurn_K_entryAngle = (double)nudAngleK.Value;
+            v.setTurn_K_transitionRadius = (double)nudTransK.Value;
+            v.setTurn_U_exitRadius = (double)nudOutU.Value;
+            v.setTurn_U_entryRadius = (double)nudInU.Value;
+            v.setTurn_U_overshootDist = (double)nudOvershootU.Value;
+            v.Save();
+
+            var t = Properties.ToolSettings.Default;
+            double oldOffset = t.setTurn_boundaryOffset;
+            t.setTurn_triggerTolerance = (double)nudTolerance.Value;
+            t.setTurn_triggerToleranceAfter = (double)nudToleranceAfter.Value;
+            t.setTurn_boundaryOffset = (double)nudBndOffset.Value;
+            t.Save();
+
+            //the dashed wheel limit is drawn with this offset baked in - redraw it at once
+            if (Math.Abs(oldOffset - t.setTurn_boundaryOffset) > 0.001)
+            {
+                mf.tnl.BuildEffectiveLines();
+                mf.yt.ReloadTurnSettings();
+            }
         }
 
         // right-hand diagram area inside a style panel (left side holds the number inputs + steppers)
@@ -2231,7 +2339,10 @@ namespace AgOpenGPS
             MakeKeypadField(nudOvershootU, 0.5);
             MakeKeypadField(nudTolerance, 0.2);
             MakeKeypadField(nudToleranceAfter, 0.2);
+            MakeKeypadField(nudBndOffset, 0.1);
             MakeKeypadField(nudZones, 1, zoneSteppers);   //wizard step 2 shows/hides these
+
+            WireParamChangeTracking();
         }
 
         private void MakeKeypadField(System.Windows.Forms.NumericUpDown nud, double step,

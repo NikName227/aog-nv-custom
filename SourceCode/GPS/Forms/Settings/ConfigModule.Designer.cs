@@ -398,7 +398,8 @@ namespace AgOpenGPS
             if (bob < 0.2) bob = 0.2;
             nudTurnDistanceFromBoundary.Value = (decimal)(Math.Round(bob, 2));
 
-            bob = Properties.Settings.Default.set_youTurnRadius * mf.m2FtOrM;
+            //F51: the turn radius belongs to the vehicle profile
+            bob = Properties.VehicleSettings.Default.setTurn_youTurnRadius * mf.m2FtOrM;
             if (bob < 2) bob = 2;
             nudYouTurnRadius.Value = (decimal)(Math.Round(bob, 2));
 
@@ -410,10 +411,12 @@ namespace AgOpenGPS
             Properties.Settings.Default.setAS_uTurnSmoothing = mf.yt.uTurnSmoothing;
             Properties.Settings.Default.set_youTurnExtensionLength = mf.yt.youTurnStartOffset;
 
-            Properties.Settings.Default.set_youTurnRadius = mf.yt.youTurnRadius;
             Properties.Settings.Default.set_youTurnDistanceFromBoundary = mf.yt.uturnDistanceFromBoundary;
 
             Properties.Settings.Default.Save();
+
+            Properties.VehicleSettings.Default.setTurn_youTurnRadius = mf.yt.youTurnRadius;
+            Properties.VehicleSettings.Default.Save();
 
             mf.bnd.BuildTurnLines();
             mf.yt.ResetCreatedYouTurn();

@@ -16,6 +16,13 @@ namespace AgOpenGPS.Core.Streamers
             _bitmapStreamer = new BingMapBitmapStreamer();
         }
 
+        /// <summary>JPEG quality the background is saved with (Low ~75, High ~88).</summary>
+        public long JpegQuality
+        {
+            get { return _bitmapStreamer.JpegQuality; }
+            set { _bitmapStreamer.JpegQuality = value; }
+        }
+
         public BingMap TryRead(DirectoryInfo fieldDirectory)
         {
             BingMap bingMap = null;
@@ -95,9 +102,19 @@ namespace AgOpenGPS.Core.Streamers
             }
         }
 
+        /// <summary>
+        /// The captured background, stored as JPEG (2026-08-10). A field background is a
+        /// photograph, and at the sizes the Map App now captures (up to 4096 px on the long
+        /// side) PNG costs ~30 MB per field and a second or two to decode on a tablet, for no
+        /// visible gain. There is deliberately NO fallback to the old BackPic.png: a field
+        /// recorded with one simply opens without a background and is re-captured once.
+        /// </summary>
         private class BingMapBitmapStreamer : FieldAspectStreamer
         {
-            public BingMapBitmapStreamer() : base("BackPic.png", null)
+            //quality of the saved JPEG; the Map App picks it from the Low/High setting
+            public long JpegQuality = 85L;
+
+            public BingMapBitmapStreamer() : base("BackPic.jpg", null)
             {
             }
 
@@ -119,7 +136,25 @@ namespace AgOpenGPS.Core.Streamers
                 {
                     fileInfo.Delete();
                 }
-                bitmap?.Save(fileInfo.FullName, ImageFormat.Png);
+                if (bitmap == null) return;
+
+                ImageCodecInfo jpeg = null;
+                foreach (ImageCodecInfo codec in ImageCodecInfo.GetImageEncoders())
+                {
+                    if (codec.FormatID == ImageFormat.Jpeg.Guid) { jpeg = codec; break; }
+                }
+
+                if (jpeg == null)
+                {
+                    bitmap.Save(fileInfo.FullName, ImageFormat.Jpeg);
+                    return;
+                }
+
+                using (EncoderParameters pars = new EncoderParameters(1))
+                {
+                    pars.Param[0] = new EncoderParameter(Encoder.Quality, JpegQuality);
+                    bitmap.Save(fileInfo.FullName, jpeg, pars);
+                }
             }
         }
     }

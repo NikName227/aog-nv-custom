@@ -97,7 +97,14 @@ namespace AgOpenGPS
             if (r < 1) r = 1;
             double halfTrack = Math.Abs(mf.vehicle.VehicleConfig.TrackWidth) * 0.5;
             double wheelbase = Math.Abs(mf.vehicle.VehicleConfig.Wheelbase);
-            return Math.Sqrt((r + halfTrack) * (r + halfTrack) + wheelbase * wheelbase) - r;
+            double swept = Math.Sqrt((r + halfTrack) * (r + halfTrack) + wheelbase * wheelbase) - r;
+
+            // F51: plus whatever room THIS implement needs. A wide machine may not let the
+            // tractor drive right up to the drawn line, and how much is a property of the
+            // implement, so it travels with the implement profile. Applies to the wheel limit
+            // only - the passes still stop at the boundary/headland, where the implement
+            // reference already is.
+            return swept + Math.Max(0, Properties.ToolSettings.Default.setTurn_boundaryOffset);
         }
 
         private void EnsureBuilt()

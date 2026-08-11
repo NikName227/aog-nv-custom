@@ -44,6 +44,11 @@ namespace AgOpenGPS.Properties
         public string setMap_parcelWfsUrl = "https://api.uredjenazemlja.hr/services/inspire/cp/wfs";
         public bool setMap_showParcelsOnMain = true;
 
+        // Background capture quality: false = Low (1536 px, JPEG 75), true = High (4096 px,
+        // JPEG 88). Low is the default - High is a deliberate press, because it downloads a lot
+        // more. Only usable once the field has a boundary to frame the capture by.
+        public bool setMap_captureHighQuality = false;
+
         public Point setWindow_QuickABLocation = new Point(100, 100);
         public Size setWindow_gridSize = new Size(400, 400);
         public Point setWindow_gridLocation = new Point(20, 20);
@@ -149,6 +154,15 @@ namespace AgOpenGPS.Properties
         public int set_youSkipWidth = 1;
         public double set_youTurnRadius = 8.1;
         public int set_uTurnStyle = 0;
+
+        // F51 (2026-08-10): everything below up to set_turnTriggerToleranceAfter has MOVED.
+        // Turn shape now lives in the vehicle profile (VehicleSettings.setTurn_*), the trigger
+        // tolerances in the implement profile (ToolSettings.setTurn_*), because they describe
+        // the machine and not the tablet. These fields are kept ONLY so the values a user
+        // already had can be copied across once - see CTurnProfileMigration. Nothing reads
+        // them at runtime any more.
+        public bool set_turnParamsMovedToProfiles = false;
+
         // Turn limit lines (NV custom) — per-vehicle turn shape parameters.
         // Radii of 0 mean "use the general turn radius (set_youTurnRadius)".
         public double set_turnK_exitRadius = 8;         // K: exit arc radius

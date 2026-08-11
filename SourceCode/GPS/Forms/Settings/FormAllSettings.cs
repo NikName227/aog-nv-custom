@@ -274,7 +274,9 @@ namespace AgOpenGPS
             AddRow(mid, "Constant Contour", esDefault.setAS_isConstantContourOn, es.setAS_isConstantContourOn);
 
             AddHeader(mid, "── U-Turn");
-            AddRow(mid, "Turn Radius", esDefault.set_youTurnRadius, es.set_youTurnRadius);
+            //"Turn Radius" is gone from this list (F51): it lives in the vehicle profile now,
+            //and the app-settings field behind it is only kept for the one-time migration -
+            //showing it here would report a value nothing reads any more.
             AddRow(mid, "Extension Length", esDefault.set_youTurnExtensionLength, es.set_youTurnExtensionLength);
             AddRow(mid, "Dist From Boundary", esDefault.set_youTurnDistanceFromBoundary, es.set_youTurnDistanceFromBoundary);
             AddRow(mid, "Skip Width", esDefault.set_youSkipWidth, es.set_youSkipWidth);

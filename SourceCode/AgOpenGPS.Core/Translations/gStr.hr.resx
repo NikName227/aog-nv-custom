@@ -1313,6 +1313,21 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsBackgroundSet" xml:space="preserve">
     <value>Pozadina postavljena.</value>
   </data>
+  <data name="gsResolution" xml:space="preserve">
+    <value>Rezolucija:</value>
+  </data>
+  <data name="gsLow" xml:space="preserve">
+    <value>Low</value>
+  </data>
+  <data name="gsHigh" xml:space="preserve">
+    <value>High</value>
+  </data>
+  <data name="gsResolutionNeedsBoundary" xml:space="preserve">
+    <value>Napravi granicu polja za bolju rezoluciju pozadine.</value>
+  </data>
+  <data name="gsMapCaptureFailed" xml:space="preserve">
+    <value>Skidanje nije uspjelo - zadržana prethodna pozadina.</value>
+  </data>
   <data name="gsAreaTooLarge" xml:space="preserve">
     <value>Područje preveliko — približi pa ponovo uključi.</value>
   </data>
@@ -1525,6 +1540,9 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   </data>
   <data name="gsTriggerTolAfter" xml:space="preserve">
     <value>Tolerancija poslije (m)</value>
+  </data>
+  <data name="gsBndOffsetExtra" xml:space="preserve">
+    <value>Dodatni odmak od granice (m)</value>
   </data>
   <data name="gsOvershootDist" xml:space="preserve">
     <value>Overshoot udaljenost (m)</value>
@@ -1795,5 +1813,62 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   </data>
   <data name="gsOrchEditTrees" xml:space="preserve">
     <value>Uredi stabla</value>
+  </data>
+  <data name="gsOrchRecNeedTwo" xml:space="preserve">
+    <value>Trebaju dva prolaza - odvezi obje strane reda</value>
+  </data>
+  <data name="gsOrchRecTooMany" xml:space="preserve">
+    <value>Snimljeno vise od dva prolaza - odbaci red i snimi ponovno</value>
+  </data>
+  <data name="gsOrchRecNoOverlap" xml:space="preserve">
+    <value>Prolazi se gotovo ne preklapaju - to nije jedan red</value>
+  </data>
+  <data name="gsOrchRecNoLine" xml:space="preserve">
+    <value>Iz ovih prolaza se ne moze izgraditi linija</value>
+  </data>
+  <data name="gsOrchRecNewRow" xml:space="preserve">
+    <value>Novi red</value>
+  </data>
+  <data name="gsOrchRecFinishRow" xml:space="preserve">
+    <value>Zavrsi red</value>
+  </data>
+  <data name="gsOrchRecDiscardRow" xml:space="preserve">
+    <value>Odbaci red</value>
+  </data>
+  <data name="gsOrchRecSection" xml:space="preserve">
+    <value>Sekcija</value>
+  </data>
+  <data name="gsOrchRecStatusIdle" xml:space="preserve">
+    <value>Spremno - pritisni Novi red</value>
+  </data>
+  <data name="gsOrchTrees" xml:space="preserve">
+    <value>stabala</value>
+  </data>
+  <data name="gsOrchRecPass" xml:space="preserve">
+    <value>Prolaz</value>
+  </data>
+  <data name="gsOrchRecDriveFirst" xml:space="preserve">
+    <value>Odvezi jednu stranu reda, pa drugu</value>
+  </data>
+  <data name="gsOrchAddedInSegment" xml:space="preserve">
+    <value>Tocka dodana u liniju</value>
+  </data>
+  <data name="gsOrchAddedAtStart" xml:space="preserve">
+    <value>Tocka dodana na pocetak</value>
+  </data>
+  <data name="gsOrchAddedAtEnd" xml:space="preserve">
+    <value>Tocka dodana na kraj</value>
+  </data>
+  <data name="gsOrchStateNew" xml:space="preserve">
+    <value>Novi</value>
+  </data>
+  <data name="gsOrchStateRecording" xml:space="preserve">
+    <value>Snimanje</value>
+  </data>
+  <data name="gsOrchStatePause" xml:space="preserve">
+    <value>Pauza</value>
+  </data>
+  <data name="gsOrchStateSaved" xml:space="preserve">
+    <value>Spremljeno</value>
   </data>
 </root>

@@ -407,8 +407,8 @@ namespace AgOpenGPS
                 if (File.Exists(fileToCopy))
                     File.Copy(fileToCopy, destinationDirectory);
 
-                fileToCopy = Path.Combine(templateDirectoryName, "BackPic.png");
-                destinationDirectory = Path.Combine(directoryName, "BackPic.png");
+                fileToCopy = Path.Combine(templateDirectoryName, "BackPic.jpg");
+                destinationDirectory = Path.Combine(directoryName, "BackPic.jpg");
                 if (File.Exists(fileToCopy))
                     File.Copy(fileToCopy, destinationDirectory);
 

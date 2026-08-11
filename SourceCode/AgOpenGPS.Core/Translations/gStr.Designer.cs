@@ -4531,6 +4531,36 @@ namespace AgOpenGPS.Core.Translations {
             }
         }
 
+        public static string gsResolution {
+            get {
+                return ResourceManager.GetString("gsResolution", resourceCulture);
+            }
+        }
+
+        public static string gsLow {
+            get {
+                return ResourceManager.GetString("gsLow", resourceCulture);
+            }
+        }
+
+        public static string gsHigh {
+            get {
+                return ResourceManager.GetString("gsHigh", resourceCulture);
+            }
+        }
+
+        public static string gsResolutionNeedsBoundary {
+            get {
+                return ResourceManager.GetString("gsResolutionNeedsBoundary", resourceCulture);
+            }
+        }
+
+        public static string gsMapCaptureFailed {
+            get {
+                return ResourceManager.GetString("gsMapCaptureFailed", resourceCulture);
+            }
+        }
+
         public static string gsAreaTooLarge {
             get {
                 return ResourceManager.GetString("gsAreaTooLarge", resourceCulture);
@@ -4942,6 +4972,12 @@ namespace AgOpenGPS.Core.Translations {
         public static string gsTriggerTolAfter {
             get {
                 return ResourceManager.GetString("gsTriggerTolAfter", resourceCulture);
+            }
+        }
+
+        public static string gsBndOffsetExtra {
+            get {
+                return ResourceManager.GetString("gsBndOffsetExtra", resourceCulture);
             }
         }
 
@@ -5463,6 +5499,120 @@ public static string gsOrchPlanterBehind {
         public static string gsOrchPassCountMin {
             get {
                 return ResourceManager.GetString("gsOrchPassCountMin", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchRecNeedTwo {
+            get {
+                return ResourceManager.GetString("gsOrchRecNeedTwo", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchRecTooMany {
+            get {
+                return ResourceManager.GetString("gsOrchRecTooMany", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchRecNoOverlap {
+            get {
+                return ResourceManager.GetString("gsOrchRecNoOverlap", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchRecNoLine {
+            get {
+                return ResourceManager.GetString("gsOrchRecNoLine", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchRecNewRow {
+            get {
+                return ResourceManager.GetString("gsOrchRecNewRow", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchRecFinishRow {
+            get {
+                return ResourceManager.GetString("gsOrchRecFinishRow", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchRecDiscardRow {
+            get {
+                return ResourceManager.GetString("gsOrchRecDiscardRow", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchRecSection {
+            get {
+                return ResourceManager.GetString("gsOrchRecSection", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchRecStatusIdle {
+            get {
+                return ResourceManager.GetString("gsOrchRecStatusIdle", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchTrees {
+            get {
+                return ResourceManager.GetString("gsOrchTrees", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchRecPass {
+            get {
+                return ResourceManager.GetString("gsOrchRecPass", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchRecDriveFirst {
+            get {
+                return ResourceManager.GetString("gsOrchRecDriveFirst", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchAddedInSegment {
+            get {
+                return ResourceManager.GetString("gsOrchAddedInSegment", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchAddedAtStart {
+            get {
+                return ResourceManager.GetString("gsOrchAddedAtStart", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchAddedAtEnd {
+            get {
+                return ResourceManager.GetString("gsOrchAddedAtEnd", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchStateNew {
+            get {
+                return ResourceManager.GetString("gsOrchStateNew", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchStateRecording {
+            get {
+                return ResourceManager.GetString("gsOrchStateRecording", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchStatePause {
+            get {
+                return ResourceManager.GetString("gsOrchStatePause", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchStateSaved {
+            get {
+                return ResourceManager.GetString("gsOrchStateSaved", resourceCulture);
             }
         }
         

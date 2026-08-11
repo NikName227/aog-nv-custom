@@ -466,6 +466,13 @@ namespace AgOpenGPS
         {
             btnChangeMappingColor.Text = Program.Version;
 
+            // F51: the turn parameters live in the machine profiles now. Migrate once, then
+            // re-read them on every profile change - LoadSettings is what a profile switch
+            // calls - and rebuild the lines that are drawn with them baked in.
+            CTurnProfileMigration.RunOnce();
+            yt?.ReloadTurnSettings();
+            tnl?.BuildEffectiveLines();
+
             //metric settings
             isMetric = Settings.Default.setMenu_isMetric;
 

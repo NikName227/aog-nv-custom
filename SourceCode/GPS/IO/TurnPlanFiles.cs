@@ -2,6 +2,14 @@
 // One file per implement working width (TurnPlan_W<width>.txt) so switching the
 // implement keeps the old plan on disk and it comes back with the same implement.
 // Header flags + one line per pass entry (offsetIdx,order,zone,sameWay,worked[,track]).
+//
+// F51 (2026-08-10): the width alone was never enough. The plan's geometry is shaped by the
+// turn radii and by the extra boundary offset just as much - drive the same field with a
+// different tractor and the stored plan no longer fits. Every file therefore carries a
+// SIGNATURE of the values it was built with, and a plan whose signature does not match the
+// current machine is ignored (a new one is generated). Actual values, not profile names: a
+// profile can be renamed, and its numbers can be edited without renaming it.
+// Plans written before this change have no signature line and are ignored as well.
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -22,7 +30,30 @@ namespace AgOpenGPS.IO
 
     public static class TurnPlanFiles
     {
-        // e.g. TurnPlan_W3.00.txt - the plan geometry only depends on the working width
+        /// <summary>
+        /// The machine values the plan geometry depends on, as one comparable string.
+        /// </summary>
+        public static string Signature(double workWidth)
+        {
+            var v = AgOpenGPS.Properties.VehicleSettings.Default;
+            var t = AgOpenGPS.Properties.ToolSettings.Default;
+
+            return string.Join("/", new[]
+            {
+                workWidth.ToString("0.000", CultureInfo.InvariantCulture),
+                v.setTurn_youTurnRadius.ToString("0.000", CultureInfo.InvariantCulture),
+                v.setTurn_K_exitRadius.ToString("0.000", CultureInfo.InvariantCulture),
+                v.setTurn_K_entryStartDist.ToString("0.000", CultureInfo.InvariantCulture),
+                v.setTurn_K_entryAngle.ToString("0.000", CultureInfo.InvariantCulture),
+                v.setTurn_K_transitionRadius.ToString("0.000", CultureInfo.InvariantCulture),
+                v.setTurn_U_exitRadius.ToString("0.000", CultureInfo.InvariantCulture),
+                v.setTurn_U_entryRadius.ToString("0.000", CultureInfo.InvariantCulture),
+                v.setTurn_U_overshootDist.ToString("0.000", CultureInfo.InvariantCulture),
+                t.setTurn_boundaryOffset.ToString("0.000", CultureInfo.InvariantCulture)
+            });
+        }
+
+        // e.g. TurnPlan_W3.00.txt - one file per width, signature checked inside
         private static string FileName(double workWidth)
         {
             return "TurnPlan_W" + workWidth.ToString("0.00", CultureInfo.InvariantCulture) + ".txt";
@@ -38,6 +69,8 @@ namespace AgOpenGPS.IO
             if (!File.Exists(path)) return null;
 
             var data = new TurnPlanData();
+            string wantSig = Signature(workWidth);
+            bool sigSeen = false;
 
             using (var reader = new StreamReader(path))
             {
@@ -46,6 +79,14 @@ namespace AgOpenGPS.IO
                 {
                     line = line.Trim();
                     if (line.Length == 0 || line.StartsWith("$", StringComparison.Ordinal)) continue;
+
+                    if (line.StartsWith("Sig,", StringComparison.Ordinal))
+                    {
+                        sigSeen = true;
+                        //built for another machine -> not this plan
+                        if (line.Substring(4).Trim() != wantSig) return null;
+                        continue;
+                    }
 
                     // track name may contain commas - take everything after the key
                     if (line.StartsWith("Track,", StringComparison.Ordinal))
@@ -119,6 +160,9 @@ namespace AgOpenGPS.IO
                 }
             }
 
+            //a plan from before signatures existed cannot be trusted to fit this machine
+            if (!sigSeen) return null;
+
             return data;
         }
 
@@ -136,6 +180,7 @@ namespace AgOpenGPS.IO
             using (var writer = new StreamWriter(path, false))
             {
                 writer.WriteLine("$TurnPlan");
+                writer.WriteLine("Sig," + Signature(workWidth));
                 writer.WriteLine("FollowPlan," + plan.isFollowPlan);
                 writer.WriteLine("ClipHeadland," + plan.clipToHeadland);
                 writer.WriteLine("Mode," + plan.mode.ToString(CultureInfo.InvariantCulture));
