@@ -909,7 +909,7 @@
             this.btnApplyParams.BackColor = System.Drawing.Color.Gainsboro;
             this.btnApplyParams.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnApplyParams.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
-            this.btnApplyParams.Location = new System.Drawing.Point(846, 62);
+            this.btnApplyParams.Location = new System.Drawing.Point(653, 116);
             this.btnApplyParams.Name = "btnApplyParams";
             this.btnApplyParams.Size = new System.Drawing.Size(75, 44);
             this.btnApplyParams.TabIndex = 32;

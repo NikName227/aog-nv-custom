@@ -2187,6 +2187,10 @@ namespace AgOpenGPS
             pnlK.Visible = (p == pnlK);
             pnlU.Visible = (p == pnlU);
             pnlRS.Visible = (p == pnlRS);
+
+            // Apply sits below the parameters, which is inside the style panels' band -
+            // the panels are opaque, so it has to stay on top of whichever one is shown.
+            btnApplyParams.BringToFront();
         }
 
         private void btnStyleK_CheckedChanged(object sender, EventArgs e)
