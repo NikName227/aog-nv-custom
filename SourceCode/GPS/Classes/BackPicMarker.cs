@@ -1,4 +1,4 @@
-using GMap.NET;
+﻿using GMap.NET;
 using GMap.NET.WindowsForms;
 using System;
 using System.Drawing;
@@ -37,12 +37,23 @@ namespace AgOpenGPS
         {
             if (bitmap == null || Overlay?.Control == null) return;
 
-            GPoint tl = Overlay.Control.FromLatLngToLocal(topLeft);
-            GPoint br = Overlay.Control.FromLatLngToLocal(bottomRight);
+            // Anchor on LocalPosition, which GMap keeps in step with every other overlay, and
+            // take only the SIZE from the projection at the current zoom. Asking the control
+            // where a lat/lon lands at render time (FromLatLngToLocal) misses the offset GMap
+            // applies while the map is being dragged, so the picture used to slide away from
+            // the boundary lines mid-drag.
+            var proj = Overlay.Control.MapProvider?.Projection;
+            if (proj == null) return;
 
-            float w = br.X - tl.X;
-            float h = br.Y - tl.Y;
+            int zoom = (int)Overlay.Control.Zoom;
+            GPoint p0 = proj.FromLatLngToPixel(topLeft, zoom);
+            GPoint p1 = proj.FromLatLngToPixel(bottomRight, zoom);
+
+            float w = p1.X - p0.X;
+            float h = p1.Y - p0.Y;
             if (w < 1 || h < 1) return;
+
+            Point tl = LocalPosition;
 
             InterpolationMode oldMode = g.InterpolationMode;
             //zoomed out the picture is minified, zoomed in it is magnified - bilinear keeps

@@ -3,6 +3,7 @@ using AgOpenGPS.Core.Models;
 using AgOpenGPS.Core.Translations;
 using AgOpenGPS.Forms;
 using GMap.NET;
+using GMap.NET.MapProviders;
 using GMap.NET.WindowsForms;
 using System;
 using System.Collections.Generic;
@@ -156,10 +157,16 @@ namespace AgOpenGPS
 
         private void FormTurnLine_Load(object sender, EventArgs e)
         {
-            // Base map = whichever source the Map App is set to (2026-08-10). It used to be
-            // hard-wired to the DGU WMS, so this window quietly showed a different source than
-            // every other map in the program.
-            gMapControl.MapProvider = AppMapHelper.GetProvider();
+            // No live tiles here at all (field report 2026-08-10). Drawing the captured field
+            // background ON TOP of live tiles showed two different photographs of the same
+            // ground at once, and the turn plan needs a boundary anyway - so this window shows
+            // exactly what Smart AB shows: the captured picture around the field, nothing else.
+            // No background captured yet = black.
+            gMapControl.MapProvider = GMapProviders.EmptyProvider;
+            gMapControl.EmptyMapBackground = Color.Black;
+            gMapControl.EmptyTileColor = Color.Black;
+            gMapControl.EmptyTileBorders = new Pen(Color.Black);
+            gMapControl.ShowTileGridLines = false;
 
             gMapControl.Position = new PointLatLng(
                 mf.AppModel.CurrentLatLon.Latitude,
