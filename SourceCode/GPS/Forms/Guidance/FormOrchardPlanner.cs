@@ -806,6 +806,13 @@ namespace AgOpenGPS
             {
                 int th = HitTestTree(e.X, e.Y);
                 int t = TargetRow();
+                if (AddActive && t >= 0)
+                {
+                    AddTreeSmart(t, ScreenToWorld(e.X, e.Y));
+                    dragIndex = -1; panning = false; moved = false;
+                    oglSelf.Invalidate();
+                    return;
+                }
                 if (btnDeletePoint.Checked && th >= 0 && t >= 0)
                 {
                     rows[t].trees.RemoveAt(th);
@@ -824,7 +831,8 @@ namespace AgOpenGPS
                 if (AddActive)
                 {
                     if (!genMode) EnsureWorkRow();   // in genMode the points are the reference line
-                    pts.Add(ScreenToWorld(e.X, e.Y));
+                    if (genMode) pts.Add(ScreenToWorld(e.X, e.Y));
+                    else AddPointSmart(ScreenToWorld(e.X, e.Y));
                     BuildActiveRow();
                     lblActiveOp.Text = genMode ? "Reference line: " + pts.Count + " points" : "Add point";
                 }
@@ -843,6 +851,91 @@ namespace AgOpenGPS
             dragIndex = -1; panning = false; moved = false;
             if (wasPointDrag) BuildActiveRow();
             oglSelf.Invalidate();
+        }
+
+        // ── Adding at the ends (F50 2026-08-11) ───────────────────────────
+        // Marking often starts a little late or stops a little early, so the ends need to be
+        // extendable. No new buttons (order 2026-08-10 20:27): the existing Add button does
+        // both jobs - a click ALONGSIDE the line goes into the nearest segment as before, a
+        // click BEYOND either end extends that end.
+
+        /// <summary>Add a control point: into the nearest segment, or onto the nearest end.</summary>
+        private void AddPointSmart(vec2 p)
+        {
+            if (pts.Count < 2) { pts.Add(p); BuildActiveRow(); return; }
+
+            int bestSeg = -1;
+            double bestDist = double.MaxValue;
+            for (int i = 1; i < pts.Count; i++)
+            {
+                double t = SegParam(pts[i - 1], pts[i], p, out double d);
+                if (t <= 0.02 || t >= 0.98) continue;      // that is an end, not a segment
+                if (d < bestDist) { bestDist = d; bestSeg = i; }
+            }
+
+            // 4 m is about how close a finger lands on the line it means to hit
+            if (bestSeg >= 0 && bestDist < 4.0)
+            {
+                pts.Insert(bestSeg, p);
+                lblActiveOp.Text = gStr.gsOrchAddedInSegment;
+            }
+            else
+            {
+                bool toStart = glm.Distance(p, pts[0]) < glm.Distance(p, pts[pts.Count - 1]);
+                if (toStart) pts.Insert(0, p); else pts.Add(p);
+                lblActiveOp.Text = toStart ? gStr.gsOrchAddedAtStart : gStr.gsOrchAddedAtEnd;
+            }
+            BuildActiveRow();
+        }
+
+        /// <summary>Add a tree, drop it onto the row line and keep the trees in row order.</summary>
+        private void AddTreeSmart(int rowIdx, vec2 p)
+        {
+            if (rowIdx < 0 || rowIdx >= rows.Count) return;
+            OrchRow r = rows[rowIdx];
+
+            r.trees.Add(p);
+            COrchard.ProjectTreesOntoRow(r);          // sideways onto the line
+            SortTreesAlongRow(r);                     // first/last stay first/last
+
+            selTree = -1;
+            lblActiveOp.Text = gStr.gsOrchTree + " " + r.trees.Count;
+        }
+
+        private static void SortTreesAlongRow(OrchRow r)
+        {
+            if (r.curve.Count < 2 || r.trees.Count < 2) return;
+            r.trees.Sort((a, b) => AlongCurve(r.curve, a).CompareTo(AlongCurve(r.curve, b)));
+        }
+
+        private static double AlongCurve(List<vec3> curve, vec2 p)
+        {
+            double best = double.MaxValue, bestAlong = 0, along = 0;
+            for (int i = 1; i < curve.Count; i++)
+            {
+                vec2 a = new vec2(curve[i - 1].easting, curve[i - 1].northing);
+                vec2 b = new vec2(curve[i].easting, curve[i].northing);
+                double t = SegParam(a, b, p, out double d);
+                double seg = glm.Distance(a, b);
+                if (d < best) { best = d; bestAlong = along + t * seg; }
+                along += seg;
+            }
+            return bestAlong;
+        }
+
+        /// <summary>Where p falls on segment a-b (0..1, clamped) and how far it is from it.</summary>
+        private static double SegParam(vec2 a, vec2 b, vec2 p, out double dist)
+        {
+            double dx = b.easting - a.easting, dy = b.northing - a.northing;
+            double len2 = dx * dx + dy * dy;
+            if (len2 < 0.0001) { dist = glm.Distance(a, p); return 0; }
+
+            double t = ((p.easting - a.easting) * dx + (p.northing - a.northing) * dy) / len2;
+            if (t < 0) t = 0; else if (t > 1) t = 1;
+
+            double qe = a.easting + t * dx, qn = a.northing + t * dy;
+            dist = Math.Sqrt((p.easting - qe) * (p.easting - qe) + (p.northing - qn) * (p.northing - qn));
+            return t;
         }
 
         // ── Record row ────────────────────────────────────────────────────

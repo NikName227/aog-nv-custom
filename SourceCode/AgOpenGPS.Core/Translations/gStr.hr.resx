@@ -1850,4 +1850,13 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsOrchRecDriveFirst" xml:space="preserve">
     <value>Odvezi jednu stranu reda, pa drugu</value>
   </data>
+  <data name="gsOrchAddedInSegment" xml:space="preserve">
+    <value>Tocka dodana u liniju</value>
+  </data>
+  <data name="gsOrchAddedAtStart" xml:space="preserve">
+    <value>Tocka dodana na pocetak</value>
+  </data>
+  <data name="gsOrchAddedAtEnd" xml:space="preserve">
+    <value>Tocka dodana na kraj</value>
+  </data>
 </root>

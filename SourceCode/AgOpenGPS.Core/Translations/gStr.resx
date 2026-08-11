@@ -2217,4 +2217,13 @@ USE AT OWN RISK.</value>
   <data name="gsOrchRecDriveFirst" xml:space="preserve">
     <value>Drive one side of the row, then the other</value>
   </data>
+  <data name="gsOrchAddedInSegment" xml:space="preserve">
+    <value>Point added into the line</value>
+  </data>
+  <data name="gsOrchAddedAtStart" xml:space="preserve">
+    <value>Point added at the start</value>
+  </data>
+  <data name="gsOrchAddedAtEnd" xml:space="preserve">
+    <value>Point added at the end</value>
+  </data>
 </root>
