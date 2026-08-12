@@ -1589,6 +1589,7 @@ namespace AgOpenGPS
             btnWizNext.Text = gStr.gsNext;
             if (lblManualPass != null) lblManualPass.Visible = false;
             if (lblStartFrom != null) foreach (Control c in StartFromControls()) c.Visible = false;
+            btnResetPath.Visible = false;      // only where it means something: step 0 with a plan
             HidePrereqChecklist();
 
             if (!PlanPrereqsOk()) wizStep = -1;
@@ -1612,6 +1613,7 @@ namespace AgOpenGPS
                         lblPlanInfo.Visible = true;
                         btnWizNext.Visible = true;
                         foreach (Control c in StartFromControls()) c.Visible = true;
+                        btnResetPath.Visible = true;
                         UpdatePlanInfo();
                     }
                     else
