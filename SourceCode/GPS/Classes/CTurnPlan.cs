@@ -283,8 +283,10 @@ namespace AgOpenGPS
 
             // the preview cannot know which passes survive the boundary clip, so it works
             // off the raw offset range - same as TryZoneInfo has always done
+            // without the candidate padding (see TryZoneInfo)
             var stand = new List<CPlanEntry>();
-            for (int k = minIdx; k <= maxIdx; k++) stand.Add(new CPlanEntry { offsetIdx = k });
+            for (int k = minIdx + 1; k <= maxIdx - 1; k++) stand.Add(new CPlanEntry { offsetIdx = k });
+            if (stand.Count == 0) return false;
 
             var lists = BuildSpatialZones(stand, zones, out leftZones);
             zonePasses = new List<int>();
@@ -313,9 +315,92 @@ namespace AgOpenGPS
             if (w < 0.1 || zones < 1) return false;
             if (!TryOffsetRange(out int minIdx, out int maxIdx)) return false;
 
-            int passes = maxIdx - minIdx + 1;
+            // TryOffsetRange pads the range by one pass on each side so the generator has
+            // candidates to test - those two never exist in the field, and counting them made
+            // every zone read wider than it is (field call 2026-08-12). Strip them here.
+            int passes = maxIdx - minIdx - 1;
+            if (passes < 1) return false;
+
             zoneWidth = passes * w / zones;
             passesPerZone = (int)Math.Ceiling((double)passes / zones);
+            return true;
+        }
+
+        /// <summary>
+        /// Zone sizes read from the PLAN itself, not from the geometry: passes that never made
+        /// it in (too short, cut by the headland) must not be counted into a zone's width.
+        /// Manual closing passes are left out - they belong to no zone.
+        /// </summary>
+        public bool TryZoneStatsFromPlan(out List<int> zonePasses, out int leftZones)
+        {
+            zonePasses = null;
+            leftZones = 0;
+            if (entries.Count == 0) return false;
+
+            int maxZone = 0;
+            foreach (CPlanEntry p in entries)
+                if (!p.IsManual && p.zone > maxZone) maxZone = p.zone;
+            if (maxZone < 1) return false;
+
+            var counts = new int[maxZone];
+            var lefts = new int[maxZone];
+            foreach (CPlanEntry p in entries)
+            {
+                if (p.IsManual || p.zone < 1 || p.zone > maxZone) continue;
+                counts[p.zone - 1]++;
+                if (p.offsetIdx < 0) lefts[p.zone - 1]++;
+            }
+
+            zonePasses = new List<int>();
+            for (int i = 0; i < maxZone; i++)
+            {
+                if (counts[i] == 0) continue;          // an empty zone is not a zone
+                zonePasses.Add(counts[i]);
+                // a zone counts as "left" when its passes sit left of the reference line
+                if (lefts[i] * 2 > counts[i]) leftZones++;
+            }
+            return zonePasses.Count > 0;
+        }
+
+        /// <summary>Passes in one zone, in driving order, closing passes excluded.</summary>
+        public List<CPlanEntry> ZonePasses(int zone)
+        {
+            var list = new List<CPlanEntry>();
+            foreach (CPlanEntry p in entries)
+                if (!p.IsManual && p.zone == zone) list.Add(p);
+            list.Sort((a, b) => a.order.CompareTo(b.order));
+            return list;
+        }
+
+        /// <summary>
+        /// Resume the plan at zone/pass (1-based): everything before it is written off as
+        /// SKIPPED - nobody drove it - and everything from it on is cleared, so the jump works
+        /// backwards too. Manual closing passes are untouched; they come last anyway.
+        /// </summary>
+        public bool StartFrom(int zone, int pass, out string err)
+        {
+            err = "";
+            if (!HasPlan) { err = "no plan"; return false; }
+
+            var zoneList = ZonePasses(zone);
+            if (zoneList.Count == 0) { err = "zone " + zone + " has no passes"; return false; }
+            if (pass < 1 || pass > zoneList.Count)
+            {
+                err = "zone " + zone + " has " + zoneList.Count + " passes";
+                return false;
+            }
+
+            int targetOrder = zoneList[pass - 1].order;
+
+            foreach (CPlanEntry p in entries)
+            {
+                if (p.IsManual) continue;
+                if (p.order < targetOrder) { p.isSkipped = true; p.isWorked = false; }
+                else { p.isSkipped = false; p.isWorked = false; }
+            }
+
+            InvalidateRun();
+            mf.FileSaveTurnPlan();
             return true;
         }
 

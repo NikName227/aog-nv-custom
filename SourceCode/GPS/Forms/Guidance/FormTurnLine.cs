@@ -255,6 +255,9 @@ namespace AgOpenGPS
             SetupPrereqChecklist();
             if (mf.tool.isToolOrchard) SetupOrchardPathTab();
 
+            BuildStartFromControls();
+            ResetStartFrom();
+
             UpdatePlanInfo();
             if (mf.plan.HasPlan)
                 mf.plan.RebuildGeometry();
@@ -1353,6 +1356,135 @@ namespace AgOpenGPS
             UpdatePlanInfo();
         }
 
+        // ── "Kreni od": jump to a zone/pass of an existing plan (2026-08-12) ──
+        // Built here rather than in the designer so the ▲▼ steppers stay together with the
+        // logic. Deliberately NOT a NumericUpDown: those open the keypad on touch, and this is
+        // meant to be nudged with two arrows while standing in the field.
+
+        private Label lblStartFrom, lblSfZone, lblSfPass, lblSfZoneVal, lblSfPassVal;
+        private Button btnSfZoneUp, btnSfZoneDown, btnSfPassUp, btnSfPassDown, btnSfApply;
+        private int sfZone = 1, sfPass = 1;
+
+        private void BuildStartFromControls()
+        {
+            var lblFont = new Font("Tahoma", 11.25F, FontStyle.Bold);
+            var valFont = new Font("Tahoma", 12F);
+
+            lblStartFrom = MkLabel(gStr.gsStartFrom, 10, 264, 200, 26, lblFont);
+            lblSfZone = MkLabel(gStr.gsZone, 10, 296, 90, 30, valFont);
+            lblSfZoneVal = MkLabel("1", 104, 296, 46, 30, valFont);
+            lblSfZoneVal.TextAlign = ContentAlignment.MiddleCenter;
+            lblSfZoneVal.BorderStyle = BorderStyle.FixedSingle;
+
+            lblSfPass = MkLabel(gStr.gsPass, 10, 334, 90, 30, valFont);
+            lblSfPassVal = MkLabel("1", 104, 334, 46, 30, valFont);
+            lblSfPassVal.TextAlign = ContentAlignment.MiddleCenter;
+            lblSfPassVal.BorderStyle = BorderStyle.FixedSingle;
+
+            btnSfZoneUp = MkStep("▲", 158, 294, () => StepStartFrom(true, +1));
+            btnSfZoneDown = MkStep("▼", 204, 294, () => StepStartFrom(true, -1));
+            btnSfPassUp = MkStep("▲", 158, 332, () => StepStartFrom(false, +1));
+            btnSfPassDown = MkStep("▼", 204, 332, () => StepStartFrom(false, -1));
+
+            btnSfApply = new Button
+            {
+                Text = gStr.gsApply,
+                Location = new Point(10, 372),
+                Size = new Size(240, 38),
+                Font = lblFont,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.Gainsboro,
+                UseVisualStyleBackColor = false
+            };
+            btnSfApply.Click += BtnSfApply_Click;
+
+            Controls.AddRange(new Control[] { lblStartFrom, lblSfZone, lblSfZoneVal, lblSfPass,
+                lblSfPassVal, btnSfZoneUp, btnSfZoneDown, btnSfPassUp, btnSfPassDown, btnSfApply });
+
+            foreach (Control c in StartFromControls()) { c.Visible = false; c.BringToFront(); }
+        }
+
+        private Label MkLabel(string text, int x, int y, int w, int h, Font f)
+        {
+            return new Label
+            {
+                Text = text,
+                Location = new Point(x, y),
+                Size = new Size(w, h),
+                Font = f,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+        }
+
+        private Button MkStep(string text, int x, int y, Action onClick)
+        {
+            var b = new Button
+            {
+                Text = text,
+                Location = new Point(x, y),
+                Size = new Size(42, 34),
+                Font = new Font("Tahoma", 12F, FontStyle.Bold),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.Gainsboro,
+                UseVisualStyleBackColor = false
+            };
+            b.Click += (s, e) => onClick();
+            return b;
+        }
+
+        private Control[] StartFromControls()
+        {
+            return new Control[] { lblStartFrom, lblSfZone, lblSfZoneVal, lblSfPass, lblSfPassVal,
+                btnSfZoneUp, btnSfZoneDown, btnSfPassUp, btnSfPassDown, btnSfApply };
+        }
+
+        /// <summary>Both fields go back to 1 / 1 every time the window opens, and they do
+        /// nothing until Apply is pressed (decision 2026-08-12).</summary>
+        private void ResetStartFrom()
+        {
+            sfZone = 1; sfPass = 1;
+            if (lblSfZoneVal != null) lblSfZoneVal.Text = "1";
+            if (lblSfPassVal != null) lblSfPassVal.Text = "1";
+            if (btnSfApply != null) btnSfApply.BackColor = Color.Gainsboro;
+        }
+
+        private void StepStartFrom(bool isZone, int delta)
+        {
+            if (isZone)
+            {
+                int zones = mf.plan.TryZoneStatsFromPlan(out List<int> zp, out _) ? zp.Count : 1;
+                sfZone = Clamp(sfZone + delta, 1, Math.Max(1, zones));
+                sfPass = 1;                                  // a new zone starts at its first pass
+            }
+            else
+            {
+                int passes = mf.plan.ZonePasses(sfZone).Count;
+                sfPass = Clamp(sfPass + delta, 1, Math.Max(1, passes));
+            }
+
+            lblSfZoneVal.Text = sfZone.ToString();
+            lblSfPassVal.Text = sfPass.ToString();
+            btnSfApply.BackColor = Color.Khaki;              // there is something to apply
+        }
+
+        private static int Clamp(int v, int lo, int hi) => v < lo ? lo : (v > hi ? hi : v);
+
+        private void BtnSfApply_Click(object sender, EventArgs e)
+        {
+            if (!mf.plan.StartFrom(sfZone, sfPass, out string err))
+            {
+                lblPlanStatus.Text = err;
+                return;
+            }
+
+            mf.plan.RebuildGeometry();
+            DrawPlanOverlay();
+            UpdatePlanInfo();
+            lblPlanStatus.Text = gStr.gsStartFrom + ": " + gStr.gsZone + " " + sfZone
+                + " / " + gStr.gsPass + " " + sfPass;
+            btnSfApply.BackColor = Color.Gainsboro;
+        }
+
         // ── path planning mini-wizard (default view) ──────────────────────
         // -1 = prerequisites missing, 0 = start/overview, 1 = pick the line,
         //  2 = headland + zones, 3 = mode (pictograms) + manual passes
@@ -1453,6 +1585,7 @@ namespace AgOpenGPS
             btnWizBack.Visible = btnWizNext.Visible = btnWizCancel.Visible = false;
             btnWizNext.Text = gStr.gsNext;
             if (lblManualPass != null) lblManualPass.Visible = false;
+            if (lblStartFrom != null) foreach (Control c in StartFromControls()) c.Visible = false;
             HidePrereqChecklist();
 
             if (!PlanPrereqsOk()) wizStep = -1;
@@ -1475,6 +1608,7 @@ namespace AgOpenGPS
                         lblWizTitle.Text = gStr.gsPlanExists;
                         lblPlanInfo.Visible = true;
                         btnWizNext.Visible = true;
+                        foreach (Control c in StartFromControls()) c.Visible = true;
                         UpdatePlanInfo();
                     }
                     else
@@ -1834,9 +1968,17 @@ namespace AgOpenGPS
         private string ZoneWidthText(double zoneWidth, int passesPerZone)
         {
             double w = mf.plan.WorkWidth();
-            if (w >= 0.1
-                && mf.plan.TryZoneLayout((int)nudZones.Value, out List<int> zonePasses, out int leftZones)
-                && leftZones > 0 && leftZones < zonePasses.Count)
+
+            // With a plan on the table the plan IS the truth: passes that never made it in
+            // (too short, cut by the headland) must not widen a zone (field call 2026-08-12).
+            // Without a plan this stays an estimate from the geometry.
+            List<int> zonePasses;
+            int leftZones;
+            bool have = mf.plan.HasPlan
+                ? mf.plan.TryZoneStatsFromPlan(out zonePasses, out leftZones)
+                : mf.plan.TryZoneLayout((int)nudZones.Value, out zonePasses, out leftZones);
+
+            if (w >= 0.1 && have && leftZones > 0 && leftZones < zonePasses.Count)
             {
                 int leftPasses = 0, rightPasses = 0;
                 for (int i = 0; i < zonePasses.Count; i++)
@@ -1847,6 +1989,14 @@ namespace AgOpenGPS
                 int rightZones = zonePasses.Count - leftZones;
                 return "L: " + leftZones + " x " + (leftPasses * w / leftZones).ToString("N1") + " m\n"
                      + "R: " + rightZones + " x " + (rightPasses * w / rightZones).ToString("N1") + " m";
+            }
+
+            if (w >= 0.1 && have && zonePasses.Count > 0)
+            {
+                int total = 0;
+                foreach (int c in zonePasses) total += c;
+                return gStr.gsZoneWidth + ": " + (total * w / zonePasses.Count).ToString("N1") + " m\n"
+                     + (int)Math.Ceiling((double)total / zonePasses.Count) + " " + gStr.gsPassesPerZone;
             }
 
             return gStr.gsZoneWidth + ": " + zoneWidth.ToString("N1") + " m\n"
