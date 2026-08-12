@@ -2247,4 +2247,7 @@ USE AT OWN RISK.</value>
   <data name="gsApply" xml:space="preserve">
     <value>Apply</value>
   </data>
+  <data name="gsMinTurnRadiusIs" xml:space="preserve">
+    <value>min turn radius is</value>
+  </data>
 </root>

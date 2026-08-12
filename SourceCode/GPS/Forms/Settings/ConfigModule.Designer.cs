@@ -398,10 +398,12 @@ namespace AgOpenGPS
             if (bob < 0.2) bob = 0.2;
             nudTurnDistanceFromBoundary.Value = (decimal)(Math.Round(bob, 2));
 
-            //F51: the turn radius belongs to the vehicle profile
-            bob = Properties.VehicleSettings.Default.setTurn_youTurnRadius * mf.m2FtOrM;
+            //F51: the turn radius belonged to the vehicle profile; since 2026-08-12 it travels
+            //with the implement (the vehicle still caps it from below - CYouTurn.MinTurnRadius)
+            bob = Properties.ToolSettings.Default.setTurn_youTurnRadius * mf.m2FtOrM;
             if (bob < 2) bob = 2;
             nudYouTurnRadius.Value = (decimal)(Math.Round(bob, 2));
+            UpdateMinRadiusWarning();
 
             lblFtMUTurn.Text = lblFtMTurnRadius.Text = mf.unitsFtM;
         }
@@ -415,8 +417,8 @@ namespace AgOpenGPS
 
             Properties.Settings.Default.Save();
 
-            Properties.VehicleSettings.Default.setTurn_youTurnRadius = mf.yt.youTurnRadius;
-            Properties.VehicleSettings.Default.Save();
+            Properties.ToolSettings.Default.setTurn_youTurnRadius = mf.yt.youTurnRadius;
+            Properties.ToolSettings.Default.Save();
 
             mf.bnd.BuildTurnLines();
             mf.yt.ResetCreatedYouTurn();
@@ -443,7 +445,42 @@ namespace AgOpenGPS
             if (((NudlessNumericUpDown)sender).ShowKeypad(this))
             {
                 mf.yt.youTurnRadius = (double)nudYouTurnRadius.Value * mf.ftOrMtoM;
+                UpdateMinRadiusWarning();
             }
+        }
+
+        // F05 (2026-08-12): the turn radius travels with the implement, but the tractor has the
+        // last word - it cannot drive tighter than wheelbase / tan(max steer). When the typed
+        // value is below that, the number goes red and says what is actually being used.
+        private System.Windows.Forms.Label lblMinRadiusNote;
+
+        private void UpdateMinRadiusWarning()
+        {
+            double min = mf.yt.MinTurnRadius();
+            double wanted = (double)nudYouTurnRadius.Value * mf.ftOrMtoM;
+            bool overridden = min > 0 && wanted < min;
+
+            if (lblMinRadiusNote == null)
+            {
+                lblMinRadiusNote = new System.Windows.Forms.Label
+                {
+                    AutoSize = false,
+                    Font = new System.Drawing.Font("Tahoma", 9F),
+                    ForeColor = System.Drawing.Color.Firebrick,
+                    Location = new System.Drawing.Point(nudYouTurnRadius.Left, nudYouTurnRadius.Bottom + 4),
+                    Size = new System.Drawing.Size(240, 22),
+                    TextAlign = System.Drawing.ContentAlignment.MiddleLeft
+                };
+                nudYouTurnRadius.Parent.Controls.Add(lblMinRadiusNote);
+                lblMinRadiusNote.BringToFront();
+            }
+
+            nudYouTurnRadius.ForeColor = overridden
+                ? System.Drawing.Color.Firebrick : System.Drawing.Color.Black;
+
+            lblMinRadiusNote.Text = overridden
+                ? gStr.gsMinTurnRadiusIs + " " + (min * mf.m2FtOrM).ToString("N1") + " " + mf.unitsFtM
+                : "";
         }
 
         private void nudTurnDistanceFromBoundary_Click(object sender, EventArgs e)

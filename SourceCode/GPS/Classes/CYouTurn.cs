@@ -37,6 +37,30 @@ namespace AgOpenGPS
         //guidance values
         public double distanceFromCurrentLine, uturnDistanceFromBoundary;
 
+        /// <summary>
+        /// What the tractor can physically do: bicycle model, R = wheelbase / tan(max steer).
+        /// The radius travels with the implement now, and an implement can ask for a tighter turn
+        /// than the tractor can drive - that would plan a turn nobody can follow. So this is the
+        /// floor. No safety margin on top (decision 2026-08-12): the margin is that one does not
+        /// drive at full lock anyway, and a second silent add-on would only hide the real number.
+        /// </summary>
+        public double MinTurnRadius()
+        {
+            double wb = Math.Abs(Properties.VehicleSettings.Default.setVehicle_wheelbase);
+            double maxDeg = Math.Abs(Properties.VehicleSettings.Default.setVehicle_maxSteerAngle);
+            if (wb < 0.1 || maxDeg < 1.0) return 0;      // profile not filled in - no opinion
+
+            double r = wb / Math.Tan(maxDeg * Math.PI / 180.0);
+            return r > 0 ? r : 0;
+        }
+
+        /// <summary>Implement's wish, never below what the tractor can drive.</summary>
+        public double TurnRadius(double wanted)
+        {
+            double min = MinTurnRadius();
+            return (min > 0 && wanted < min) ? min : wanted;
+        }
+
         private int A, B;
         private bool isHeadingSameWay = true;
         public bool isTurnCreationTooClose = false, isTurnCreationNotCrossingError = false, turnTooCloseTrigger = false;
@@ -159,7 +183,7 @@ namespace AgOpenGPS
 
             rowSkipsWidth = Properties.Settings.Default.set_youSkipWidth;
 
-            youTurnRadius = Properties.VehicleSettings.Default.setTurn_youTurnRadius;
+            youTurnRadius = TurnRadius(Properties.ToolSettings.Default.setTurn_youTurnRadius);
 
             uTurnStyle = Properties.Settings.Default.set_uTurnStyle;
             activeTurnStyle = uTurnStyle;
@@ -232,15 +256,15 @@ namespace AgOpenGPS
         // youturn geometry is left exactly as it was.
         private double KExitRadius
         {
-            get { double v = Properties.VehicleSettings.Default.setTurn_K_exitRadius; return v > 0.5 ? v : youTurnRadius; }
+            get { double v = Properties.ToolSettings.Default.setTurn_K_exitRadius; return v > 0.5 ? TurnRadius(v) : youTurnRadius; }
         }
         private double UOutRadius
         {
-            get { double v = Properties.VehicleSettings.Default.setTurn_U_exitRadius; return v > 0.5 ? v : youTurnRadius; }
+            get { double v = Properties.ToolSettings.Default.setTurn_U_exitRadius; return v > 0.5 ? TurnRadius(v) : youTurnRadius; }
         }
         private double UInRadius
         {
-            get { double v = Properties.VehicleSettings.Default.setTurn_U_entryRadius; return v > 0.5 ? v : youTurnRadius; }
+            get { double v = Properties.ToolSettings.Default.setTurn_U_entryRadius; return v > 0.5 ? TurnRadius(v) : youTurnRadius; }
         }
 
         // Spacing (turnOffset) at/above which a clean U-turn fits. Stock = 2x the general
@@ -1309,7 +1333,7 @@ namespace AgOpenGPS
                     //(driver) then aligns onto the real row. 0 = tangent the real line (stock).
                     if (mf.tnl.IsFeatureOn)
                     {
-                        double over = Properties.VehicleSettings.Default.setTurn_U_overshootDist;
+                        double over = Properties.ToolSettings.Default.setTurn_U_overshootDist;
                         if (over > 0.01)
                             distAway += ((isTurnLeft ^ mf.ABLine.isHeadingSameWay) ? over : -over);
                     }
@@ -2159,7 +2183,7 @@ namespace AgOpenGPS
 
             double ps = Math.Max(0.1, youTurnRadius * 0.1);
             double Rout = UOutRadius, Rin = UInRadius;
-            double over = Properties.VehicleSettings.Default.setTurn_U_overshootDist;
+            double over = Properties.ToolSettings.Default.setTurn_U_overshootDist;
             if (over < 0) over = 0;
 
             // auto-shrink both radii (max -30%), then automatic overshoot for the rest
@@ -2245,10 +2269,10 @@ namespace AgOpenGPS
 
             double ps = Math.Max(0.1, youTurnRadius * 0.1);
             double R = KExitRadius; if (R < 1.0) R = 1.0;
-            double d = Properties.VehicleSettings.Default.setTurn_K_entryStartDist;
+            double d = Properties.ToolSettings.Default.setTurn_K_entryStartDist;
             if (d < 0.1) d = 0.1;
             if (d > o - 0.2) d = Math.Max(0.1, o - 0.2);
-            double alpha = Properties.VehicleSettings.Default.setTurn_K_entryAngle * Math.PI / 180.0;
+            double alpha = Properties.ToolSettings.Default.setTurn_K_entryAngle * Math.PI / 180.0;
             if (alpha < 0.10) alpha = 0.10;
             if (alpha > 1.40) alpha = 1.40;
 

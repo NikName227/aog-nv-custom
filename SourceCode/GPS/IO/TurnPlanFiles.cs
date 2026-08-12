@@ -35,7 +35,9 @@ namespace AgOpenGPS.IO
         /// </summary>
         public static string Signature(double workWidth)
         {
-            var v = AgOpenGPS.Properties.VehicleSettings.Default;
+            // 2026-08-12: the whole turn shape lives on the implement, so the signature is
+            // read from one profile instead of two
+            var v = AgOpenGPS.Properties.ToolSettings.Default;
             var t = AgOpenGPS.Properties.ToolSettings.Default;
 
             return string.Join("/", new[]

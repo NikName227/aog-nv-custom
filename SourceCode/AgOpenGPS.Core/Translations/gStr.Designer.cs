@@ -5634,6 +5634,12 @@ public static string gsOrchPlanterBehind {
             }
         }
         
+        public static string gsMinTurnRadiusIs {
+            get {
+                return ResourceManager.GetString("gsMinTurnRadiusIs", resourceCulture);
+            }
+        }
+        
         public static string gsOrchTree {
             get {
                 return ResourceManager.GetString("gsOrchTree", resourceCulture);

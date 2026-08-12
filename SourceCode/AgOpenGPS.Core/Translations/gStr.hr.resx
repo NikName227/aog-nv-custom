@@ -1880,4 +1880,7 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsApply" xml:space="preserve">
     <value>Primijeni</value>
   </data>
+  <data name="gsMinTurnRadiusIs" xml:space="preserve">
+    <value>min radijus okreta je</value>
+  </data>
 </root>

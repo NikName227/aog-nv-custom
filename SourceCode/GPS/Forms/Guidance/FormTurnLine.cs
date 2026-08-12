@@ -119,7 +119,8 @@ namespace AgOpenGPS
             btnDeleteLine.Text = gStr.gsDeleteLine;
             chkParcels.Text = gStr.gsCadastralParcels;
             btnGoToField.Text = gStr.gsGoToPosition;
-            lblRadius.Text = gStr.gsTurnRadiusInfo + ": " + mf.yt.youTurnRadius.ToString("N1") + " m";
+            //2026-08-12: this row shows what the TRACTOR can physically do, nothing else
+            lblRadius.Text = gStr.gsMinTurnRadius + ": " + mf.yt.MinTurnRadius().ToString("N1") + " m";
             lblStatus.Text = gStr.gsTurnLineHint;
 
             lblTrack.Text = gStr.gsTrack;
@@ -2449,7 +2450,7 @@ namespace AgOpenGPS
 
         private void SaveTurnParams()
         {
-            var v = Properties.VehicleSettings.Default;
+            var v = Properties.ToolSettings.Default;   // turn shape lives on the implement (2026-08-12)
             v.setTurn_K_exitRadius = (double)nudExitK.Value;
             v.setTurn_K_entryStartDist = (double)nudDistK.Value;
             v.setTurn_K_entryAngle = (double)nudAngleK.Value;

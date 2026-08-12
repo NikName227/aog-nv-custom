@@ -470,7 +470,13 @@ namespace AgOpenGPS
             // re-read them on every profile change - LoadSettings is what a profile switch
             // calls - and rebuild the lines that are drawn with them baked in.
             CTurnProfileMigration.RunOnce();
+            //2026-08-12: an implement that has never carried the turn shape inherits it from the
+            //vehicle once, so nothing changes under the driver on the first run
+            CTurnProfileMigration.ShapeToTool();
             yt?.ReloadTurnSettings();
+            //CDubins.turningRadius is static and would otherwise keep the first implement's number
+            CDubins.turningRadius = yt != null ? yt.youTurnRadius
+                : Properties.ToolSettings.Default.setTurn_youTurnRadius;
             tnl?.BuildEffectiveLines();
 
             //metric settings

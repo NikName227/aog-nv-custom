@@ -1,4 +1,4 @@
-using AgLibrary.Settings;
+﻿using AgLibrary.Settings;
 using System.Drawing;
 using System.IO;
 
@@ -101,6 +101,24 @@ namespace AgOpenGPS.Properties
         public double setTurn_boundaryOffset = 0.5;
         public double setTurn_triggerTolerance = 3.0;        // window before the start (m)
         public double setTurn_triggerToleranceAfter = 1.0;   // window past the start (m)
+
+        // Turn SHAPE, moved off the vehicle 2026-08-12. A pulled implement changes how the turn
+        // actually runs far more than the difference between two tractors does, and what is left
+        // of that difference shows up as a slightly wider overshoot - harmless, because nobody
+        // plans a turn at the tractor's minimum radius. Keeping the whole set on the implement
+        // means swapping implements brings its own numbers along, with nothing to retype.
+        // The vehicle still has the last word through its geometric minimum radius (CYouTurn).
+        public double setTurn_youTurnRadius = 8.1;
+        public double setTurn_K_exitRadius = 8;         // K: exit arc radius
+        public double setTurn_K_entryStartDist = 2;     // K: metres before the new line the entry begins
+        public double setTurn_K_entryAngle = 40;        // K: entry straight angle to the new line (deg)
+        public double setTurn_K_transitionRadius = 1.0; // K: unused (rigid K - covered by path smoothing)
+        public double setTurn_U_exitRadius = 8;         // U: exit (outer) radius
+        public double setTurn_U_entryRadius = 8;        // U: entry (inner) radius
+        public double setTurn_U_overshootDist = 0.5;    // U: virtual line offset beyond AB
+
+        /// <summary>false = this implement never had the turn shape, take it off the vehicle once</summary>
+        public bool setTurn_shapeFromVehicle = false;
 
         // Section positions
         public decimal setSection_position1 = -2;

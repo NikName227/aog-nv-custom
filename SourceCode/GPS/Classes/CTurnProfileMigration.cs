@@ -1,4 +1,4 @@
-using AgLibrary.Logging;
+﻿using AgLibrary.Logging;
 using System;
 
 namespace AgOpenGPS
@@ -19,6 +19,38 @@ namespace AgOpenGPS
     /// </summary>
     public static class CTurnProfileMigration
     {
+        /// <summary>
+        /// 2026-08-12: the turn SHAPE moved from the vehicle profile to the implement profile.
+        /// Runs whenever an implement without its own numbers is loaded - it inherits whatever
+        /// the vehicle carries, so nothing changes under the driver on the first run.
+        /// </summary>
+        public static void ShapeToTool()
+        {
+            var t = Properties.ToolSettings.Default;
+            if (t.setTurn_shapeFromVehicle) return;
+
+            try
+            {
+                var v = Properties.VehicleSettings.Default;
+                t.setTurn_youTurnRadius = v.setTurn_youTurnRadius;
+                t.setTurn_K_exitRadius = v.setTurn_K_exitRadius;
+                t.setTurn_K_entryStartDist = v.setTurn_K_entryStartDist;
+                t.setTurn_K_entryAngle = v.setTurn_K_entryAngle;
+                t.setTurn_K_transitionRadius = v.setTurn_K_transitionRadius;
+                t.setTurn_U_exitRadius = v.setTurn_U_exitRadius;
+                t.setTurn_U_entryRadius = v.setTurn_U_entryRadius;
+                t.setTurn_U_overshootDist = v.setTurn_U_overshootDist;
+                t.setTurn_shapeFromVehicle = true;
+                t.Save();
+
+                Log.EventWriter("Turn shape copied from the vehicle to the implement profile");
+            }
+            catch (Exception ex)
+            {
+                Log.EventWriter("CTurnProfileMigration.ShapeToTool: " + ex);
+            }
+        }
+
         public static void RunOnce()
         {
             var s = Properties.Settings.Default;
