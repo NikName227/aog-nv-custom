@@ -258,6 +258,7 @@ namespace AgOpenGPS
 
             BuildStartFromControls();
             ResetStartFrom();
+            BuildMinRadiusNote();
 
             UpdatePlanInfo();
             if (mf.plan.HasPlan)
@@ -1357,6 +1358,73 @@ namespace AgOpenGPS
             UpdatePlanInfo();
         }
 
+        // ── Min radius warning in OUR params tab (2026-08-12) ─────────────
+        // The radius fields here can ask for a tighter turn than the tractor can drive; the
+        // driving code silently lifts them to CYouTurn.MinTurnRadius(). Silently is the problem -
+        // so the value that gets overridden goes red, with one small note under the block (the
+        // number is the same for all three fields, no point repeating it).
+
+        private Label lblMinRadiusNote;
+
+        private void BuildMinRadiusNote()
+        {
+            lblMinRadiusNote = new Label
+            {
+                Text = "",
+                Font = new Font("Tahoma", 8.5F),
+                ForeColor = Color.Firebrick,
+                Location = new Point(4, 210),
+                Size = new Size(500, 20),
+                TextAlign = ContentAlignment.MiddleLeft,
+                Visible = false
+            };
+            pnlK.Controls.Add(lblMinRadiusNote);
+            lblMinRadiusNote.BringToFront();
+
+            // the same note, shown under whichever style panel is up
+            lblMinRadiusNoteU = new Label
+            {
+                Text = "",
+                Font = new Font("Tahoma", 8.5F),
+                ForeColor = Color.Firebrick,
+                Location = new Point(4, 160),
+                Size = new Size(500, 20),
+                TextAlign = ContentAlignment.MiddleLeft,
+                Visible = false
+            };
+            pnlU.Controls.Add(lblMinRadiusNoteU);
+            lblMinRadiusNoteU.BringToFront();
+        }
+
+        private Label lblMinRadiusNoteU;
+
+        private void UpdateMinRadiusWarning()
+        {
+            if (lblMinRadiusNote == null) return;
+
+            double min = mf.yt.MinTurnRadius();
+            bool anyK = MarkIfBelow(nudExitK, min);
+            bool anyU = MarkIfBelow(nudOutU, min) | MarkIfBelow(nudInU, min);
+
+            string note = gStr.gsMinTurnRadiusIs + " " + min.ToString("N1") + " m";
+            lblMinRadiusNote.Text = note;
+            lblMinRadiusNoteU.Text = note;
+            lblMinRadiusNote.Visible = anyK;
+            lblMinRadiusNoteU.Visible = anyU;
+        }
+
+        /// <summary>Red when this field asks for less than the tractor can drive. 0 = "use the
+        /// general radius", which is checked against the minimum on its own.</summary>
+        private bool MarkIfBelow(NumericUpDown nud, double min)
+        {
+            if (nud == null) return false;
+
+            double v = (double)nud.Value;
+            bool below = min > 0 && v > 0.5 && v < min;
+            nud.ForeColor = below ? Color.Firebrick : Color.Black;
+            return below;
+        }
+
         // ── "Kreni od": jump to a zone/pass of an existing plan (2026-08-12) ──
         // Built here rather than in the designer so the ▲▼ steppers stay together with the
         // logic. Deliberately NOT a NumericUpDown: those open the keypad on touch, and this is
@@ -2378,9 +2446,10 @@ namespace AgOpenGPS
         private void LoadTurnParams()
         {
             isLoadingParams = true;
-            //F51: turn shape follows the VEHICLE profile, the tolerances and the extra
-            //boundary offset follow the IMPLEMENT profile - the tablet is not the machine
-            var v = Properties.VehicleSettings.Default;
+            //F51/2026-08-12: the whole turn set - shape, tolerances and the extra boundary
+            //offset - follows the IMPLEMENT profile now; the tablet is not the machine, and the
+            //implement is what changes the turn. The tractor still caps the radius from below.
+            var v = Properties.ToolSettings.Default;
             var t = Properties.ToolSettings.Default;
             SetNud(nudExitK, v.setTurn_K_exitRadius);
             SetNud(nudDistK, v.setTurn_K_entryStartDist);
@@ -2399,6 +2468,7 @@ namespace AgOpenGPS
             isLoadingParams = false;
             paramsDirty = false;
             UpdateApplyButton();
+            UpdateMinRadiusWarning();
         }
 
         // ── Apply (2026-08-10) ────────────────────────────────────────────
@@ -2412,6 +2482,7 @@ namespace AgOpenGPS
         {
             if (isLoadingParams) return;
             paramsDirty = true;
+            UpdateMinRadiusWarning();
             UpdateApplyButton();
         }
 
