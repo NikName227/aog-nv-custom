@@ -1398,8 +1398,11 @@ namespace AgOpenGPS
             };
             btnSfApply.Click += BtnSfApply_Click;
 
-            Controls.AddRange(new Control[] { lblStartFrom, lblSfZone, lblSfZoneVal, lblSfPass,
-                lblSfPassVal, btnSfZoneUp, btnSfZoneDown, btnSfPassUp, btnSfPassDown, btnSfApply });
+            // they belong to the wizard, and the wizard lives in pnlPath - added to the form they
+            // ended up underneath that panel and were never seen (test 2026-08-12)
+            pnlPath.Controls.AddRange(new Control[] { lblStartFrom, lblSfZone, lblSfZoneVal,
+                lblSfPass, lblSfPassVal, btnSfZoneUp, btnSfZoneDown, btnSfPassUp, btnSfPassDown,
+                btnSfApply });
 
             foreach (Control c in StartFromControls()) { c.Visible = false; c.BringToFront(); }
         }
