@@ -1128,34 +1128,37 @@ namespace AgOpenGPS
                     + CurrentTrackName() + "' offset " + idx);
             }
 
-            // left the previous pass?
+            // left the previous pass? (fallback - normally the 50% check below already fired)
             if (runEntry != null && now != runEntry)
             {
                 EnsureGeometry(runEntry);
                 if (!runEntry.isWorked && runEntry.passLength > 1.0
                     && runDistance > 0.5 * runEntry.passLength)
-                {
-                    runEntry.isWorked = true;
-                    mf.FileSaveTurnPlan();
-
-                    // last manual (closing) pass finished = the job is done:
-                    // switch the auto turn button off (test f05-3.2-08)
-                    if (runEntry.IsManual && FlexResumePass() == null
-                        && mf.yt.isYouTurnBtnOn)
-                        mf.btnAutoYouTurn.PerformClick();
-                }
+                    MarkWorked(runEntry);
                 runDistance = 0;
             }
             runEntry = now;
             if (now == null) { lockEntry = null; lockDistance = 0; return; }
 
-            // only count real driving on the line: forward, laterally on the strip
+            //REQ 2026-08-14-1: the active (fixed) line IS the current pass - forward distance
+            //counts regardless of the lateral position (the old < 0.5 width gate silently froze
+            //the counter when driving beside the strip, so 50% never accumulated). Reverse
+            //still does not count, or shuttling at the headland would inflate the counter.
             double lateral = mf.trk.gArr[mf.trk.idx].mode == TrackMode.AB
                 ? mf.ABLine.distanceFromCurrentLinePivot
                 : mf.curve.distanceFromCurrentLinePivot;
 
-            if (!mf.isReverse && Math.Abs(lateral) < 0.5 * WorkWidth())
+            if (!mf.isReverse)
                 runDistance += mf.distanceCurrentStepFix;
+
+            //REQ 2026-08-14-1: pass done the moment 50% of its length is covered - not
+            //only when guidance later moves to another line
+            if (!now.isWorked)
+            {
+                EnsureGeometry(now);
+                if (now.passLength > 1.0 && runDistance > 0.5 * now.passLength)
+                    MarkWorked(now);
+            }
 
             UpdatePassLock(now, lateral);
 
@@ -1168,6 +1171,17 @@ namespace AgOpenGPS
                 else if (now == resume && runDistance > flexResumeDistance)
                     isFlexPause = false;
             }
+        }
+
+        // mark a pass worked + save; the last manual (closing) pass finished = the job is
+        // done, switch the auto turn button off (test f05-3.2-08)
+        private void MarkWorked(CPlanEntry p)
+        {
+            p.isWorked = true;
+            mf.FileSaveTurnPlan();
+
+            if (p.IsManual && FlexResumePass() == null && mf.yt.isYouTurnBtnOn)
+                mf.btnAutoYouTurn.PerformClick();
         }
 
         // accumulate the continuous on-strip distance; fires OnPassLocked ONCE when
