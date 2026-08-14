@@ -3493,6 +3493,109 @@ namespace AgOpenGPS
             YouTurnTrigger();
         }
 
+        //REQ 2026-08-14-1: approach onto the ACTIVE line when autosteer engages off the line.
+        //It does not matter WHY the vehicle is off it (interrupted turn, lateral drift, manual
+        //turning) - one mechanism: forward Dubins arc onto the line ahead; if the nose points
+        //toward the line and is too close for the arc to fit, a straight reverse leg goes in
+        //front - the path start sits behind the vehicle, shows as overshoot (red, stock UX)
+        //and the stock trigger window fires once the driver has backed into it. Never a
+        //half-turn: heading error beyond ~100 deg builds nothing (log only).
+        public void BuildLineApproach()
+        {
+            if (!mf.tnl.IsFeatureOn || !isYouTurnBtnOn || isYouTurnTriggered) return;
+            if (mf.trk.idx < 0 || mf.trk.idx >= mf.trk.gArr.Count) return;
+
+            double lineHead, rE, rN;
+            if (mf.trk.gArr[mf.trk.idx].mode == TrackMode.AB)
+            {
+                rE = mf.ABLine.rEastAB; rN = mf.ABLine.rNorthAB;
+                lineHead = mf.ABLine.abHeading;
+                if (!mf.ABLine.isHeadingSameWay) lineHead += Math.PI;
+            }
+            else
+            {
+                rE = mf.curve.rEastCu; rN = mf.curve.rNorthCu;
+                lineHead = mf.curve.manualUturnHeading;
+                if (!mf.curve.isHeadingSameWay) lineHead += Math.PI;
+            }
+            if (lineHead >= glm.twoPI) lineHead -= glm.twoPI;
+
+            vec3 piv = mf.pivotAxlePos;
+            double latE = piv.easting - rE, latN = piv.northing - rN;
+            double y0 = Math.Sqrt(latE * latE + latN * latN);
+            double alpha = AngleDiff(mf.fixHeading, lineHead);
+
+            //already on the line (same thresholds as the undershoot guard) - nothing to do
+            if (y0 < 0.5 * (mf.tool.width - mf.tool.overlap) && Math.Abs(alpha) < 0.1745) return;
+
+            if (Math.Abs(alpha) > 1.75)
+            {
+                Log.EventWriter("LineApproach: heading err " + ((int)glm.toDegrees(Math.Abs(alpha)))
+                    + " deg > 100, no maneuver (never a half-turn)");
+                return;
+            }
+
+            double R = Math.Max(2.0, youTurnRadius);
+            double ux = Math.Sin(mf.fixHeading), uy = Math.Cos(mf.fixHeading);
+
+            //nose toward the line, closer than a fitting arc needs -> straight reverse leg;
+            //length straight from geometry, no iterations: an aligning arc eats
+            //R*(1-cos alpha) of lateral, reversing regains it at |sin alpha| per meter
+            double revLeg = 0;
+            double towardRate = (ux * latE + uy * latN) / Math.Max(0.01, y0);   // < 0 = toward
+            if (towardRate < 0)
+            {
+                double needed = R * (1.0 - Math.Cos(alpha));
+                if (y0 < needed)
+                    revLeg = (needed - y0) / Math.Max(0.15, -towardRate) + 1.0;
+            }
+            if (revLeg > 30.0)
+            {
+                Log.EventWriter("LineApproach: reverse leg " + revLeg.ToString("N0")
+                    + " m > 30, no maneuver");
+                return;
+            }
+
+            vec3 start = new vec3(piv.easting - ux * revLeg, piv.northing - uy * revLeg, mf.fixHeading);
+
+            //goal on the line ahead of the vehicle's projection - far enough that Dubins
+            //has no reason to answer with a loop (length-guarded below regardless)
+            double goalAhead = 2.0 * R + y0;
+            vec3 goal = new vec3(rE + Math.Sin(lineHead) * goalAhead,
+                                 rN + Math.Cos(lineHead) * goalAhead, lineHead);
+
+            CDubins.turningRadius = R;
+            CDubins dub = new CDubins();
+            List<vec3> path = dub.GenerateDubins(start, goal);
+            if (path == null || path.Count < 6)
+            {
+                Log.EventWriter("LineApproach: Dubins failed, no maneuver");
+                return;
+            }
+
+            double len = 0;
+            for (int i = 0; i < path.Count - 1; i++) len += glm.Distance(path[i], path[i + 1]);
+            if (len > revLeg + goalAhead + 2.0 * y0 + 4.0 * R)
+            {
+                Log.EventWriter("LineApproach: path " + len.ToString("N0")
+                    + " m looks like a loop, no maneuver");
+                return;
+            }
+
+            ResetCreatedYouTurn();
+            ytList = path;
+            isGoingStraightThrough = true;   //target = the line we are already on: no save, no swap
+            activeTurnStyle = 0;
+            youTurnPhase = 10;
+
+            Log.EventWriter("LineApproach: built, lateral " + y0.ToString("N1") + " m, heading err "
+                + ((int)glm.toDegrees(alpha)) + " deg, reverse leg " + revLeg.ToString("N1") + " m");
+
+            //no reverse needed -> the vehicle stands at the path start: engage at once; with
+            //a reverse leg the stock window (red path, back into it, forward) fires the turn
+            if (revLeg < 1.0) YouTurnTrigger();
+        }
+
         public int onA;
         private int maxProgressIndexReached = 0;
 

@@ -203,11 +203,12 @@ namespace AgOpenGPS
                 //if (yt.isYouTurnBtnOn) btnAutoYouTurn.PerformClick();
                 if (sounds.isSteerSoundOn) sounds.sndAutoSteerOff.Play();
 
-                //turn limit lines: dropping autosteer mid-turn aborts the turn for this pass;
-                //the youturn button stays armed so it can re-engage on the next pass.
+                //turn limit lines (REQ 2026-08-14-1): dropping autosteer mid-turn clears the
+                //maneuver but guidance KEEPS whatever line it is on (an applied swap stays
+                //applied; a pending one simply never happens). Re-engaging autosteer builds
+                //an approach onto the active line - no state to restore or remember.
                 if (tnl.IsFeatureOn && (yt.isYouTurnTriggered || yt.youTurnPhase == 10))
                 {
-                    yt.RestorePreTriggerState();
                     yt.ResetYouTurn();
                 }
             }
@@ -234,6 +235,10 @@ namespace AgOpenGPS
                     if (yt.isYouTurnBtnOn)
                     {
                         yt.ResetYouTurn();
+
+                        //REQ 2026-08-14-1: engaging autosteer off the active line builds an
+                        //approach maneuver onto it (arc, or reverse leg + arc when too close)
+                        if (tnl.IsFeatureOn) yt.BuildLineApproach();
                     }
                 }
                 else

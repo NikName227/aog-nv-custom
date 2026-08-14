@@ -392,7 +392,7 @@ namespace AgOpenGPS
                         //heading - identical with or without an IMU. Outside the context the
                         //anchor resets and the stock checks below run untouched.
                         bool turnDirCtx = tnl.IsFeatureOn && yt.isYouTurnBtnOn && ahrs.isReverseOn
-                            && (yt.turnArmed || yt.isYouTurnTriggered);
+                            && (yt.turnArmed || yt.isYouTurnTriggered || yt.turnOvershot);
                         if (turnDirCtx)
                         {
                             if (!dirAnchorSet)
