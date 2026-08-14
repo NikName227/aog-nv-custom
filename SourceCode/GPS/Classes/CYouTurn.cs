@@ -1331,10 +1331,13 @@ namespace AgOpenGPS
                     //NV custom U overshoot: aim the entry arc at a virtual line pushed outward by
                     //"overshoot distance", so a large entry radius overshoots and a short reverse
                     //(driver) then aligns onto the real row. 0 = tangent the real line (stock).
+                    //REQ 2026-08-14-1: negative = virtual line BEFORE the real row (undershoot);
+                    //the maneuver then never touches the row, so DistanceFromYouTurnLine ends it
+                    //on the heading/lateral guard instead.
                     if (mf.tnl.IsFeatureOn)
                     {
                         double over = Properties.ToolSettings.Default.setTurn_U_overshootDist;
-                        if (over > 0.01)
+                        if (Math.Abs(over) > 0.01)
                             distAway += ((isTurnLeft ^ mf.ABLine.isHeadingSameWay) ? over : -over);
                     }
 
@@ -2183,8 +2186,11 @@ namespace AgOpenGPS
 
             double ps = Math.Max(0.1, youTurnRadius * 0.1);
             double Rout = UOutRadius, Rin = UInRadius;
+            //REQ 2026-08-14-1: negative overshoot allowed (aim before the row). The radii
+            //win: the shrink/raise below first eats the minus toward 0, then goes positive -
+            //exactly the "radii have precedence" rule. redStart keeps over > 0.05, so a
+            //negative value draws no red tail (nothing crosses the row).
             double over = Properties.ToolSettings.Default.setTurn_U_overshootDist;
-            if (over < 0) over = 0;
 
             // auto-shrink both radii (max -30%), then automatic overshoot for the rest
             double room = o + over;
@@ -3286,6 +3292,27 @@ namespace AgOpenGPS
         private double crossTurnOffset;
         private CTrk crossSwitchTrack;
 
+        //REQ 2026-08-14-1: with a NEGATIVE overshoot the maneuver never touches the new row,
+        //so the stock completion checks (red index / end of path) may not fire. Aligned with
+        //the new line - heading within 10 deg AND laterally within half a working width -
+        //means the turn is done and the line takes over.
+        private bool UndershootAligned(bool hasProgressedEnough)
+        {
+            if (!mf.tnl.IsFeatureOn || !isYouTurnTriggered || mf.isReverse || !hasProgressedEnough)
+                return false;
+            if (Properties.ToolSettings.Default.setTurn_U_overshootDist >= -0.01) return false;
+            if (ytList.Count < 2) return false;
+
+            double headErr = Math.PI - Math.Abs(Math.Abs(mf.fixHeading - ytList[ytList.Count - 1].heading) - Math.PI);
+            if (headErr > 0.1745) return false;
+
+            double lateral = (mf.trk.idx >= 0 && mf.trk.idx < mf.trk.gArr.Count
+                    && mf.trk.gArr[mf.trk.idx].mode == TrackMode.AB)
+                ? mf.ABLine.distanceFromCurrentLinePivot
+                : mf.curve.distanceFromCurrentLinePivot;
+            return Math.Abs(lateral) < 0.5 * (mf.tool.width - mf.tool.overlap);
+        }
+
         public void CompleteYouTurn()
         {
             //safety: a completed turn must always end up on the new line
@@ -3698,6 +3725,13 @@ namespace AgOpenGPS
                     // This prevents premature completion when start and end positions are the same
                     bool hasProgressedEnough = maxProgressIndexReached > (ptCount / 2);
 
+                    //negative overshoot: aligned with the new line = done (REQ 2026-08-14-1)
+                    if (UndershootAligned(hasProgressedEnough))
+                    {
+                        CompleteYouTurn();
+                        return false;
+                    }
+
                     //field fix 2b v2: stanley steers the FRONT axle - it crossing the
                     //new row's line (the red index) ends the K turn, the line takes over
                     if (mf.tnl.IsFeatureOn && kTurnStage == 3 && !mf.isReverse
@@ -3830,6 +3864,13 @@ namespace AgOpenGPS
                     // Only complete if we've progressed through at least 50% of the path
                     // This prevents premature completion when start and end positions are the same
                     bool hasProgressedEnough = maxProgressIndexReached > (ptCount / 2);
+
+                    //negative overshoot: aligned with the new line = done (REQ 2026-08-14-1)
+                    if (UndershootAligned(hasProgressedEnough))
+                    {
+                        CompleteYouTurn();
+                        return false;
+                    }
 
                     //(K split holds at the end of part 1 - the reverse leg follows)
                     if (((A > 0 && distancePiv > 2) || (B >= ptCount - 1)) && hasProgressedEnough && !kSplitHold)

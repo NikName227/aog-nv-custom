@@ -965,6 +965,7 @@
             this.nudOvershootU.Increment = new decimal(new int[] { 5, 0, 0, 65536 });
             this.nudOvershootU.Location = new System.Drawing.Point(330, 120);
             this.nudOvershootU.Maximum = new decimal(new int[] { 10, 0, 0, 0 });
+            this.nudOvershootU.Minimum = new decimal(new int[] { 2, 0, 0, -2147483648 });
             this.nudOvershootU.Name = "nudOvershootU";
             this.nudOvershootU.Size = new System.Drawing.Size(130, 34);
             this.nudOvershootU.TabIndex = 6;

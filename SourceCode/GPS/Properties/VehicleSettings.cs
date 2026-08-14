@@ -79,7 +79,7 @@ namespace AgOpenGPS.Properties
         public double setTurn_K_transitionRadius = 1.0; // K: unused (rigid K - covered by path smoothing)
         public double setTurn_U_exitRadius = 8;         // U: exit (outer) radius
         public double setTurn_U_entryRadius = 8;        // U: entry (inner) radius
-        public double setTurn_U_overshootDist = 0.5;    // U: virtual line offset beyond AB
+        public double setTurn_U_overshootDist = 0.5;    // U: virtual line offset beyond AB (+) or before it (-, REQ 2026-08-14-1)
 
         public LoadResult Load(string vehicleFileName)
         {
