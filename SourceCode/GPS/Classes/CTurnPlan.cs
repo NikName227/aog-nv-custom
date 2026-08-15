@@ -78,9 +78,8 @@ namespace AgOpenGPS
             clipToHeadland = true;
             runEntry = null;
             runDistance = 0;
-            firstPass = null;
-            fpNoVerdictLogged = false;
-            ResetFirstPassSamples();
+            plannedEntry = null;
+            lastTurnTriggered = false;
             isFlexPause = false;
         }
 
@@ -670,156 +669,63 @@ namespace AgOpenGPS
 
         public bool IsRuntimeOn { get { return isFollowPlan && entries.Count > 0; } }
 
-        // ── first pass detector (field 2026-08-15) ────────────────────────────
-        // Starting a plan, the first pass often went unrecognized: CurrentEntry() reads the
-        // guidance lane, and that lane is FROZEN while autosteer is on (CABLine.cs:92 only
-        // recomputes it with autosteer off), so whatever it was at engage time it stays -
-        // no pass counted, no turn armed, and it "woke up" only by luck.
-        //
-        // So the first pass is decided by the driving itself: a sample every 2 m, the last
-        // 10 kept (= 20 m), and when 8 of them are nearest to the SAME pass and inside the
-        // tolerance, that pass is the one being driven. Measured implement-centre to
-        // pass-centre, so it holds with autosteer on or off and needs no lane bookkeeping.
-        // Only ever runs for the FIRST pass; once it is worked, everything is as before.
-        private const double firstPassSampleStep = 2.0;    // m of forward travel per sample
-        private const int firstPassWindow = 10;            // samples kept (2 m each = 20 m)
-        private const int firstPassNeeded = 8;             // how many must agree
-        private const double firstPassTolerance = 0.35;    // x working width, to the pass centre
+        // ── the pass the plan itself put the guidance on (field 2026-08-15) ──
+        // Turning the plan on already sets the guidance line to the plan's first pass
+        // (TryGuidanceOffset -> CABLine.cs:138). So the current pass is not something to
+        // work out - the plan just decided it. It used to be thrown away and looked up
+        // again from howManyPathsAway, which cannot be trusted:
+        //   * the lane is FROZEN while autosteer is on (CABLine.cs:92 only recomputes it
+        //     with autosteer off), so it keeps whatever it was at engage time;
+        //   * the plan numbers its passes from field geometry alone (TryOffsetRange: fence
+        //     distance / working width) while the lane includes tool.offset and the track
+        //     nudge - with a side-mounted implement the two numberings drift apart by up to
+        //     a whole lane and the match either fails or, worse, hits the wrong pass.
+        // Remembering it removes both problems. Differences between two passes are
+        // unaffected (the constant cancels), so turn targeting stays exactly as it was.
+        private CPlanEntry plannedEntry;
+        private bool lastTurnTriggered;
 
-        private readonly int[] fpOrder = new int[firstPassWindow];
-        private readonly double[] fpDist = new double[firstPassWindow];
-        private int fpCount, fpNext;
-        private double fpSinceSample;
-        private CPlanEntry firstPass;                      // confirmed pass, null = not yet
-        private bool fpNoVerdictLogged;
-
-        /// <summary>The confirmed first pass, or null while it is undecided/finished.</summary>
-        private CPlanEntry FirstPassEntry()
+        /// <summary>
+        /// The pass the plan is on. Stays put once the pass is marked worked at 50 % - the
+        /// vehicle is still driving it, and the turn is what moves the plan on. Dropped only
+        /// when the pass is skipped or the plan no longer holds it.
+        /// </summary>
+        private CPlanEntry PlannedEntry()
         {
-            if (firstPass == null) return null;
-            if (!entries.Contains(firstPass) || firstPass.isWorked || firstPass.isSkipped)
-            {
-                firstPass = null;                          // done - normal mechanics take over
-                fpCount = fpNext = 0;
-                fpSinceSample = 0;
-            }
-            return firstPass;
+            if (plannedEntry == null) return null;
+            if (!entries.Contains(plannedEntry) || plannedEntry.isSkipped)
+                plannedEntry = null;
+            return plannedEntry;
         }
 
-        private void ResetFirstPassSamples()
+        private void SetPlannedEntry(CPlanEntry p, string why)
         {
-            fpCount = fpNext = 0;
-            fpSinceSample = 0;
+            if (p == plannedEntry) return;
+            plannedEntry = p;
+            Log.EventWriter("TurnPlan: current pass = "
+                + (p == null ? "<none>" : "order " + p.order + ", offset " + p.offsetIdx)
+                + " (" + why + ")");
         }
 
         /// <summary>
-        /// Lateral distance from the implement centre to a pass centre line, or -1 when the
-        /// pass has no geometry. The plan's pass polyline IS the centre of the strip
-        /// (BuildPassGeometry offsets by k*w + 0.5w), and the implement sits tool.offset
-        /// sideways from the pivot - so this compares like with like.
+        /// A turn has just finished: the plan moves on to the next pass by order. Only when
+        /// the pass it was on is actually done - a turn broken off early leaves it alone,
+        /// and the guidance seeding offers the same pass again.
         /// </summary>
-        private double DistanceToPass(CPlanEntry p, double toolE, double toolN)
+        private void AdvanceAfterTurn()
         {
-            EnsureGeometry(p);
-            double best = -1;
-            foreach (var seg in p.segments)
+            CPlanEntry from = plannedEntry;
+            if (from == null || !from.isWorked) return;
+
+            CPlanEntry next = null;
+            foreach (var p in entries)                      // first not-worked AFTER this one
             {
-                //every 4th point is plenty to tell one pass from its neighbour
-                for (int i = 0; i < seg.Count; i += 4)
-                {
-                    double de = seg[i].easting - toolE, dn = seg[i].northing - toolN;
-                    double d = de * de + dn * dn;
-                    if (best < 0 || d < best) best = d;
-                }
+                if (p.isWorked || p.isSkipped || p.order <= from.order) continue;
+                if (next == null || p.order < next.order) next = p;
             }
-            return best < 0 ? -1 : Math.Sqrt(best);
-        }
+            if (next == null) next = NextEntry();           // nothing after it: wrap to the first
 
-        /// <summary>
-        /// One sample every 2 m of forward travel; 8 of the last 10 agreeing on the same
-        /// pass confirms it. Called once per fix from UpdateProgress.
-        /// </summary>
-        private void SampleFirstPass()
-        {
-            //only until the first pass is settled; after that nothing here runs
-            if (!IsRuntimeOn || isFlexPause || FirstPassEntry() != null || WorkedCount() > 0)
-                return;
-
-            if (mf.isReverse) { ResetFirstPassSamples(); return; }
-
-            fpSinceSample += mf.distanceCurrentStepFix;
-            if (fpSinceSample < firstPassSampleStep) return;
-            fpSinceSample = 0;
-
-            //implement centre: the pivot moved sideways by the tool offset (+ = right)
-            double px = Math.Sin(mf.fixHeading + glm.PIBy2), py = Math.Cos(mf.fixHeading + glm.PIBy2);
-            double toolE = mf.pivotAxlePos.easting + px * mf.tool.offset;
-            double toolN = mf.pivotAxlePos.northing + py * mf.tool.offset;
-
-            CPlanEntry near = null;
-            double nearDist = double.MaxValue;
-            foreach (var p in entries)
-            {
-                if (p.isWorked || p.isSkipped) continue;
-                double d = DistanceToPass(p, toolE, toolN);
-                if (d < 0 || d >= nearDist) continue;
-                nearDist = d;
-                near = p;
-            }
-            if (near == null) return;
-
-            fpOrder[fpNext] = near.order;
-            fpDist[fpNext] = nearDist;
-            fpNext = (fpNext + 1) % firstPassWindow;
-            if (fpCount < firstPassWindow) fpCount++;
-            if (fpCount < firstPassNeeded) return;
-
-            //which pass do most of the samples point at, and how close were they
-            double tol = firstPassTolerance * WorkWidth();
-            int bestOrder = 0, bestVotes = 0;
-            double bestMean = 0;
-            for (int i = 0; i < fpCount; i++)
-            {
-                int votes = 0;
-                double sum = 0;
-                for (int j = 0; j < fpCount; j++)
-                {
-                    if (fpOrder[j] != fpOrder[i] || fpDist[j] > tol) continue;
-                    votes++;
-                    sum += fpDist[j];
-                }
-                if (votes <= bestVotes) continue;
-                bestVotes = votes;
-                bestOrder = fpOrder[i];
-                bestMean = votes > 0 ? sum / votes : 0;
-            }
-
-            if (bestVotes >= firstPassNeeded)
-            {
-                foreach (var p in entries)
-                {
-                    if (p.order != bestOrder) continue;
-                    firstPass = p;
-                    ResetFirstPassSamples();
-                    Log.EventWriter("TurnPlan: first pass confirmed - order " + p.order
-                        + ", offset " + p.offsetIdx + ", " + bestVotes + "/" + fpCount
-                        + " samples, mean " + bestMean.ToString("N2") + " m (tol "
-                        + tol.ToString("N2") + " m)");
-                    break;
-                }
-                return;
-            }
-
-            //full window, no verdict: say why once, then stay quiet until something changes
-            if (fpCount >= firstPassWindow && !fpNoVerdictLogged)
-            {
-                fpNoVerdictLogged = true;
-                Log.EventWriter("TurnPlan: first pass NOT confirmed over "
-                    + (firstPassWindow * firstPassSampleStep).ToString("N0") + " m - best is order "
-                    + bestOrder + " with " + bestVotes + "/" + fpCount + " samples inside "
-                    + tol.ToString("N2") + " m; last sample order " + fpOrder[(fpNext + firstPassWindow - 1) % firstPassWindow]
-                    + " at " + fpDist[(fpNext + firstPassWindow - 1) % firstPassWindow].ToString("N2") + " m");
-            }
+            SetPlannedEntry(next, "turn finished after order " + from.order);
         }
 
         /// <summary>
@@ -830,9 +736,7 @@ namespace AgOpenGPS
         {
             runEntry = null;
             runDistance = 0;
-            firstPass = null;               // skip/undo/start-from: decide the pass again
-            fpNoVerdictLogged = false;
-            ResetFirstPassSamples();
+            SetPlannedEntry(null, "run invalidated");
         }
 
         /// <summary>
@@ -1165,13 +1069,11 @@ namespace AgOpenGPS
         {
             if (entries.Count == 0) return null;
 
-            //the first pass, once the driving has confirmed it, is the answer - the guidance
-            //lane cannot be trusted there (frozen under autosteer). Released as soon as that
-            //pass is worked; from then on the lane decides again, exactly as before.
+            //the plan put the guidance on this pass, so this IS the pass - no lookup needed
             if (IsRuntimeOn && !isFlexPause)
             {
-                CPlanEntry fp = FirstPassEntry();
-                if (fp != null) return fp;
+                CPlanEntry planned = PlannedEntry();
+                if (planned != null) return planned;
             }
 
             if (mf.trk.idx < 0 || mf.trk.idx >= mf.trk.gArr.Count) return null;
@@ -1243,6 +1145,11 @@ namespace AgOpenGPS
                 if (best == null || p.order < best.order) best = p;
             }
             if (best == null) return false;
+
+            //the guidance line is being sent to this pass - remember it, that is the
+            //current pass from here on (no need to look it up again later)
+            SetPlannedEntry(best, "guidance sent to it");
+
             idx = best.offsetIdx;
             return true;
         }
@@ -1280,8 +1187,11 @@ namespace AgOpenGPS
         {
             if (!IsRuntimeOn || !mf.isJobStarted) return;
 
-            //decide the first pass from the driving before anything reads CurrentEntry()
-            SampleFirstPass();
+            //turn just finished (triggered true -> false): move the plan to the next pass.
+            //Watched here so CYouTurn stays untouched.
+            bool turning = mf.yt.isYouTurnTriggered;
+            if (lastTurnTriggered && !turning) AdvanceAfterTurn();
+            lastTurnTriggered = turning;
 
             CPlanEntry now = CurrentEntry();
 
@@ -1296,8 +1206,7 @@ namespace AgOpenGPS
                         ? mf.ABLine.howManyPathsAway : mf.curve.howManyPathsAway)
                     : -999;
                 Log.EventWriter("TurnPlan diag: no entry matches track '"
-                    + CurrentTrackName() + "' offset " + idx + " (trkIdx " + mf.trk.idx
-                    + ", offset -999 = no active line at all)");
+                    + CurrentTrackName() + "' offset " + idx + ", trkIdx " + mf.trk.idx);
             }
 
             // left the previous pass?
