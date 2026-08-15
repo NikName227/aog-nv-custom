@@ -4222,7 +4222,13 @@ namespace AgOpenGPS
                     //find the closest 2 points to current fix
                     //Start search from max progress minus small lookback to prevent jumping back to start
                     //when start and end positions overlap
-                    int searchStartIndex = Math.Max(0, maxProgressIndexReached - 5);
+                    //REQ 2026-08-15-7: the forward-only search exists so a turn cannot snap
+                    //back to its own start where start and end overlap. An approach is driven
+                    //BOTH ways - reversing along the straight is the whole point of phase B -
+                    //so there the index must be free to walk back. Field 2026-08-16: without
+                    //this the goal point froze a few metres along and the vehicle tried to
+                    //spin around to reach it.
+                    int searchStartIndex = isLineApproach ? 0 : Math.Max(0, maxProgressIndexReached - 5);
                     for (int t = searchStartIndex; t < ptCount; t++)
                     {
                         double dist = ((pivot.easting - ytList[t].easting) * (pivot.easting - ytList[t].easting))
@@ -4297,7 +4303,10 @@ namespace AgOpenGPS
 
                     //return and reset if too far away or end of the line
                     //(K split holds at the end of part 1 - the reverse leg follows)
-                    if (B >= ptCount - 1 && hasProgressedEnough && !kSplitHold)
+                    //an approach ends at the row - but only if the driver is going FORWARD;
+                    //in reverse he is still working his way back along the straight
+                    if (B >= ptCount - 1 && hasProgressedEnough && !kSplitHold
+                        && !(isLineApproach && mf.isReverse))
                     {
                         CompleteYouTurn();
                         return false;
@@ -4385,7 +4394,13 @@ namespace AgOpenGPS
                     //find the closest 2 points to current fix
                     //Start search from max progress minus small lookback to prevent jumping back to start
                     //when start and end positions overlap
-                    int searchStartIndex = Math.Max(0, maxProgressIndexReached - 5);
+                    //REQ 2026-08-15-7: the forward-only search exists so a turn cannot snap
+                    //back to its own start where start and end overlap. An approach is driven
+                    //BOTH ways - reversing along the straight is the whole point of phase B -
+                    //so there the index must be free to walk back. Field 2026-08-16: without
+                    //this the goal point froze a few metres along and the vehicle tried to
+                    //spin around to reach it.
+                    int searchStartIndex = isLineApproach ? 0 : Math.Max(0, maxProgressIndexReached - 5);
                     for (int t = searchStartIndex; t < ptCount; t++)
                     {
                         double dist = ((pivot.easting - ytList[t].easting) * (pivot.easting - ytList[t].easting))
@@ -4423,7 +4438,12 @@ namespace AgOpenGPS
                     bool hasProgressedEnough = maxProgressIndexReached > (ptCount / 2);
 
                     //(K split holds at the end of part 1 - the reverse leg follows)
-                    if (((A > 0 && distancePiv > 2) || (B >= ptCount - 1)) && hasProgressedEnough && !kSplitHold)
+                    //An approach is exempt from "2 m off the path = done": it starts with the
+                    //vehicle far from the straight on purpose, and it ends at the row only when
+                    //the driver is going forward (same rule as the Stanley branch).
+                    bool offPathDone = A > 0 && distancePiv > 2 && !isLineApproach;
+                    bool atPathEnd = B >= ptCount - 1 && !(isLineApproach && mf.isReverse);
+                    if ((offPathDone || atPathEnd) && hasProgressedEnough && !kSplitHold)
                     {
                         CompleteYouTurn();
                         return false;
