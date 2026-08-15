@@ -178,6 +178,24 @@ namespace AgOpenGPS
                 //them), so the plan that just came off disk is checked against the passes that
                 //actually exist now - it is kept when it matches, regenerated when it does not.
                 OrchardSyncPlan(false);
+
+                //Field 2026-08-15: FileLoadTracks ends with trk.idx = -1, so a field opened
+                //with a running plan had NO active guidance line - CurrentEntry() returned null
+                //on every fix and the plan drove blind (no pass counted, no turn armed) until
+                //the driver picked a line by hand. That was the "first pass is never clean"
+                //report. Put the plan's own track back on, and leave howManyPathsAway alone:
+                //the existing seeding (CABLine/CABCurve) lands it on the first not-worked pass.
+                if (plan.IsRuntimeOn && trk.idx < 0)
+                {
+                    if (plan.TryPlanTrackIndex(out int planTrk))
+                    {
+                        trk.idx = planTrk;
+                        ABLine.isABValid = false;
+                        curve.isCurveValid = false;
+                        plan.TraceEvent("field open: plan track '" + trk.gArr[planTrk].name + "' activated");
+                    }
+                    else plan.TraceEvent("field open: plan track not found, no line activated");
+                }
             }
             else
             {

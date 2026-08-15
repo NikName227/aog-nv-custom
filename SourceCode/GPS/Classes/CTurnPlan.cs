@@ -746,6 +746,35 @@ namespace AgOpenGPS
         }
 
         /// <summary>
+        /// Track the plan runs on, as an index into trk.gArr; false when it is not there.
+        /// Field plans keep the name in trackName, orchard entries carry it per entry - so
+        /// the orchard answer is the track of the first not-worked pass by order.
+        /// (Field 2026-08-15: opening a field left trk.idx at -1, which made CurrentEntry
+        /// return null and the whole plan runtime blind until the driver picked a line.)
+        /// </summary>
+        public bool TryPlanTrackIndex(out int idx)
+        {
+            idx = -1;
+            if (!HasPlan || mf.trk?.gArr == null) return false;
+
+            string want = trackName;
+            if (string.IsNullOrEmpty(want))
+            {
+                CPlanEntry first = NextEntry();
+                if (first != null && first.IsManual) want = first.trackName;
+            }
+            if (string.IsNullOrEmpty(want)) return false;
+
+            for (int i = 0; i < mf.trk.gArr.Count; i++)
+            {
+                if (mf.trk.gArr[i].name != want) continue;
+                idx = i;
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
         /// Forget the pass the vehicle is running so the next fix re-picks the first
         /// not-worked entry. Call after a manual worked-flag correction (phase 3.3).
         /// </summary>
