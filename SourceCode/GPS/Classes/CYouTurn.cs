@@ -3616,6 +3616,11 @@ namespace AgOpenGPS
             //the maneuver simply carries on forward.
             if (isLineApproach && approachReverse && isYouTurnTriggered)
             {
+                //while backing up there is nothing to convert to - the driver is making room,
+                //not entering the row (his words, 2026-08-16). The check runs when he goes
+                //forward again.
+                if (mf.isReverse) return;
+
                 if (TryBuildApproachPath(out List<vec3> full, out string fwhy, out bool stillReverse)
                     && !stillReverse)
                 {
@@ -3856,6 +3861,25 @@ namespace AgOpenGPS
             //ahead of the tangent point, or the driver would have nothing under him to back along
             double aheadOfEntry = isReverseOnly ? Math.Max(0, -alongToEntry) + approachRunIn + 5.0 : 0;
 
+            //Field 2026-08-16: a 20 m straight ran out under the driver - he reversed off its
+            //end and the maneuver ended ("straight 20 m" then "done" seconds later). The
+            //straight now runs the WHOLE turn line, extension included, so there is path under
+            //him however far he backs along the headland. Forward it still stops at the tangent
+            //point, where the entry arc takes over.
+            //s is measured backwards along the drive direction: point(s) = tanPar - t*s.
+            double sBack = parLen, sFront = -aheadOfEntry;
+            for (int i = 0; i < eff.Count; i++)
+            {
+                double sp = -((eff[i].easting - tanPar.easting) * tx
+                            + (eff[i].northing - tanPar.northing) * ty);
+                if (sp > sBack) sBack = sp;
+                if (isReverseOnly && sp < sFront) sFront = sp;
+            }
+
+            //a metre between points is plenty on a straight, and keeps the list short when the
+            //line is a few hundred metres long
+            double step = Math.Max(ps, 1.0);
+
             //The follower's convention is that a path's points carry the NOSE heading, and
             //reverse travel walks them backwards (that is how the K turn's reverse leg is
             //ordered). Phase B fires exactly when the vehicle faces the other way, so ordering
@@ -3873,12 +3897,12 @@ namespace AgOpenGPS
             path = new List<vec3>();
             if (alongNose)
             {
-                for (double s = -aheadOfEntry; s < parLen; s += ps)
+                for (double s = sFront; s <= sBack; s += step)
                     path.Add(new vec3(tanPar.easting - tx * s, tanPar.northing - ty * s, pathHead));
             }
             else
             {
-                for (double s = parLen; s > -aheadOfEntry; s -= ps)
+                for (double s = sBack; s >= sFront; s -= step)
                     path.Add(new vec3(tanPar.easting - tx * s, tanPar.northing - ty * s, pathHead));
             }
 
@@ -3891,7 +3915,8 @@ namespace AgOpenGPS
                     return false;
                 }
 
-                why = "reverse leg only (" + bReason + "), straight " + parLen.ToString("N0") + " m";
+                why = "reverse leg only (" + bReason + "), straight "
+                    + (sBack - sFront).ToString("N0") + " m";
                 return true;
             }
 
@@ -3930,7 +3955,7 @@ namespace AgOpenGPS
 
             why = "built, " + y0.ToString("N1") + " m off the pass, entry "
                 + entryAt.ToString("N1") + " m along it, turn " + ((int)glm.toDegrees(absDelta))
-                + " deg, R " + R.ToString("N1") + " m, straight " + parLen.ToString("N0") + " m";
+                + " deg, R " + R.ToString("N1") + " m, straight " + (sBack - sFront).ToString("N0") + " m";
             return true;
         }
 
