@@ -1090,6 +1090,8 @@ namespace AgOpenGPS
             mf.tnl.isKPrimary = false;
             mf.tnl.isCombined = true;
             mf.tnl.BuildEffectiveLines();
+            //IsFeatureOn just changed, and it decides the turn line inset (CTurn.cs:128)
+            mf.bnd.BuildTurnLines();
 
             SaveTurnParams();
             paramsDirty = false;
