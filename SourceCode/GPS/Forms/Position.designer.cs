@@ -1131,8 +1131,13 @@ namespace AgOpenGPS
                     //was never even called. That setting carries no meaning for our maneuver -
                     //what limits it are the DRAWN turn limit lines and UWideThreshold. So with
                     //our feature on the gate is simply "inside the field". Feature off = stock.
+                    //REQ 2026-08-16: plus the band around a drawn turn line, whichever side of
+                    //it - on fields where the headland lies OUTSIDE the boundary this gate kept
+                    //flapping ("outside the allowed turn area" every few seconds) exactly where
+                    //turning actually happens. Same band the approach uses, so one number
+                    //answers "is this a place where we turn" everywhere.
                     bool isInTurnBounds = tnl.IsFeatureOn
-                        ? bnd.IsPointInsideFenceArea(pivotAxlePos) || tnl.IsInAllowedExtension(pivotAxlePos)
+                        ? bnd.IsPointInsideFenceArea(pivotAxlePos) || tnl.IsWithinTurnBand(pivotAxlePos)
                         : bnd.IsPointInsideTurnArea(pivotAxlePos) != -1 || tnl.IsInAllowedExtension(pivotAxlePos);
 
                     //never silent again: say it when no turn can be built where we are

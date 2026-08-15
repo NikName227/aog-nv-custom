@@ -3465,9 +3465,9 @@ namespace AgOpenGPS
         // there the driver leads himself back onto the line (field 2026-08-15)
         private const double approachEntryMax = 30.0;
 
-        // band around the turn line that counts as "where turning happens" even when it falls
-        // outside the field boundary (field 2026-08-16, driver's figure)
-        private const double approachZoneBand = 10.0;
+        // the band around the turn line is the same one the turn-area gate uses - one number,
+        // one idea: this is where turning happens (field 2026-08-16)
+        private const double approachZoneBand = CTurnLimitLines.turnBandWidth;
 
         // outside this band the "approach" would be a turn (or a nudge), not an entry
         private const double approachTurnMax = 2.09, approachTurnMin = 0.087;

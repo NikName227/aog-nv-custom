@@ -375,6 +375,19 @@ namespace AgOpenGPS
         /// where the boundary runs, and the driver should not have to think about it. Only the
         /// drawn extent counts, not the extrapolation, so the band cannot appear off the ends.
         /// </summary>
+        // The band around a drawn turn line that counts as "where turning happens", whichever
+        // side of the line and whether or not the field boundary happens to run there
+        // (REQ 2026-08-16, driver's figure). One rule for: may a maneuver be built here at
+        // all, and may an approach END here.
+        public const double turnBandWidth = 10.0;
+
+        /// <summary>True when the point lies within turnBandWidth of a drawn turn line.</summary>
+        public bool IsWithinTurnBand(vec3 pt)
+        {
+            double d = DistanceToEffectiveLines(pt.easting, pt.northing);
+            return d >= 0 && d <= turnBandWidth;
+        }
+
         // how far past its drawn ends the line still counts for the bands below. Field
         // 2026-08-16: the driver refills the seeder OFF the field, past the end of the drawn
         // line, and that spot must still count as "at the headland" (REQ 2026-08-15-9).
