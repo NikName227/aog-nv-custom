@@ -3433,6 +3433,7 @@ namespace AgOpenGPS
             part2RedIndex = -1;
             turnLineSwapPending = false;
             isLineApproach = false;
+            approachReverse = false;
         }
 
         #region line approach (REQ 2026-08-15-7)
@@ -3449,6 +3450,9 @@ namespace AgOpenGPS
         // asked for (autosteer engaged) but not built yet: retargeting the pass needs one
         // fix to pass before the line's own reference point is on the NEW pass
         private bool approachPending;
+
+        // the built approach is the phase B shape: straight only, waiting for room
+        private bool approachReverse;
 
         // the pass stays held after the approach until the vehicle has settled onto it
         private bool approachHoldPass;
@@ -3594,6 +3598,24 @@ namespace AgOpenGPS
         /// </summary>
         public void UpdateLineApproach()
         {
+            //PHASE B -> A: while the driver backs along the straight, ask every fix whether the
+            //entry radius fits yet. The moment it does, the tail of the path becomes the arc -
+            //the straight underneath him does not move, so the follower keeps its reference and
+            //the maneuver simply carries on forward.
+            if (isLineApproach && approachReverse && isYouTurnTriggered)
+            {
+                if (TryBuildApproachPath(out List<vec3> full, out string fwhy, out bool stillReverse)
+                    && !stillReverse)
+                {
+                    ytList = full;
+                    approachReverse = false;
+                    maxProgressIndexReached = 0;
+                    ytRedIndex = -1;
+                    Log.EventWriter("LineApproach: room for the entry radius - " + fwhy);
+                }
+                return;
+            }
+
             if (!approachPending) return;
             if (isYouTurnTriggered || !isYouTurnBtnOn || !mf.tnl.IsFeatureOn)
             {
@@ -3634,7 +3656,7 @@ namespace AgOpenGPS
                 }
             }
 
-            if (!TryBuildApproachPath(out List<vec3> path, out string why))
+            if (!TryBuildApproachPath(out List<vec3> path, out string why, out bool reverseOnly))
             {
                 Log.EventWriter("LineApproach: " + why + ", no maneuver");
                 return;
@@ -3644,6 +3666,7 @@ namespace AgOpenGPS
             ytList = path;
             isGoingStraightThrough = true;   //target = the pass we are already on: no line swap
             isLineApproach = true;
+            approachReverse = reverseOnly;
             activeTurnStyle = 0;
             youTurnPhase = 10;
 
@@ -3661,8 +3684,18 @@ namespace AgOpenGPS
         /// </summary>
         public bool TryBuildApproachPath(out List<vec3> path, out string why)
         {
+            return TryBuildApproachPath(out path, out why, out _);
+        }
+
+        /// <summary>
+        /// Same, plus whether what came back is the PHASE B shape: just the straight along the
+        /// turn line, with no entry arc - the driver backs along it until there is room.
+        /// </summary>
+        public bool TryBuildApproachPath(out List<vec3> path, out string why, out bool isReverseOnly)
+        {
             path = null;
             why = null;
+            isReverseOnly = false;
 
             if (mf.trk.idx < 0 || mf.trk.idx >= mf.trk.gArr.Count)
             {
@@ -3770,23 +3803,21 @@ namespace AgOpenGPS
             //half a machine width the driver asked for (2026-08-15) - that margin doubles
             //as the hysteresis that keeps this from flapping right at the threshold
             double need = d * Math.Sin(absDelta) + 0.5 * mf.tool.width;
-            if (y0 < need)
-            {
-                why = "only " + y0.ToString("N1") + " m off the pass, "
-                    + need.ToString("N1") + " m needed for the entry radius";
-                return false;
-            }
 
             vec2 tanPar = new vec2(cross.easting - tx * d, cross.northing - ty * d);
             vec2 tanRow = new vec2(cross.easting + rowX * d, cross.northing + rowY * d);
 
-            //phase A never reverses: an entry behind us is not ours to build
             double alongToEntry = (tanPar.easting - piv.easting) * tx + (tanPar.northing - piv.northing) * ty;
-            if (alongToEntry < 0)
-            {
-                why = "entry lies " + (-alongToEntry).ToString("N1") + " m behind the vehicle";
-                return false;
-            }
+
+            //PHASE B (REQ 2026-08-15-7): too close to the row for the arc to fit, or the entry
+            //is already behind us. Then the maneuver is JUST the straight along the turn line:
+            //the driver backs along it (guided - the follower reads the path backwards when
+            //reversing) until there is room, and the moment there is, the tail becomes the
+            //entry arc. Only these two shapes exist, by the driver's own decision.
+            isReverseOnly = y0 < need || alongToEntry < 0;
+            string bReason = y0 < need
+                ? "only " + y0.ToString("N1") + " m off the pass, " + need.ToString("N1") + " m needed"
+                : "entry " + (-alongToEntry).ToString("N1") + " m behind the vehicle";
 
             //the straight reaches back PAST the vehicle - that is what lets the follower pull
             //it onto the parallel from wherever it stands. It is NOT tested against the fence:
@@ -3796,9 +3827,26 @@ namespace AgOpenGPS
             double parLen = Math.Max(approachParallelLen, alongToEntry + approachParallelLen * 0.25);
             double ps = Math.Max(0.2, R * 0.1);
 
+            //reverse-only: the straight must also cover the ground the vehicle is standing on,
+            //ahead of the tangent point, or the driver would have nothing under him to back along
+            double aheadOfEntry = isReverseOnly ? Math.Max(0, -alongToEntry) + approachRunIn + 5.0 : 0;
+
             path = new List<vec3>();
-            for (double s = parLen; s > 0; s -= ps)
+            for (double s = parLen; s > -aheadOfEntry; s -= ps)
                 path.Add(new vec3(tanPar.easting - tx * s, tanPar.northing - ty * s, parHead));
+
+            if (isReverseOnly)
+            {
+                if (path.Count < 6)
+                {
+                    path = null;
+                    why = "no room for a straight to back along";
+                    return false;
+                }
+
+                why = "reverse leg only (" + bReason + "), straight " + parLen.ToString("N0") + " m";
+                return true;
+            }
 
             //the entry arc itself
             double turnSign = delta > 0 ? 1.0 : -1.0;
