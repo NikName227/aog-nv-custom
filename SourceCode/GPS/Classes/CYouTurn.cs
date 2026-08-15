@@ -3502,6 +3502,90 @@ namespace AgOpenGPS
             YouTurnTrigger();
         }
 
+        // how far along the line the field is probed when choosing the approach direction,
+        // and the step of that probe
+        private const double approachProbe = 60.0, approachProbeStep = 5.0;
+
+        /// <summary>
+        /// Room along the line from (e, n) in direction head that stays inside the fence,
+        /// capped at approachProbe. 0 = the very first step is already outside.
+        /// </summary>
+        private double RoomInsideField(double e, double n, double head)
+        {
+            double sx = Math.Sin(head), sy = Math.Cos(head);
+            double room = 0;
+            for (double d = approachProbeStep; d <= approachProbe; d += approachProbeStep)
+            {
+                if (!mf.bnd.IsPointInsideFenceArea(new vec2(e + sx * d, n + sy * d))) break;
+                room = d;
+            }
+            return room;
+        }
+
+        /// <summary>
+        /// Which way along the line the approach should aim. Takes the direction with room
+        /// inside the field; when both have room, the plan's pass direction decides, and
+        /// without a plan the one the vehicle is already closer to. False = neither way has
+        /// room (nothing is built - the vehicle is not in a place to be led back from).
+        /// </summary>
+        private bool PickApproachDirection(double rE, double rN, ref double lineHead)
+        {
+            double fwd = lineHead, rev = lineHead + Math.PI;
+            double roomFwd = RoomInsideField(rE, rN, fwd);
+            double roomRev = RoomInsideField(rE, rN, rev);
+
+            if (roomFwd < approachProbeStep && roomRev < approachProbeStep)
+            {
+                Log.EventWriter("LineApproach: no room inside the field either way, no maneuver");
+                return false;
+            }
+
+            //one way is walled off - the choice is made for us
+            if (roomFwd < approachProbeStep) { lineHead = rev; return true; }
+            if (roomRev < approachProbeStep) { lineHead = fwd; return true; }
+
+            //both open: the plan knows which way this pass is driven
+            CPlanEntry cur = mf.plan.IsRuntimeOn ? mf.plan.CurrentEntry() : null;
+            if (cur != null) { lineHead = cur.isSameWay ? fwd : rev; return true; }
+
+            //no plan: the smaller heading change wins, but only clearly - right at 90 deg
+            //this is the very coin flip we are getting away from, so the field decides
+            if (Math.Abs(roomFwd - roomRev) > approachProbeStep)
+            {
+                lineHead = roomFwd > roomRev ? fwd : rev;
+                return true;
+            }
+            lineHead = Math.Abs(AngleDiff(mf.fixHeading, fwd)) <= Math.Abs(AngleDiff(mf.fixHeading, rev))
+                ? fwd : rev;
+            return true;
+        }
+
+        /// <summary>
+        /// Does the approach path stay inside the fence? Sampled, and only from the point
+        /// where the forward part begins (skipDistance = the straight reverse leg, which is
+        /// driven by hand and lives in the headland). One point outside is enough to drop
+        /// the maneuver - a path leading out of the field is never the way back onto a pass.
+        /// </summary>
+        private bool PathInsideField(List<vec3> path, double skipDistance)
+        {
+            if (mf.bnd.bndList.Count == 0) return true;   // no boundary drawn: nothing to judge
+
+            double run = 0;
+            for (int i = 0; i < path.Count; i++)
+            {
+                if (i > 0) run += glm.Distance(path[i - 1], path[i]);
+                if (run < skipDistance) continue;
+                if (i % 5 != 0 && i != path.Count - 1) continue;
+
+                if (mf.bnd.IsPointInsideFenceArea(path[i])) continue;
+
+                Log.EventWriter("LineApproach: path leaves the field at "
+                    + run.ToString("N0") + " m, no maneuver");
+                return false;
+            }
+            return true;
+        }
+
         //REQ 2026-08-14-1: approach onto the ACTIVE line when autosteer engages off the line.
         //It does not matter WHY the vehicle is off it (interrupted turn, lateral drift, manual
         //turning) - one mechanism: forward Dubins arc onto the line ahead; if the nose points
@@ -3519,15 +3603,23 @@ namespace AgOpenGPS
             {
                 rE = mf.ABLine.rEastAB; rN = mf.ABLine.rNorthAB;
                 lineHead = mf.ABLine.abHeading;
-                if (!mf.ABLine.isHeadingSameWay) lineHead += Math.PI;
             }
             else
             {
                 rE = mf.curve.rEastCu; rN = mf.curve.rNorthCu;
                 lineHead = mf.curve.manualUturnHeading;
-                if (!mf.curve.isHeadingSameWay) lineHead += Math.PI;
             }
+
+            //Field 2026-08-15 (f05tl-14): which WAY along the line used to come from
+            //isHeadingSameWay, a plain 90 deg test on the vehicle heading. The approach is
+            //rebuilt exactly when autosteer is toggled MID-MANEUVER, where the vehicle sits
+            //almost square to the line (measured -84 deg), so that test flips 180 deg on a
+            //few degrees of yaw and the approach aimed out of the field. The direction now
+            //comes from the field itself: whichever way has room ahead inside the fence,
+            //with the plan's own direction breaking a tie.
+            if (!PickApproachDirection(rE, rN, ref lineHead)) return;
             if (lineHead >= glm.twoPI) lineHead -= glm.twoPI;
+            if (lineHead < 0) lineHead += glm.twoPI;
 
             vec3 piv = mf.pivotAxlePos;
             double latE = piv.easting - rE, latN = piv.northing - rN;
@@ -3590,6 +3682,11 @@ namespace AgOpenGPS
                     + " m looks like a loop, no maneuver");
                 return;
             }
+
+            //the way back must stay INSIDE the field (field 2026-08-15). The reverse leg is
+            //deliberately exempt: it starts behind the vehicle, which at the headland is
+            //where the turn area is, and the driver backs along it by hand.
+            if (!PathInsideField(path, revLeg)) return;
 
             ResetCreatedYouTurn();
             ytList = path;
