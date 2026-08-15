@@ -33,6 +33,9 @@ namespace AgOpenGPS
 
         // turn area state, so leaving/entering it is logged once instead of every fix
         private bool wasOutOfTurnBounds;
+
+        // same for the after-stop rule being overridden while autosteer is off
+        private bool isAfterStopOverridden;
         public double dualReverseDetectionDistance;
 
         //for heading or Atan2 as camera
@@ -1218,7 +1221,23 @@ namespace AgOpenGPS
                                 //the maneuver; phases inside a running turn are unchanged.
                                 bool afterStopGate = true;
                                 bool shuttledToForward = yt.UpdateReverseEdge(isReverse);
-                                if (tnl.isAfterStop)
+
+                                //REQ 2026-08-15-6: with autosteer OFF the driver turns by hand
+                                //and simply drives through the headland - the stop this rule
+                                //waits for never happens, so the maneuver is drawn and never
+                                //fires. While our feature is on, turn-after-stop applies only
+                                //with autosteer ON; without it the trigger is automatic. The
+                                //SAVED setting is untouched (TurnLinesFiles.cs) - runtime only.
+                                bool afterStopRule = tnl.isAfterStop && isBtnAutoSteerOn;
+                                if (tnl.isAfterStop && afterStopRule == isAfterStopOverridden)
+                                {
+                                    isAfterStopOverridden = !afterStopRule;
+                                    Log.EventWriter("Turn: after-stop rule "
+                                        + (isAfterStopOverridden ? "overridden - autosteer off, trigger is automatic"
+                                                                 : "back in force - autosteer on"));
+                                }
+
+                                if (afterStopRule)
                                 {
                                     if (inTriggerWindow && (avgSpeed < 0.3 || shuttledToForward))
                                         yt.afterStopStopped = true;
