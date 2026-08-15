@@ -3485,16 +3485,32 @@ namespace AgOpenGPS
             //on the pass and pointing along it: there is nothing to lead back to
             if (y0 < 0.5 * (mf.tool.width - mf.tool.overlap) && Math.Abs(alpha) < 0.1745) return;
 
-            //where the row crosses the effective turn line ahead - THAT is the entry point.
+            //where the row crosses the effective turn line - THAT is the entry point.
+            //Field 2026-08-15 (log 20:51): probing only ALONG the drive direction found the
+            //crossing 172 m away - the OPPOSITE headland. Standing at a headland about to
+            //drive into the field, the crossing we want lies behind that projection, so both
+            //directions are probed and the one nearer the vehicle wins.
             //Only DRAWN turn lines count: since the turn line is built with zero inset the
             //boundary ring lies ON the fence, and a parallel taken from it would run the
             //wheels along the boundary.
-            List<vec2> eff = mf.tnl.GetEffPolylineByRay(new vec2(rE, rN), lineHead,
-                out _, out double entryAt);
-            if (eff == null || entryAt < 0 || entryAt > approachEntryMax)
+            vec2 rowRef = new vec2(rE, rN);
+            double backHead = lineHead + Math.PI;
+            if (backHead >= glm.twoPI) backHead -= glm.twoPI;
+
+            List<vec2> effAhead = mf.tnl.GetEffPolylineByRay(rowRef, lineHead, out _, out double dAhead);
+            List<vec2> effBack = mf.tnl.GetEffPolylineByRay(rowRef, backHead, out _, out double dBack);
+
+            List<vec2> eff; double entryAt;
+            if (effAhead != null && dAhead >= 0 && (effBack == null || dBack < 0 || dAhead <= dBack))
+            { eff = effAhead; entryAt = dAhead; }
+            else if (effBack != null && dBack >= 0)
+            { eff = effBack; entryAt = -dBack; }
+            else { eff = null; entryAt = -1; }
+
+            if (eff == null || Math.Abs(entryAt) > approachEntryMax)
             {
                 Log.EventWriter("LineApproach: no turn line within " + approachEntryMax.ToString("N0")
-                    + " m along the pass" + (entryAt > 0 ? " (nearest " + entryAt.ToString("N0") + " m)" : "")
+                    + " m along the pass" + (eff != null ? " (nearest " + Math.Abs(entryAt).ToString("N0") + " m)" : "")
                     + ", no maneuver");
                 return;
             }
@@ -3551,9 +3567,32 @@ namespace AgOpenGPS
                 return;
             }
 
-            //the straight must reach back PAST the vehicle - that is what lets the follower
-            //pull it onto the parallel from wherever it stands
-            double parLen = Math.Max(approachParallelLen, alongToEntry + approachParallelLen * 0.25);
+            //the straight should reach back PAST the vehicle - that is what lets the follower
+            //pull it onto the parallel from wherever it stands. But the effective lines are
+            //extrapolated 50 m past their drawn ends, so near a corner that tail runs out of
+            //the field: field 2026-08-15 (log 20:54) threw away perfectly good maneuvers over
+            //a tail nobody drives. So the straight is CLIPPED to what lies inside the fence
+            //instead, and only what is left has to be long enough to enter the arc on.
+            double parWant = Math.Max(approachParallelLen, alongToEntry + approachParallelLen * 0.25);
+            double parLen = parWant;
+            if (mf.bnd.bndList.Count > 0)
+            {
+                parLen = 0;
+                for (double s = 1.0; s <= parWant; s += 1.0)
+                {
+                    if (!mf.bnd.IsPointInsideFenceArea(new vec2(tanPar.easting - tx * s,
+                                                               tanPar.northing - ty * s))) break;
+                    parLen = s;
+                }
+                if (parLen < R)
+                {
+                    Log.EventWriter("LineApproach: only " + parLen.ToString("N1")
+                        + " m of straight fits inside the field, " + R.ToString("N1")
+                        + " m needed - no maneuver");
+                    return;
+                }
+            }
+
             double ps = Math.Max(0.2, R * 0.1);
 
             List<vec3> path = new List<vec3>();
