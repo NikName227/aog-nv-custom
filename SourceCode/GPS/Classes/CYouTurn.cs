@@ -3508,12 +3508,8 @@ namespace AgOpenGPS
             if (mf.bnd.bndList.Count == 0) return true;   //no boundary drawn: nothing to judge
 
             for (int i = Math.Max(0, fromIndex); i < path.Count; i++)
-            {
-                if (mf.bnd.IsPointInsideFenceArea(path[i])) continue;
+                if (!mf.bnd.IsPointInsideFenceArea(path[i])) return false;
 
-                Log.EventWriter("LineApproach: the entry into the row lies outside the field, no maneuver");
-                return false;
-            }
             return true;
         }
 
@@ -3575,6 +3571,42 @@ namespace AgOpenGPS
                 }
             }
 
+            if (!TryBuildApproachPath(out List<vec3> path, out string why))
+            {
+                Log.EventWriter("LineApproach: " + why + ", no maneuver");
+                return;
+            }
+
+            ResetCreatedYouTurn();
+            ytList = path;
+            isGoingStraightThrough = true;   //target = the pass we are already on: no line swap
+            isLineApproach = true;
+            activeTurnStyle = 0;
+            youTurnPhase = 10;
+
+            Log.EventWriter("LineApproach: " + why);
+
+            //the driver just asked for it by engaging autosteer - no trigger window to wait for
+            YouTurnTrigger();
+        }
+
+        /// <summary>
+        /// The approach geometry, with NO side effects - the caller decides what to do with
+        /// the result, and gets a plain-language reason when there is nothing to build. This
+        /// is what lets the preview ask the same question once a second without changing
+        /// anything (REQ 2026-08-15-8).
+        /// </summary>
+        public bool TryBuildApproachPath(out List<vec3> path, out string why)
+        {
+            path = null;
+            why = null;
+
+            if (mf.trk.idx < 0 || mf.trk.idx >= mf.trk.gArr.Count)
+            {
+                why = "no guidance line";
+                return false;
+            }
+
             //WHICH WAY the pass is driven comes from the plan. Never from the vehicle
             //heading: the approach is built exactly when the vehicle sits square to the row,
             //where a 90 deg test flips on a couple of degrees of yaw and the target jumps
@@ -3582,8 +3614,8 @@ namespace AgOpenGPS
             CPlanEntry entry = mf.plan.IsRuntimeOn ? mf.plan.CurrentEntry() : null;
             if (entry == null)
             {
-                Log.EventWriter("LineApproach: no plan pass to lead back to, no maneuver");
-                return;
+                why = "no plan pass to lead back to";
+                return false;
             }
 
             double rE, rN, lineHead;
@@ -3608,7 +3640,11 @@ namespace AgOpenGPS
             double alpha = AngleDiff(mf.fixHeading, lineHead);
 
             //on the pass and pointing along it: there is nothing to lead back to
-            if (y0 < 0.5 * (mf.tool.width - mf.tool.overlap) && Math.Abs(alpha) < 0.1745) return;
+            if (y0 < 0.5 * (mf.tool.width - mf.tool.overlap) && Math.Abs(alpha) < 0.1745)
+            {
+                why = "already on the pass";
+                return false;
+            }
 
             //where the row crosses the effective turn line - THAT is the entry point.
             //Field 2026-08-15 (log 20:51): probing only ALONG the drive direction found the
@@ -3634,17 +3670,16 @@ namespace AgOpenGPS
 
             if (eff == null || Math.Abs(entryAt) > approachEntryMax)
             {
-                Log.EventWriter("LineApproach: no turn line within " + approachEntryMax.ToString("N0")
-                    + " m along the pass" + (eff != null ? " (nearest " + Math.Abs(entryAt).ToString("N0") + " m)" : "")
-                    + ", no maneuver");
-                return;
+                why = "no turn line within " + approachEntryMax.ToString("N0") + " m along the pass"
+                    + (eff != null ? " (nearest " + Math.Abs(entryAt).ToString("N0") + " m)" : "");
+                return false;
             }
 
             vec2 cross = new vec2(rE + rowX * entryAt, rN + rowY * entryAt);
             if (!TryTurnLineDir(eff, cross, out double tx, out double ty))
             {
-                Log.EventWriter("LineApproach: turn line has no usable segment, no maneuver");
-                return;
+                why = "turn line has no usable segment";
+                return false;
             }
 
             //the parallel is driven TOWARD the entry point
@@ -3661,9 +3696,8 @@ namespace AgOpenGPS
             double absDelta = Math.Abs(delta);
             if (absDelta > approachTurnMax || absDelta < approachTurnMin)
             {
-                Log.EventWriter("LineApproach: row meets the turn line at "
-                    + ((int)glm.toDegrees(absDelta)) + " deg, no maneuver");
-                return;
+                why = "row meets the turn line at " + ((int)glm.toDegrees(absDelta)) + " deg";
+                return false;
             }
 
             double R = Math.Max(2.0, UInRadius);
@@ -3675,9 +3709,9 @@ namespace AgOpenGPS
             double need = d * Math.Sin(absDelta) + 0.5 * mf.tool.width;
             if (y0 < need)
             {
-                Log.EventWriter("LineApproach: only " + y0.ToString("N1") + " m off the pass, "
-                    + need.ToString("N1") + " m needed for the entry radius - no maneuver");
-                return;
+                why = "only " + y0.ToString("N1") + " m off the pass, "
+                    + need.ToString("N1") + " m needed for the entry radius";
+                return false;
             }
 
             vec2 tanPar = new vec2(cross.easting - tx * d, cross.northing - ty * d);
@@ -3687,9 +3721,8 @@ namespace AgOpenGPS
             double alongToEntry = (tanPar.easting - piv.easting) * tx + (tanPar.northing - piv.northing) * ty;
             if (alongToEntry < 0)
             {
-                Log.EventWriter("LineApproach: entry lies " + (-alongToEntry).ToString("N1")
-                    + " m behind the vehicle, no maneuver");
-                return;
+                why = "entry lies " + (-alongToEntry).ToString("N1") + " m behind the vehicle";
+                return false;
             }
 
             //the straight reaches back PAST the vehicle - that is what lets the follower pull
@@ -3700,7 +3733,7 @@ namespace AgOpenGPS
             double parLen = Math.Max(approachParallelLen, alongToEntry + approachParallelLen * 0.25);
             double ps = Math.Max(0.2, R * 0.1);
 
-            List<vec3> path = new List<vec3>();
+            path = new List<vec3>();
             for (double s = parLen; s > 0; s -= ps)
                 path.Add(new vec3(tanPar.easting - tx * s, tanPar.northing - ty * s, parHead));
 
@@ -3723,21 +3756,24 @@ namespace AgOpenGPS
             for (double s = 0; s <= approachRunIn; s += ps)
                 path.Add(new vec3(tanRow.easting + rowX * s, tanRow.northing + rowY * s, lineHead));
 
-            if (path.Count < 6 || !PathEndsInsideField(path, rowFrom)) return;
+            if (path.Count < 6)
+            {
+                path = null;
+                why = "path too short to follow";
+                return false;
+            }
 
-            ResetCreatedYouTurn();
-            ytList = path;
-            isGoingStraightThrough = true;   //target = the pass we are already on: no line swap
-            isLineApproach = true;
-            activeTurnStyle = 0;
-            youTurnPhase = 10;
+            if (!PathEndsInsideField(path, rowFrom))
+            {
+                path = null;
+                why = "the entry into the row lies outside the field";
+                return false;
+            }
 
-            Log.EventWriter("LineApproach: built, " + y0.ToString("N1") + " m off the pass, entry "
+            why = "built, " + y0.ToString("N1") + " m off the pass, entry "
                 + entryAt.ToString("N1") + " m along it, turn " + ((int)glm.toDegrees(absDelta))
-                + " deg, R " + R.ToString("N1") + " m, straight " + parLen.ToString("N0") + " m");
-
-            //the driver just asked for it by engaging autosteer - no trigger window to wait for
-            YouTurnTrigger();
+                + " deg, R " + R.ToString("N1") + " m, straight " + parLen.ToString("N0") + " m";
+            return true;
         }
 
         #endregion
