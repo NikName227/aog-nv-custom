@@ -3316,7 +3316,24 @@ namespace AgOpenGPS
                 crossTurnOffset = 0;
             }
 
+            //REQ 2026-08-15-7: an approach turns the vehicle by most of a right angle while
+            //the pass is pinned (REQ-6), so isHeadingSameWay still holds the direction from
+            //BEFORE the maneuver. Handing guidance back with that stale direction made the
+            //builder look for the turn line the way we CAME from - it found it a metre or two
+            //away and fired a U-turn on the spot (field 2026-08-15 21:04: "Rigid turn built:
+            //start 6,6 m ahead ... eff line 1 at 1,7 m"). The line is invalidated so both the
+            //direction and the pass are re-derived from where the vehicle actually is.
+            bool wasApproach = isLineApproach;
+
             ResetCreatedYouTurn();
+
+            if (wasApproach)
+            {
+                mf.ABLine.isABValid = false;
+                mf.curve.isCurveValid = false;
+                Log.EventWriter("LineApproach: done, guidance direction re-derived");
+            }
+
             mf.sounds.isBoundAlarming = false;
         }
 
@@ -3381,8 +3398,10 @@ namespace AgOpenGPS
         public bool isLineApproach;
 
         // the straight part reaches this far back from the entry, or past the vehicle,
-        // whichever is longer; and this far into the row past the arc
-        private const double approachParallelLen = 20.0, approachRunIn = 5.0;
+        // whichever is longer. Past the arc the path stops AT the row (field 2026-08-15:
+        // "nakon radijusa mora zavrsiti") - only a stub is kept so the follower has a
+        // segment to hand guidance over on.
+        private const double approachParallelLen = 20.0, approachRunIn = 1.0;
 
         // a row crossing further ahead than this is the FAR headland, not our entry -
         // there the driver leads himself back onto the line (field 2026-08-15)
@@ -3423,19 +3442,20 @@ namespace AgOpenGPS
         }
 
         /// <summary>
-        /// Does the built path stay inside the fence? One point outside is enough to drop
-        /// it - a way back onto a pass never leads out of the field.
+        /// Does the path END inside the field? Only the part from fromIndex on is judged -
+        /// the straight and the arc live in the headland, which on some fields lies OUTSIDE
+        /// the fence entirely (field 2026-08-15: the turn area is regularly reported outside
+        /// it). What must be true is that the maneuver leads INTO the field, not out of it.
         /// </summary>
-        private bool PathInsideField(List<vec3> path)
+        private bool PathEndsInsideField(List<vec3> path, int fromIndex)
         {
             if (mf.bnd.bndList.Count == 0) return true;   //no boundary drawn: nothing to judge
 
-            for (int i = 0; i < path.Count; i++)
+            for (int i = Math.Max(0, fromIndex); i < path.Count; i++)
             {
-                if (i % 5 != 0 && i != path.Count - 1) continue;
                 if (mf.bnd.IsPointInsideFenceArea(path[i])) continue;
 
-                Log.EventWriter("LineApproach: path leaves the field, no maneuver");
+                Log.EventWriter("LineApproach: the entry into the row lies outside the field, no maneuver");
                 return false;
             }
             return true;
@@ -3567,32 +3587,12 @@ namespace AgOpenGPS
                 return;
             }
 
-            //the straight should reach back PAST the vehicle - that is what lets the follower
-            //pull it onto the parallel from wherever it stands. But the effective lines are
-            //extrapolated 50 m past their drawn ends, so near a corner that tail runs out of
-            //the field: field 2026-08-15 (log 20:54) threw away perfectly good maneuvers over
-            //a tail nobody drives. So the straight is CLIPPED to what lies inside the fence
-            //instead, and only what is left has to be long enough to enter the arc on.
-            double parWant = Math.Max(approachParallelLen, alongToEntry + approachParallelLen * 0.25);
-            double parLen = parWant;
-            if (mf.bnd.bndList.Count > 0)
-            {
-                parLen = 0;
-                for (double s = 1.0; s <= parWant; s += 1.0)
-                {
-                    if (!mf.bnd.IsPointInsideFenceArea(new vec2(tanPar.easting - tx * s,
-                                                               tanPar.northing - ty * s))) break;
-                    parLen = s;
-                }
-                if (parLen < R)
-                {
-                    Log.EventWriter("LineApproach: only " + parLen.ToString("N1")
-                        + " m of straight fits inside the field, " + R.ToString("N1")
-                        + " m needed - no maneuver");
-                    return;
-                }
-            }
-
+            //the straight reaches back PAST the vehicle - that is what lets the follower pull
+            //it onto the parallel from wherever it stands. It is NOT tested against the fence:
+            //it runs along the turn line, through the headland, and on this field the headland
+            //is regularly outside the fence (log 2026-08-15 21:03, "only 0,0 m of straight fits"
+            //on one side of the field - the maneuver was never built there).
+            double parLen = Math.Max(approachParallelLen, alongToEntry + approachParallelLen * 0.25);
             double ps = Math.Max(0.2, R * 0.1);
 
             List<vec3> path = new List<vec3>();
@@ -3612,12 +3612,13 @@ namespace AgOpenGPS
                 path.Add(new vec3(arcE, arcN, head));
             }
 
-            //and into the row - taken from the tangent point, so the arc's rounding
+            //and the stub in the row - taken from the tangent point, so the arc's rounding
             //cannot walk the end of the path off the pass
+            int rowFrom = path.Count;
             for (double s = 0; s <= approachRunIn; s += ps)
                 path.Add(new vec3(tanRow.easting + rowX * s, tanRow.northing + rowY * s, lineHead));
 
-            if (path.Count < 6 || !PathInsideField(path)) return;
+            if (path.Count < 6 || !PathEndsInsideField(path, rowFrom)) return;
 
             ResetCreatedYouTurn();
             ytList = path;
