@@ -3218,8 +3218,19 @@ namespace AgOpenGPS
 
         public void SmoothYouTurn(int smPts)
         {
-            //countExit the reference list of original curve
-            int cnt = ytList.Count;
+            ytList = SmoothPathPoints(ytList, smPts);
+        }
+
+        /// <summary>
+        /// Centre-weighted moving average over a path, headings recomputed on the smoothed
+        /// line. The turn paths have always been built this way; the approach uses the same
+        /// filter so a bend in the turn line, or the seam where the curve meets the entry arc,
+        /// never shows up as a step (REQ 2026-08-16-2).
+        /// </summary>
+        private static List<vec3> SmoothPathPoints(List<vec3> src, int smPts)
+        {
+            int cnt = src.Count;
+            if (cnt < smPts + 2) return src;
 
             //the temp array
             vec3[] arr = new vec3[cnt];
@@ -3227,16 +3238,16 @@ namespace AgOpenGPS
             //read the points before and after the setpoint
             for (int s = 0; s < smPts / 2; s++)
             {
-                arr[s].easting = ytList[s].easting;
-                arr[s].northing = ytList[s].northing;
-                arr[s].heading = ytList[s].heading;
+                arr[s].easting = src[s].easting;
+                arr[s].northing = src[s].northing;
+                arr[s].heading = src[s].heading;
             }
 
             for (int s = cnt - (smPts / 2); s < cnt; s++)
             {
-                arr[s].easting = ytList[s].easting;
-                arr[s].northing = ytList[s].northing;
-                arr[s].heading = ytList[s].heading;
+                arr[s].easting = src[s].easting;
+                arr[s].northing = src[s].northing;
+                arr[s].heading = src[s].heading;
             }
 
             //average them - center weighted average
@@ -3244,23 +3255,62 @@ namespace AgOpenGPS
             {
                 for (int j = -smPts / 2; j < smPts / 2; j++)
                 {
-                    arr[i].easting += ytList[j + i].easting;
-                    arr[i].northing += ytList[j + i].northing;
+                    arr[i].easting += src[j + i].easting;
+                    arr[i].northing += src[j + i].northing;
                 }
                 arr[i].easting /= smPts;
                 arr[i].northing /= smPts;
-                arr[i].heading = ytList[i].heading;
+                arr[i].heading = src[i].heading;
             }
 
-            ytList?.Clear();
+            List<vec3> smoothed = new List<vec3>(cnt);
 
             //calculate new headings on smoothed line
             for (int i = 1; i < cnt - 1; i++)
             {
                 arr[i].heading = Math.Atan2(arr[i + 1].easting - arr[i].easting, arr[i + 1].northing - arr[i].northing);
                 if (arr[i].heading < 0) arr[i].heading += glm.twoPI;
-                ytList.Add(arr[i]);
+                smoothed.Add(arr[i]);
             }
+            return smoothed;
+        }
+
+        /// <summary>
+        /// Even spacing along a polyline, ordered so that walking it agrees with (dirX, dirY).
+        /// </summary>
+        private static List<vec2> ResamplePolyline(List<vec2> src, double step, double dirX, double dirY)
+        {
+            List<vec2> pts = new List<vec2>();
+            if (src == null || src.Count < 2) return pts;
+
+            double along = 0;
+            for (int i = 0; i < src.Count - 1; i++)
+                along += (src[i + 1].easting - src[i].easting) * dirX
+                       + (src[i + 1].northing - src[i].northing) * dirY;
+
+            List<vec2> line = src;
+            if (along < 0) { line = new List<vec2>(src); line.Reverse(); }
+
+            pts.Add(line[0]);
+            double carry = 0;
+
+            for (int i = 0; i < line.Count - 1; i++)
+            {
+                double dx = line[i + 1].easting - line[i].easting;
+                double dy = line[i + 1].northing - line[i].northing;
+                double len = Math.Sqrt(dx * dx + dy * dy);
+                if (len < 0.001) continue;
+                dx /= len; dy /= len;
+
+                double at = step - carry;
+                while (at <= len)
+                {
+                    pts.Add(new vec2(line[i].easting + dx * at, line[i].northing + dy * at));
+                    at += step;
+                }
+                carry = len - (at - step);
+            }
+            return pts;
         }
 
         //called to initiate turn
@@ -3854,76 +3904,82 @@ namespace AgOpenGPS
             //it runs along the turn line, through the headland, and on this field the headland
             //is regularly outside the fence (log 2026-08-15 21:03, "only 0,0 m of straight fits"
             //on one side of the field - the maneuver was never built there).
-            double parLen = Math.Max(approachParallelLen, alongToEntry + approachParallelLen * 0.25);
             double ps = Math.Max(0.2, R * 0.1);
 
-            //reverse-only: the straight must also cover the ground the vehicle is standing on,
-            //ahead of the tangent point, or the driver would have nothing under him to back along
-            double aheadOfEntry = isReverseOnly ? Math.Max(0, -alongToEntry) + approachRunIn + 5.0 : 0;
+            //a metre between points is plenty along the headland, and keeps the list short when
+            //the turn line is a few hundred metres long
+            double step = Math.Max(ps, 1.0);
 
-            //Field 2026-08-16: a 20 m straight ran out under the driver - he reversed off its
-            //end and the maneuver ended ("straight 20 m" then "done" seconds later). The
-            //straight now runs the WHOLE turn line, extension included, so there is path under
-            //him however far he backs along the headland. Forward it still stops at the tangent
-            //point, where the entry arc takes over.
-            //s is measured backwards along the drive direction: point(s) = tanPar - t*s.
-            double sBack = parLen, sFront = -aheadOfEntry;
-            for (int i = 0; i < eff.Count; i++)
+            //REQ 2026-08-16-2: the way back FOLLOWS the turn line, it does not tangent it. With
+            //three or more points the drawn line bends, and a straight laid along the local
+            //segment walks away from it. The effective line already is the parallel we want
+            //(the drawn line offset inward by the wheel margin), so the path is that polyline,
+            //resampled and smoothed. It runs the whole line, extension included: field
+            //2026-08-16, a 20 m straight ran out under the driver while he reversed and the
+            //maneuver ended ("straight 20 m", then "done" seconds later).
+            List<vec2> along = ResamplePolyline(eff, step, tx, ty);
+            if (along.Count < 6)
             {
-                double sp = -((eff[i].easting - tanPar.easting) * tx
-                            + (eff[i].northing - tanPar.northing) * ty);
-                if (sp > sBack) sBack = sp;
-                if (isReverseOnly && sp < sFront) sFront = sp;
+                why = "turn line too short to follow";
+                return false;
             }
 
-            //a metre between points is plenty on a straight, and keeps the list short when the
-            //line is a few hundred metres long
-            double step = Math.Max(ps, 1.0);
+            //where the entry arc leaves the line
+            int iTan = 0;
+            double bestTan = double.MaxValue;
+            for (int i = 0; i < along.Count; i++)
+            {
+                double ex2 = along[i].easting - tanPar.easting, ny2 = along[i].northing - tanPar.northing;
+                double dd = ex2 * ex2 + ny2 * ny2;
+                if (dd < bestTan) { bestTan = dd; iTan = i; }
+            }
+
+            //forward the path stops at the tangent point; backing up it runs to the far end
+            int lastIdx = isReverseOnly ? along.Count - 1 : iTan;
+            if (lastIdx < 5)
+            {
+                why = "no room on the turn line before the entry";
+                return false;
+            }
+
+            List<vec2> run = along.GetRange(0, lastIdx + 1);
 
             //The follower's convention is that a path's points carry the NOSE heading, and
             //reverse travel walks them backwards (that is how the K turn's reverse leg is
-            //ordered). Phase B fires exactly when the vehicle faces the other way, so ordering
-            //the straight toward the entry put the path 180 deg against the nose: driving
-            //forward threw the lookahead point BEHIND the vehicle (field 2026-08-16). Same
-            //straight, laid the way the vehicle looks.
+            //ordered). Phase B fires exactly when the vehicle faces the other way, so laying the
+            //path toward the entry put it 180 deg against the nose: driving forward threw the
+            //lookahead point BEHIND the vehicle (field 2026-08-16). Same curve, laid the way the
+            //vehicle looks.
             bool alongNose = isReverseOnly && facingWrongWay;
-            double pathHead = parHead;
-            if (alongNose)
-            {
-                pathHead += Math.PI;
-                if (pathHead >= glm.twoPI) pathHead -= glm.twoPI;
-            }
+            if (alongNose) run.Reverse();
 
             path = new List<vec3>();
-            if (alongNose)
+            for (int i = 0; i < run.Count; i++)
             {
-                for (double s = sFront; s <= sBack; s += step)
-                    path.Add(new vec3(tanPar.easting - tx * s, tanPar.northing - ty * s, pathHead));
-            }
-            else
-            {
-                for (double s = sBack; s >= sFront; s -= step)
-                    path.Add(new vec3(tanPar.easting - tx * s, tanPar.northing - ty * s, pathHead));
+                double h;
+                if (i < run.Count - 1)
+                {
+                    h = Math.Atan2(run[i + 1].easting - run[i].easting,
+                                   run[i + 1].northing - run[i].northing);
+                    if (h < 0) h += glm.twoPI;
+                }
+                else h = path[path.Count - 1].heading;
+
+                path.Add(new vec3(run[i].easting, run[i].northing, h));
             }
 
             if (isReverseOnly)
             {
-                if (path.Count < 6)
-                {
-                    path = null;
-                    why = "no room for a straight to back along";
-                    return false;
-                }
-
-                why = "reverse leg only (" + bReason + "), straight "
-                    + (sBack - sFront).ToString("N0") + " m";
+                why = "reverse leg only (" + bReason + "), curve "
+                    + (run.Count * step).ToString("N0") + " m";
+                path = SmoothPathPoints(path, 6);
                 return true;
             }
 
             //the entry arc itself
             double turnSign = delta > 0 ? 1.0 : -1.0;
             double head = parHead, arcE = tanPar.easting, arcN = tanPar.northing;
-            for (double run = 0; run < absDelta * R; run += ps)
+            for (double arcRun = 0; arcRun < absDelta * R; arcRun += ps)
             {
                 arcE += Math.Sin(head) * ps;
                 arcN += Math.Cos(head) * ps;
@@ -3953,9 +4009,13 @@ namespace AgOpenGPS
                 return false;
             }
 
+            //the same filter the turn paths get: no abrupt steps where the line bends, or
+            //where the curve meets the entry arc
+            path = SmoothPathPoints(path, 6);
+
             why = "built, " + y0.ToString("N1") + " m off the pass, entry "
                 + entryAt.ToString("N1") + " m along it, turn " + ((int)glm.toDegrees(absDelta))
-                + " deg, R " + R.ToString("N1") + " m, straight " + (sBack - sFront).ToString("N0") + " m";
+                + " deg, R " + R.ToString("N1") + " m, curve " + (run.Count * step).ToString("N0") + " m";
             return true;
         }
 
