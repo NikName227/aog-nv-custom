@@ -60,6 +60,12 @@ namespace AgOpenGPS
         public bool clipToHeadland = true;   // passes stop at the headland (when defined)
         public List<CPlanEntry> entries = new List<CPlanEntry>();
 
+        // Working width the passes were laid out for. The plan file is per width and its
+        // signature is checked on load, but only THEN: change the implement while the field
+        // is open and the plan in memory silently keeps the old raster. This is what the
+        // auto-turn button checks before engaging (field 2026-08-15).
+        public double builtWidth;
+
         public CTurnPlan(FormGPS _f)
         {
             mf = _f;
@@ -76,6 +82,7 @@ namespace AgOpenGPS
             zoneOrder = "";
             trackName = "";
             clipToHeadland = true;
+            builtWidth = 0;
             runEntry = null;
             runDistance = 0;
             isFlexPause = false;
@@ -91,6 +98,8 @@ namespace AgOpenGPS
             zoneOrder = data.zoneOrder ?? "";
             trackName = data.trackName ?? "";
             clipToHeadland = data.clipHeadland;
+            //old files carry no width: the file was picked BY the current width, so that is it
+            builtWidth = data.builtWidth > 0.01 ? data.builtWidth : WorkWidth();
             entries.AddRange(data.entries);
         }
 
@@ -488,6 +497,7 @@ namespace AgOpenGPS
             }
             isFlexPause = false;
             lastSkipped = null;
+            builtWidth = WorkWidth();      // the raster these passes sit on
             return true;
         }
 
@@ -701,6 +711,7 @@ namespace AgOpenGPS
         /// <summary>Rebuild the plan as the ordered orchard pass sequence.</summary>
         public void GenerateOrchard(List<CTrk> passes, List<int> zones)
         {
+            builtWidth = WorkWidth();
             entries.Clear();
             runEntry = null;
             runDistance = 0;
