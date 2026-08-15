@@ -87,24 +87,27 @@ namespace AgOpenGPS
         }
 
         /// <summary>
-        /// Extra distance the outer FRONT wheel sweeps beyond the pivot path when turning
-        /// at youTurnRadius: outer wheel radius = sqrt((r + track/2)^2 + wheelbase^2).
-        /// The drawn line minus this margin = allowed pivot path limit.
+        /// How far inside the drawn line the pivot path has to stay: HALF THE TRACTOR
+        /// WIDTH plus whatever extra room the driver asked for.
+        ///
+        /// Field 2026-08-15: this used to be the sweep of the outer FRONT wheel around a
+        /// turn, sqrt((r + track/2)^2 + wheelbase^2) - r. That models one moment of a
+        /// maneuver but was applied to the whole line, including the straight run where the
+        /// tractor only takes up half a track, so with the extra offset at 0 the dashed line
+        /// still sat 1.5-2 m in - and it moved whenever the turn radius changed. The lateral
+        /// gabarit of the tractor is what belongs here; the offset is the knob for machines
+        /// that need more room, and it is now predictable: what you type is what you get.
         /// </summary>
         public double WheelSafetyMargin()
         {
-            double r = mf.yt.youTurnRadius;
-            if (r < 1) r = 1;
             double halfTrack = Math.Abs(mf.vehicle.VehicleConfig.TrackWidth) * 0.5;
-            double wheelbase = Math.Abs(mf.vehicle.VehicleConfig.Wheelbase);
-            double swept = Math.Sqrt((r + halfTrack) * (r + halfTrack) + wheelbase * wheelbase) - r;
 
             // F51: plus whatever room THIS implement needs. A wide machine may not let the
             // tractor drive right up to the drawn line, and how much is a property of the
             // implement, so it travels with the implement profile. Applies to the wheel limit
             // only - the passes still stop at the boundary/headland, where the implement
             // reference already is.
-            return swept + Math.Max(0, Properties.ToolSettings.Default.setTurn_boundaryOffset);
+            return halfTrack + Math.Max(0, Properties.ToolSettings.Default.setTurn_boundaryOffset);
         }
 
         private void EnsureBuilt()

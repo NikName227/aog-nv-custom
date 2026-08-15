@@ -30,6 +30,9 @@ namespace AgOpenGPS
         //guidance line look ahead
         public double guidanceLookAheadTime = 2;
         public vec2 guidanceLookPos = new vec2(0, 0);
+
+        // turn area state, so leaving/entering it is logged once instead of every fix
+        private bool wasOutOfTurnBounds;
         public double dualReverseDetectionDistance;
 
         //for heading or Atan2 as camera
@@ -1052,8 +1055,30 @@ namespace AgOpenGPS
                 else //Youturn is on
                 {
                     //turn limit lines: the bounded strip out to a drawn line counts as turn bounds too
-                    bool isInTurnBounds = bnd.IsPointInsideTurnArea(pivotAxlePos) != -1
-                        || tnl.IsInAllowedExtension(pivotAxlePos);
+                    //Field 2026-08-15: the stock turn area is the boundary pulled inward by
+                    //set_youTurnDistanceFromBoundary (CTurn.cs:113-149, the light purple
+                    //polygon). Outside it NO turn is ever built - and nothing says so: not a
+                    //message, not a log line. A whole day went into that: the plan's first
+                    //pass lay in the strip between the fence and that polygon, so the builder
+                    //was never even called. That setting carries no meaning for our maneuver -
+                    //what limits it are the DRAWN turn limit lines and UWideThreshold. So with
+                    //our feature on the gate is simply "inside the field". Feature off = stock.
+                    bool isInTurnBounds = tnl.IsFeatureOn
+                        ? bnd.IsPointInsideFenceArea(pivotAxlePos) || tnl.IsInAllowedExtension(pivotAxlePos)
+                        : bnd.IsPointInsideTurnArea(pivotAxlePos) != -1 || tnl.IsInAllowedExtension(pivotAxlePos);
+
+                    //never silent again: say it when no turn can be built where we are
+                    if (isInTurnBounds == wasOutOfTurnBounds)
+                    {
+                        wasOutOfTurnBounds = !isInTurnBounds;
+                        if (wasOutOfTurnBounds)
+                        {
+                            Log.EventWriter("Turn: vehicle outside the allowed turn area - no maneuver can be built here");
+                            if (plan.IsRuntimeOn)
+                                TimedMessageBox(2500, "Turn Plan", "Outside the turn area - no turn here");
+                        }
+                        else Log.EventWriter("Turn: back inside the allowed turn area");
+                    }
                     //Are we inside outer and outside inner all turn boundaries, no turn creation problems
                     //if we are too much off track > 1.3m, kill the diagnostic creation, start again
                     //if (!yt.isYouTurnTriggered) 
