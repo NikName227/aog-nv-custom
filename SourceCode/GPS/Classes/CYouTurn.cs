@@ -3506,6 +3506,10 @@ namespace AgOpenGPS
         // and the step of that probe
         private const double approachProbe = 60.0, approachProbeStep = 5.0;
 
+        // a turn line crossing further ahead than this is the FAR headland - the approach is
+        // then simply aligned where the vehicle stands, not anchored a field length away
+        private const double approachEntryMax = 30.0;
+
         /// <summary>
         /// Room along the line from (e, n) in direction head that stays inside the fence,
         /// capped at approachProbe. 0 = the very first step is already outside.
@@ -3636,7 +3640,10 @@ namespace AgOpenGPS
                 return;
             }
 
-            double R = Math.Max(2.0, youTurnRadius);
+            //the driver's own U ENTRY radius shapes the way onto a row, so the approach uses
+            //it too (field 2026-08-15: "mora ... sa ulaznim radijusom navoziti na polje").
+            //UInRadius already falls back to the general radius when it is not set.
+            double R = Math.Max(2.0, UInRadius);
             double ux = Math.Sin(mf.fixHeading), uy = Math.Cos(mf.fixHeading);
 
             //nose toward the line, closer than a fitting arc needs -> straight reverse leg;
@@ -3659,9 +3666,24 @@ namespace AgOpenGPS
 
             vec3 start = new vec3(piv.easting - ux * revLeg, piv.northing - uy * revLeg, mf.fixHeading);
 
-            //goal on the line ahead of the vehicle's projection - far enough that Dubins
-            //has no reason to answer with a loop (length-guarded below regardless)
-            double goalAhead = 2.0 * R + y0;
+            //Field 2026-08-15 (f05tl-12): the goal used to sit 2R + y0 ahead of the vehicle's
+            //projection and Dubins was free to reach it however it liked - 20-30 m into the
+            //field just to line up. Two changes: the along-line distance is now what an
+            //S-curve of the ENTRY radius actually needs to wipe out the lateral offset
+            //(2*sqrt(h(R - h/4)) for two tangent arcs, capped at the degenerate h > 4R), and
+            //it is measured from where the row crosses the turn boundary line when that
+            //crossing is close - so the maneuver runs along the headland and enters the field
+            //on the entry radius instead of driving in to meet the line.
+            double align = y0 >= 4.0 * R
+                ? 2.0 * R
+                : 2.0 * Math.Sqrt(Math.Max(0.25, y0 * (R - 0.25 * y0)));
+            if (align < R) align = R;                        // keep Dubins out of loop answers
+
+            double entryAt = mf.tnl.RayDistanceToEffectiveLines(new vec2(rE, rN), lineHead);
+            double goalAhead = (entryAt >= 0 && entryAt <= approachEntryMax)
+                ? entryAt + align
+                : align;
+
             vec3 goal = new vec3(rE + Math.Sin(lineHead) * goalAhead,
                                  rN + Math.Cos(lineHead) * goalAhead, lineHead);
 
@@ -3695,7 +3717,10 @@ namespace AgOpenGPS
             youTurnPhase = 10;
 
             Log.EventWriter("LineApproach: built, lateral " + y0.ToString("N1") + " m, heading err "
-                + ((int)glm.toDegrees(alpha)) + " deg, reverse leg " + revLeg.ToString("N1") + " m");
+                + ((int)glm.toDegrees(alpha)) + " deg, reverse leg " + revLeg.ToString("N1")
+                + " m, entry R " + R.ToString("N1") + " m, goal " + goalAhead.ToString("N1")
+                + " m ahead" + (entryAt >= 0 && entryAt <= approachEntryMax
+                    ? " (off turn line at " + entryAt.ToString("N1") + " m)" : ""));
 
             //no reverse needed -> the vehicle stands at the path start: engage at once; with
             //a reverse leg the stock window (red path, back into it, forward) fires the turn
