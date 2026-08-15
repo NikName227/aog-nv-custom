@@ -3576,7 +3576,9 @@ namespace AgOpenGPS
         {
             if (previewList.Count < 3) return;
 
-            GL.PointSize(mf.ABLine.lineWidth);
+            //bigger than the real path's dots: only every third point is drawn, so they need
+            //the size to read as a line at all (field 2026-08-15)
+            GL.PointSize(mf.ABLine.lineWidth + 3);
             GL.Color3(0.75f, 0.75f, 0.75f);
             GL.Begin(PrimitiveType.Points);
             for (int i = 0; i < previewList.Count; i += 3)
@@ -3809,15 +3811,27 @@ namespace AgOpenGPS
 
             double alongToEntry = (tanPar.easting - piv.easting) * tx + (tanPar.northing - piv.northing) * ty;
 
-            //PHASE B (REQ 2026-08-15-7): too close to the row for the arc to fit, or the entry
-            //is already behind us. Then the maneuver is JUST the straight along the turn line:
-            //the driver backs along it (guided - the follower reads the path backwards when
-            //reversing) until there is room, and the moment there is, the tail becomes the
-            //entry arc. Only these two shapes exist, by the driver's own decision.
-            isReverseOnly = y0 < need || alongToEntry < 0;
+            //PHASE B (REQ 2026-08-15-7): too close to the row for the arc to fit, the entry is
+            //already behind us, or the vehicle FACES THE WRONG WAY. Then the maneuver is JUST
+            //the straight along the turn line: the driver backs along it (guided - the follower
+            //reads the path backwards when reversing) until there is room, and the moment there
+            //is, the tail becomes the entry arc. Only these two shapes exist, by the driver's
+            //own decision.
+            //The heading test earns its place from the field (2026-08-15): standing with the
+            //target line BEHIND the vehicle, both position tests passed, so the arc was built -
+            //and reaching it meant turning almost 180 deg, which the follower drove as a half
+            //circle. Hysteresis, because the shape of the path must not flip back and forth
+            //while the driver manoeuvres around the threshold: enter B past 90 deg, leave it
+            //only under 70.
+            double headErr = Math.Abs(AngleDiff(mf.fixHeading, parHead));
+            bool facingWrongWay = approachReverse ? headErr > 1.22 : headErr > glm.PIBy2;
+
+            isReverseOnly = y0 < need || alongToEntry < 0 || facingWrongWay;
             string bReason = y0 < need
                 ? "only " + y0.ToString("N1") + " m off the pass, " + need.ToString("N1") + " m needed"
-                : "entry " + (-alongToEntry).ToString("N1") + " m behind the vehicle";
+                : alongToEntry < 0
+                    ? "entry " + (-alongToEntry).ToString("N1") + " m behind the vehicle"
+                    : "facing " + ((int)glm.toDegrees(headErr)) + " deg off the straight";
 
             //the straight reaches back PAST the vehicle - that is what lets the follower pull
             //it onto the parallel from wherever it stands. It is NOT tested against the fence:
@@ -4194,7 +4208,14 @@ namespace AgOpenGPS
                         }
                     }
 
-                    if (minDistA > 16)
+                    //REQ 2026-08-15-7: 4 m (16 = squared) says "the vehicle is not on this
+                    //path any more, the turn is over" - true for a turn, which always starts
+                    //ON the row. An approach is the opposite by design: the straight lies on
+                    //the turn line and the vehicle is 10-30 m away, waiting to be picked up.
+                    //Field 2026-08-15: this dropped the approach on the very first fix, the
+                    //normal builder took over, swapped the line and drove a half circle.
+                    double giveUpDist = isLineApproach ? 2500.0 : 16.0;   //50 m vs 4 m
+                    if (minDistA > giveUpDist)
                     {
                         CompleteYouTurn();
                         return false;
