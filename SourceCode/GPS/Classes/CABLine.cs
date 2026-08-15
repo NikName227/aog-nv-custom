@@ -477,6 +477,7 @@ namespace AgOpenGPS
                     extraGuidelinesForegroundStyle);
             }
             mf.yt.DrawYouTurn();
+            mf.yt.DrawApproachPreview();
 
             GLW.SetPointSize(1.0f);
             GLW.SetLineWidth(1.0f);

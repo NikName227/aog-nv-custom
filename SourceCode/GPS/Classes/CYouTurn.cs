@@ -3517,6 +3517,69 @@ namespace AgOpenGPS
         /// Build the way back onto the ACTIVE pass: parallel along the turn line + entry arc.
         /// Called when autosteer is engaged with the vehicle off the pass.
         /// </summary>
+        // REQ 2026-08-15-8: what the approach WOULD be if autosteer were engaged now. Display
+        // only - built by the pure geometry, never by the real builder, so looking at the
+        // screen can never change what happens when the driver actually engages.
+        public List<vec3> previewList = new List<vec3>();
+        private double previewLastSecond;
+        private string previewLastWhy;
+
+        /// <summary>
+        /// Once a second while autosteer is OFF, work out the approach that engaging it would
+        /// build. Nothing to show = empty list = nothing on screen (the driver asked for it
+        /// that way); the reason goes to the log, and only when it CHANGES - a per-second
+        /// line would bury the log, and the distances in it move with every fix.
+        /// </summary>
+        public void UpdateApproachPreview()
+        {
+            if (!mf.tnl.IsFeatureOn || !isYouTurnBtnOn || mf.isBtnAutoSteerOn
+                || isYouTurnTriggered || !mf.plan.IsRuntimeOn)
+            {
+                previewList.Clear();
+                previewLastWhy = null;
+                return;
+            }
+
+            if (mf.secondsSinceStart - previewLastSecond < 1.0) return;
+            previewLastSecond = mf.secondsSinceStart;
+
+            bool ok = TryBuildApproachPath(out List<vec3> path, out string why);
+            previewList = ok ? path : new List<vec3>();
+
+            //compare without the numbers, so "only 3,4 m off the pass" and "only 3,6 m off
+            //the pass" count as the same thing to say
+            string key = WithoutNumbers(why);
+            if (key != previewLastWhy)
+            {
+                previewLastWhy = key;
+                Log.EventWriter("LineApproach preview: " + why);
+            }
+        }
+
+        private static string WithoutNumbers(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return s;
+            var sb = new System.Text.StringBuilder(s.Length);
+            foreach (char c in s) if (!char.IsDigit(c)) sb.Append(c);
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// The preview, drawn the way the pending K part is drawn: grey, sparse, thin - never
+        /// mistakable for a maneuver that is actually armed.
+        /// </summary>
+        public void DrawApproachPreview()
+        {
+            if (previewList.Count < 3) return;
+
+            GL.PointSize(mf.ABLine.lineWidth);
+            GL.Color3(0.75f, 0.75f, 0.75f);
+            GL.Begin(PrimitiveType.Points);
+            for (int i = 0; i < previewList.Count; i += 3)
+                GL.Vertex3(previewList[i].easting, previewList[i].northing, 0);
+            GL.End();
+        }
+
         /// <summary>
         /// Autosteer was engaged: ask for the way back onto the pass. The build itself waits
         /// for the next fix, so the guidance line's own reference point is current.

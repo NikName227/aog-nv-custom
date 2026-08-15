@@ -1190,6 +1190,7 @@ namespace AgOpenGPS
                     GL.End();
 
                     mf.yt.DrawYouTurn();
+                    mf.yt.DrawApproachPreview();
                 }
             }
 

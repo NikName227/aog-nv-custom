@@ -915,7 +915,13 @@ namespace AgOpenGPS
                     //REQ 2026-08-15-7: the approach is built here, after the guidance line has
                     //been rebuilt for this fix - it needs the line's own reference point, and
                     //that point moves when the approach retargets the pass to the plan's next one
-                    if (tnl.IsFeatureOn) yt.UpdateLineApproach();
+                    if (tnl.IsFeatureOn)
+                    {
+                        yt.UpdateLineApproach();
+
+                        //REQ 2026-08-15-8: and with autosteer off, show what engaging it would build
+                        yt.UpdateApproachPreview();
+                    }
                 }
             }
 
