@@ -3343,6 +3343,10 @@ namespace AgOpenGPS
                 crossTurnOffset = 0;
             }
 
+            //the maneuver decided which pass we are on now - the plan pins that one and
+            //holds the guidance line there until the next turn (field 2026-08-15)
+            mf.plan.PinAfterTurn();
+
             ResetCreatedYouTurn();
             mf.sounds.isBoundAlarming = false;
         }

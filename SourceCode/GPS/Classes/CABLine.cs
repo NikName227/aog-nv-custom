@@ -128,14 +128,15 @@ namespace AgOpenGPS
                 if (RefDist < 0) howManyPathsAway = (int)(RefDist - 0.5);
                 else howManyPathsAway = (int)(RefDist + 0.5);
 
-                //NV follow plan: before autosteer is engaged, lead the driver to the
-                //plan's first not-worked pass instead of the nearest one (spec 4.3).
-                //Gated to autosteer OFF and no active turn so it only reshapes the line
-                //the driver aims at - never commands a cross-track jerk. Once aligned and
-                //steering, physical nearest = plan target, so this is a no-op from then on.
-                //Field 2026-07-28: also gated to the auto turn button ON - with turns off
-                //the guidance is fully stock (line follows the vehicle, not the plan).
-                if (!mf.isBtnAutoSteerOn && !mf.yt.isYouTurnTriggered
+                //NV follow plan: with the turn side on, the ACTIVE pass belongs to the plan.
+                //The lane computed just above comes from the lateral offset, which means the
+                //line follows the tractor - driving sideways used to walk the plan through
+                //its passes without a single turn (field log 2026-08-15: offset 11 -> 5).
+                //So the plan's pinned pass overrides it, autosteer on or off; it moves only
+                //when the plan says so (turn done, SKIP, start-from). To pick lines by hand,
+                //switch the turn side off - then this is stock again.
+                //Field 2026-07-28: gated to the auto turn button ON.
+                if (!mf.yt.isYouTurnTriggered
                     && mf.yt.isYouTurnBtnOn
                     && mf.plan.TryGuidanceOffset(out int planIdx))
                     howManyPathsAway = planIdx;

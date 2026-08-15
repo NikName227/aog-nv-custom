@@ -78,6 +78,7 @@ namespace AgOpenGPS
             clipToHeadland = true;
             runEntry = null;
             runDistance = 0;
+            pinnedEntry = null;
             isFlexPause = false;
         }
 
@@ -678,9 +679,17 @@ namespace AgOpenGPS
         private DateTime lastTraceAt = DateTime.MinValue;
         private const double traceHeartbeatSeconds = 1.0;
 
+        // read-only view of the current pass: never seeds the pin, so tracing cannot
+        // recurse back into EnsurePin (which traces)
+        private CPlanEntry PeekEntry()
+        {
+            if (IsRuntimeOn && !isFlexPause) return pinnedEntry;
+            return CurrentEntry();
+        }
+
         private string TraceState()
         {
-            CPlanEntry now = CurrentEntry();
+            CPlanEntry now = PeekEntry();
             int trkIdx = mf.trk != null ? mf.trk.idx : -1;
             bool haveTrack = mf.trk != null && trkIdx >= 0 && trkIdx < mf.trk.gArr.Count;
 
@@ -728,7 +737,7 @@ namespace AgOpenGPS
             if (!IsRuntimeOn || !mf.tnl.IsFeatureOn) return;
 
             string line = TraceState();
-            bool blind = CurrentEntry() == null;
+            bool blind = PeekEntry() == null;
             bool due = blind && (DateTime.UtcNow - lastTraceAt).TotalSeconds >= traceHeartbeatSeconds;
 
             if (line == lastTraceLine && !due) return;
@@ -774,6 +783,83 @@ namespace AgOpenGPS
             return false;
         }
 
+        // ── the pinned pass (field 2026-08-15) ───────────────────────────────
+        // With Follow plan ON the ACTIVE pass is state the plan owns, not something read
+        // back from where the tractor happens to be. Stock AOG recomputes howManyPathsAway
+        // from the lateral offset on every fix (CABLine.cs:126-129), so before this the
+        // guidance line simply followed the vehicle across the field and the plan followed
+        // the line - the log of 2026-08-15 shows offset 11 -> 5 and pass 12 -> 2 without a
+        // single turn. The driver's rule: while the turn side is on, lines are worked in
+        // plan order and nothing in between; to pick lines by hand, switch the turn off.
+        //
+        // The pin therefore moves ONLY on: turn completed, SKIP/UNDO, "start from",
+        // plan regenerated, job ended. Marking a pass worked at 50 % does NOT move it.
+        private CPlanEntry pinnedEntry;
+
+        /// <summary>
+        /// The pass the plan is driving now; seeds itself when unset. The pin always belongs
+        /// to the ACTIVE track - a plan regenerated underneath it, or the driver picking
+        /// another track, re-seeds rather than leaving a stale pass counting distance.
+        /// </summary>
+        public CPlanEntry EnsurePin()
+        {
+            string cur = CurrentTrackName();
+
+            if (pinnedEntry != null && entries.Contains(pinnedEntry)
+                && EntryTrackName(pinnedEntry) == cur) return pinnedEntry;
+
+            //first pass still to do on this track
+            CPlanEntry best = null;
+            foreach (var p in entries)
+            {
+                if (p.isWorked || p.isSkipped) continue;
+                if (EntryTrackName(p) != cur) continue;
+                if (best == null || p.order < best.order) best = p;
+            }
+
+            pinnedEntry = best;
+            if (pinnedEntry != null)
+                TraceEvent("pin seeded: ord " + pinnedEntry.order + " off " + pinnedEntry.offsetIdx);
+            return pinnedEntry;
+        }
+
+        /// <summary>
+        /// Where the maneuver actually landed becomes the new pinned pass. The turn has
+        /// already applied its line swap, so the offset the guidance now holds is the
+        /// answer; if no entry carries it, fall back to the first pass still to do.
+        /// </summary>
+        public void PinAfterTurn()
+        {
+            if (!IsRuntimeOn) return;
+
+            string cur = CurrentTrackName();
+            int landed = (mf.trk.idx >= 0 && mf.trk.idx < mf.trk.gArr.Count
+                          && mf.trk.gArr[mf.trk.idx].mode == TrackMode.AB)
+                ? mf.ABLine.howManyPathsAway
+                : mf.curve.howManyPathsAway;
+
+            CPlanEntry landedEntry = null;
+            foreach (var p in entries)
+            {
+                if (p.offsetIdx != landed || EntryTrackName(p) != cur) continue;
+                landedEntry = p;
+                break;
+            }
+
+            pinnedEntry = landedEntry;      // null -> EnsurePin re-seeds on the next fix
+            TraceEvent(landedEntry != null
+                ? "pin after turn: ord " + landedEntry.order + " off " + landedEntry.offsetIdx
+                : "pin after turn: offset " + landed + " is not in the plan, re-seeding");
+        }
+
+        /// <summary>Drop the pin so the next fix re-seeds it (skip, undo, start-from…).</summary>
+        public void ClearPin(string why)
+        {
+            if (pinnedEntry == null) return;
+            pinnedEntry = null;
+            TraceEvent("pin cleared: " + why);
+        }
+
         /// <summary>
         /// Forget the pass the vehicle is running so the next fix re-picks the first
         /// not-worked entry. Call after a manual worked-flag correction (phase 3.3).
@@ -782,6 +868,7 @@ namespace AgOpenGPS
         {
             runEntry = null;
             runDistance = 0;
+            ClearPin("run invalidated");
         }
 
         /// <summary>
@@ -1109,13 +1196,17 @@ namespace AgOpenGPS
         }
 
         /// <summary>
-        /// Entry the vehicle is on right now (current track + current offset index),
-        /// or null when the current line is not part of the plan.
+        /// The pass being driven. With the runtime on this is the PINNED pass - the plan
+        /// owns it and the guidance line is held on it (see the pin section). Only with
+        /// the runtime off does it fall back to reading the pass off the current offset,
+        /// which is what the plan windows use when nothing is running.
         /// </summary>
         public CPlanEntry CurrentEntry()
         {
             if (entries.Count == 0) return null;
             if (mf.trk.idx < 0 || mf.trk.idx >= mf.trk.gArr.Count) return null;
+
+            if (IsRuntimeOn && !isFlexPause) return EnsurePin();
 
             string cur = CurrentTrackName();
             int idx = mf.trk.gArr[mf.trk.idx].mode == TrackMode.AB
@@ -1153,52 +1244,6 @@ namespace AgOpenGPS
             return true;
         }
 
-        // how close to the turn line the vehicle has to be before the guidance line may
-        // move to the next pass (field decision 2026-08-15)
-        public const double switchNearBoundary = 20.0;
-
-        /// <summary>
-        /// May the guidance line move to the plan's next pass right now? Only at the
-        /// headland end of a pass that is essentially done, and only when the driver has
-        /// already left the line - holding the line means the pass gets driven out.
-        /// Every refusal is traced with its reason, so the log shows the rule working.
-        /// </summary>
-        private bool AllowLineSwitch()
-        {
-            if (mf.isReverse) { TraceSwitch("reverse"); return false; }
-            if (runEntry == null) { TraceSwitch("no current pass"); return false; }
-
-            EnsureGeometry(runEntry);
-            bool passDone = runEntry.isWorked
-                || (runEntry.passLength > 1.0 && runDistance > 0.5 * runEntry.passLength);
-            if (!passDone) { TraceSwitch("pass under 50%"); return false; }
-
-            if (mf.trk.idx < 0 || mf.trk.idx >= mf.trk.gArr.Count) return false;
-            double lateral = mf.trk.gArr[mf.trk.idx].mode == TrackMode.AB
-                ? mf.ABLine.distanceFromCurrentLinePivot
-                : mf.curve.distanceFromCurrentLinePivot;
-            if (Math.Abs(lateral) < 0.5 * WorkWidth()) { TraceSwitch("on the line"); return false; }
-
-            //last, because it walks every effective line segment and this runs per fix
-            double toLine = mf.tnl.RayDistanceToEffectiveLines(
-                new vec2(mf.pivotAxlePos.easting, mf.pivotAxlePos.northing), mf.fixHeading);
-            //-1 = the travel ray hits no turn line: there is no turn to make here either
-            if (toLine < 0) { TraceSwitch("no turn line ahead"); return false; }
-            if (toLine > switchNearBoundary) { TraceSwitch("turn line too far"); return false; }
-
-            TraceSwitch("ALLOWED");
-            return true;
-        }
-
-        // refusals are frequent (every fix), so they are traced only when the reason changes
-        private string lastSwitchReason = "";
-        private void TraceSwitch(string why)
-        {
-            if (why == lastSwitchReason) return;
-            lastSwitchReason = why;
-            TraceEvent("line switch held: " + why);
-        }
-
         /// <summary>
         /// Offset index the guidance should lead to when Follow plan is ON = the first
         /// not-worked entry (by order) on the current track. Used to seed the active
@@ -1223,24 +1268,9 @@ namespace AgOpenGPS
                 return true;
             }
 
-            //Field 2026-08-15 (f05tl-13): the line may only move to the next pass right
-            //at the headland. Marking a pass worked at 50 % used to hand the seeding the
-            //NEXT pass immediately, so the guidance line jumped mid-field and the counter
-            //restarted there - one drive across the field could mark three passes done.
-            //The driver's rule: a new path comes from the turn or from SKIP, never from
-            //driving. With autosteer ON (checked by the caller) nothing moves at all -
-            //the pass is driven out and the turn maneuver picks the next one.
-            if (!AllowLineSwitch()) return false;
-
-            CPlanEntry best = null;
-            foreach (var p in entries)
-            {
-                if (p.isWorked || p.isSkipped) continue;
-                if (EntryTrackName(p) != cur) continue;
-                if (best == null || p.order < best.order) best = p;
-            }
-            if (best == null) return false;
-            idx = best.offsetIdx;
+            CPlanEntry pin = EnsurePin();
+            if (pin == null || EntryTrackName(pin) != cur) return false;
+            idx = pin.offsetIdx;
             return true;
         }
 
