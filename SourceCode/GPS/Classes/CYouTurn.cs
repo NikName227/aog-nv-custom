@@ -21,9 +21,54 @@ namespace AgOpenGPS
         /// turn - it is the turn that swaps the line (ApplyTriggerLineSwap). Guidance must
         /// not re-pick it from the vehicle position meanwhile, or the swap is overwritten
         /// within half a second and the line follows the vehicle instead of the plan.
-        /// Releases when the turn ends or is reset - by then the vehicle IS on the new pass.
+        /// REQ 2026-08-15-7: the hold outlives an approach - the path ends AT the row, so at
+        /// speed the vehicle is still settling onto it and the nearest pass is briefly the one
+        /// NEXT to it (field 2026-08-15: "skoci na sljedecu ab liniju"). The pass is released
+        /// once the vehicle really is on it, or once it has clearly gone somewhere else.
         /// </summary>
-        public bool IsPassPinned { get { return mf.tnl.IsFeatureOn && isYouTurnTriggered; } }
+        public bool IsPassPinned
+        {
+            get
+            {
+                if (!mf.tnl.IsFeatureOn) return false;
+                if (isYouTurnTriggered) return true;
+                if (!approachHoldPass) return false;
+
+                if (IsSettledOnPass())
+                {
+                    approachHoldPass = false;
+                    Log.EventWriter("LineApproach: settled on the pass, guidance takes over");
+                    return false;
+                }
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// The DIRECTION of travel along the line is pinned only while the maneuver itself
+        /// runs. After it, the direction must be re-derived at once (that is what turned a
+        /// finished approach into an instant U-turn), while the PASS stays held above.
+        /// </summary>
+        public bool IsDirPinned { get { return mf.tnl.IsFeatureOn && isYouTurnTriggered; } }
+
+        /// <summary>
+        /// On the pass and pointing along it - or so far off it that holding on makes no
+        /// sense any more (the driver went somewhere else and guidance should follow him).
+        /// </summary>
+        private bool IsSettledOnPass()
+        {
+            if (mf.trk.idx < 0 || mf.trk.idx >= mf.trk.gArr.Count) return true;
+
+            bool isAB = mf.trk.gArr[mf.trk.idx].mode == TrackMode.AB;
+            double lateral = Math.Abs(isAB ? mf.ABLine.distanceFromCurrentLinePivot
+                                           : mf.curve.distanceFromCurrentLinePivot);
+            double head = isAB ? mf.ABLine.abHeading : mf.curve.manualUturnHeading;
+            double err = Math.Abs(AngleDiff(mf.fixHeading, head));
+            if (err > glm.PIBy2) err = Math.PI - err;      //either way along the line counts
+
+            if (lateral > 3.0 * mf.tool.width) return true;     //gone - stop holding
+            return lateral < 0.5 * (mf.tool.width - mf.tool.overlap) && err < 0.35;
+        }
 
         /// <summary>  /// turning right or left?/// </summary>
         public bool isTurnLeft;
@@ -3329,9 +3374,13 @@ namespace AgOpenGPS
 
             if (wasApproach)
             {
+                //the DIRECTION is re-derived at once; the PASS stays held until the vehicle
+                //has actually settled onto it (at speed it is still swinging in, and the
+                //nearest pass is then the one next to it)
+                approachHoldPass = true;
                 mf.ABLine.isABValid = false;
                 mf.curve.isCurveValid = false;
-                Log.EventWriter("LineApproach: done, guidance direction re-derived");
+                Log.EventWriter("LineApproach: done, direction re-derived, pass held until settled");
             }
 
             mf.sounds.isBoundAlarming = false;
@@ -3397,11 +3446,18 @@ namespace AgOpenGPS
         // nothing is built (the reverse case is phase B).
         public bool isLineApproach;
 
+        // asked for (autosteer engaged) but not built yet: retargeting the pass needs one
+        // fix to pass before the line's own reference point is on the NEW pass
+        private bool approachPending;
+
+        // the pass stays held after the approach until the vehicle has settled onto it
+        private bool approachHoldPass;
+
         // the straight part reaches this far back from the entry, or past the vehicle,
         // whichever is longer. Past the arc the path stops AT the row (field 2026-08-15:
         // "nakon radijusa mora zavrsiti") - only a stub is kept so the follower has a
         // segment to hand guidance over on.
-        private const double approachParallelLen = 20.0, approachRunIn = 1.0;
+        private const double approachParallelLen = 20.0, approachRunIn = 0.1;
 
         // a row crossing further ahead than this is the FAR headland, not our entry -
         // there the driver leads himself back onto the line (field 2026-08-15)
@@ -3465,10 +3521,59 @@ namespace AgOpenGPS
         /// Build the way back onto the ACTIVE pass: parallel along the turn line + entry arc.
         /// Called when autosteer is engaged with the vehicle off the pass.
         /// </summary>
+        /// <summary>
+        /// Autosteer was engaged: ask for the way back onto the pass. The build itself waits
+        /// for the next fix, so the guidance line's own reference point is current.
+        /// </summary>
+        public void RequestLineApproach()
+        {
+            approachPending = true;
+        }
+
+        /// <summary>
+        /// Per fix: build the requested approach as soon as it can be built.
+        /// </summary>
+        public void UpdateLineApproach()
+        {
+            if (!approachPending) return;
+            if (isYouTurnTriggered || !isYouTurnBtnOn || !mf.tnl.IsFeatureOn)
+            {
+                approachPending = false;
+                return;
+            }
+            BuildLineApproach();
+        }
+
         public void BuildLineApproach()
         {
+            approachPending = false;
             if (!mf.tnl.IsFeatureOn || !isYouTurnBtnOn || isYouTurnTriggered) return;
             if (mf.trk.idx < 0 || mf.trk.idx >= mf.trk.gArr.Count) return;
+
+            //The pass to go back to is the one the PLAN calls next, not the one guidance
+            //happens to sit on. Field 2026-08-15: finishing a pass with autosteer off does
+            //not always swap the line, so the approach led back to the pass just driven -
+            //and only switching autosteer off and on again fixed it, because the seeding in
+            //CABLine runs on autosteer OFF only. Retarget here, then build on the next fix:
+            //the line's reference point (rEastAB / rEastCu) is still on the OLD pass now.
+            if (mf.plan.TryGuidanceOffset(out int planIdx))
+            {
+                bool isAB = mf.trk.gArr[mf.trk.idx].mode == TrackMode.AB;
+                int curIdx = isAB ? mf.ABLine.howManyPathsAway : mf.curve.howManyPathsAway;
+                if (curIdx != planIdx)
+                {
+                    if (isAB) { mf.ABLine.howManyPathsAway = planIdx; mf.ABLine.isABValid = false; }
+                    else { mf.curve.howManyPathsAway = planIdx; mf.curve.isCurveValid = false; }
+
+                    //hold it against the position re-pick until the approach has done its job
+                    approachHoldPass = true;
+                    approachPending = true;
+
+                    Log.EventWriter("LineApproach: target pass " + curIdx + " -> " + planIdx
+                        + " (plan), building on the next fix");
+                    return;
+                }
+            }
 
             //WHICH WAY the pass is driven comes from the plan. Never from the vehicle
             //heading: the approach is built exactly when the vehicle sits square to the row,

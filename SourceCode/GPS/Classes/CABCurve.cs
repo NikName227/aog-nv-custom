@@ -239,11 +239,8 @@ namespace AgOpenGPS
                 else howManyPathsAway = (int)(RefDist + 0.5);
 
                 //the turn owns the pass while it runs - put back what it decided
-                if (isPassPinned)
-                {
-                    isHeadingSameWay = pinnedSameWay;
-                    howManyPathsAway = pinnedPathsAway;
-                }
+                if (isPassPinned) howManyPathsAway = pinnedPathsAway;
+                if (mf.yt.IsDirPinned) isHeadingSameWay = pinnedSameWay;
 
                 //NV follow plan: before autosteer is engaged, lead the driver to the
                 //plan's first not-worked pass instead of the nearest one (spec 4.3).

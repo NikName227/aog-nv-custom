@@ -235,10 +235,11 @@ namespace AgOpenGPS
                     {
                         yt.ResetYouTurn();
 
-                        //REQ 2026-08-15-7: engaging autosteer off the pass builds the way back
+                        //REQ 2026-08-15-7: engaging autosteer off the pass asks for the way back
                         //onto it - straight along the turn line, then the entry radius into the
-                        //row. Builds nothing when it does not fit or is not needed (log says why).
-                        if (tnl.IsFeatureOn) yt.BuildLineApproach();
+                        //row. Built on the next fix (the pass may have to be retargeted to the
+                        //plan first); nothing is built when it does not fit - the log says why.
+                        if (tnl.IsFeatureOn) yt.RequestLineApproach();
                     }
                 }
                 else

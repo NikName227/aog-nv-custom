@@ -124,7 +124,7 @@ namespace AgOpenGPS
                 //keeps updating (guidance display needs it); the pass itself is pinned.
                 bool isPassPinned = mf.yt.IsPassPinned;
 
-                if (!isPassPinned)
+                if (!mf.yt.IsDirPinned)
                     isHeadingSameWay = Math.PI - Math.Abs(Math.Abs(pivot.heading - abHeading) - Math.PI) < glm.PIBy2;
 
                 //if (mf.yt.isYouTurnTriggered && !mf.yt.isGoingStraightThrough) isHeadingSameWay = !isHeadingSameWay;
