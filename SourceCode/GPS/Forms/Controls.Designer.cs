@@ -820,6 +820,22 @@ namespace AgOpenGPS
             toolStripBtnFieldTools.Enabled = isJobStarted;
             bnd.isHeadlandOn = (bnd.bndList.Count > 0 && bnd.bndList[0].hdLine.Count > 0);
             trk.idx = -1;
+
+            //Field 2026-08-15: opening a field ends here with NO track selected, so a field
+            //with a running plan drove blind - CurrentEntry() was null on every fix, nothing
+            //counted, no turn armed, until the driver picked a line by hand (the "first pass
+            //is never clean" report; the log showed 40 s of "trkIdx -1"). Putting the plan's
+            //own track back on has to happen HERE, after the reset above - doing it inside
+            //FileOpenField was undone by this very line. The offset is left alone: the plan
+            //pins it on the next fix (CTurnPlan.EnsurePin via CABLine/CABCurve).
+            if (plan.IsRuntimeOn && plan.TryPlanTrackIndex(out int planTrk))
+            {
+                trk.idx = planTrk;
+                ABLine.isABValid = false;
+                curve.isCurveValid = false;
+                plan.TraceEvent("field open: plan track '" + trk.gArr[planTrk].name + "' activated");
+            }
+
             PanelUpdateRightAndBottom();
         }
 
