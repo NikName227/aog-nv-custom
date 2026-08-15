@@ -2000,6 +2000,7 @@ namespace AgOpenGPS
         private bool TryGetLocalEff(double head, out List<vec2> eff)
         {
             eff = null;
+            bool usedBackup = false;
             List<vec2> world = mf.tnl.GetEffPolylineByRay(new vec2(frOx, frOy), head,
                 out int rayLine, out double rayDist);
             if (world == null)
@@ -2007,12 +2008,17 @@ namespace AgOpenGPS
                 vec2 backed = new vec2(frOx - Math.Sin(head) * rayBackup,
                                        frOy - Math.Cos(head) * rayBackup);
                 world = mf.tnl.GetEffPolylineByRay(backed, head, out rayLine, out rayDist);
-                if (world != null) rayDist -= rayBackup;
+                if (world != null) { rayDist -= rayBackup; usedBackup = true; }
             }
 
             if (world != null)
             {
-                lastRayDiag = "eff line " + rayLine + " at " + rayDist.ToString("F1") + " m";
+                //field 2026-08-15: say whether this came off the backed-up retry - a line
+                //"eff line 1 at 1,8 m" read as a plain distance ahead is misleading when it
+                //is really (hit - rayBackup) from an origin 15 m behind the vehicle
+                lastRayDiag = "eff line " + rayLine + " at " + rayDist.ToString("F1") + " m"
+                    + (usedBackup ? " (via " + rayBackup.ToString("F0") + " m backup, raw "
+                        + (rayDist + rayBackup).ToString("F1") + " m)" : "");
             }
             else
             {
@@ -3229,6 +3235,8 @@ namespace AgOpenGPS
         {
             //trigger pulled
             isYouTurnTriggered = true;
+            mf.plan.TraceEvent("turn TRIGGERED"
+                + (isGoingStraightThrough ? " (approach, no line swap)" : " skip " + rowSkipsWidth));
 
             if (!isGoingStraightThrough)
             {
@@ -3318,6 +3326,7 @@ namespace AgOpenGPS
             //safety: a completed turn must always end up on the new line
             if (turnLineSwapPending) { turnLineSwapPending = false; ApplyTriggerLineSwap(); }
             isYouTurnTriggered = false;
+            mf.plan.TraceEvent("turn COMPLETE");
 
             //orchard: land on the next pass's track
             if (crossSwitchTrack != null)

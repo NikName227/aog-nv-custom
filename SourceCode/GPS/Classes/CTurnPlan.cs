@@ -399,6 +399,7 @@ namespace AgOpenGPS
                 else { p.isSkipped = false; p.isWorked = false; }
             }
 
+            TraceEvent("StartFrom: zone " + zone + " pass " + pass + " (order " + targetOrder + ")");
             InvalidateRun();
             mf.FileSaveTurnPlan();
             return true;
@@ -667,6 +668,83 @@ namespace AgOpenGPS
 
         public bool IsRuntimeOn { get { return isFollowPlan && entries.Count > 0; } }
 
+        // ── trace (field 2026-08-15) ──────────────────────────────────────────
+        // The old one-line diag said "no entry matches track '' offset -999" and left
+        // the reader to work out that -999 means "no active guidance line at all".
+        // This writes the whole runtime state instead, on every change and once a
+        // second while no pass is recognized, plus one line per event. Prefix
+        // "TurnPlan trace:" so the log filters cleanly.
+        private string lastTraceLine = "";
+        private DateTime lastTraceAt = DateTime.MinValue;
+        private const double traceHeartbeatSeconds = 1.0;
+
+        private string TraceState()
+        {
+            CPlanEntry now = CurrentEntry();
+            int trkIdx = mf.trk != null ? mf.trk.idx : -1;
+            bool haveTrack = mf.trk != null && trkIdx >= 0 && trkIdx < mf.trk.gArr.Count;
+
+            string track = haveTrack ? mf.trk.gArr[trkIdx].name : "<none>";
+            string offset = haveTrack
+                ? (mf.trk.gArr[trkIdx].mode == TrackMode.AB
+                    ? mf.ABLine.howManyPathsAway : mf.curve.howManyPathsAway).ToString()
+                : "-";
+            string lateral = haveTrack
+                ? (mf.trk.gArr[trkIdx].mode == TrackMode.AB
+                    ? mf.ABLine.distanceFromCurrentLinePivot
+                    : mf.curve.distanceFromCurrentLinePivot).ToString("F1")
+                : "-";
+
+            string entry;
+            if (now == null) entry = "<none>";
+            else
+            {
+                EnsureGeometry(now);
+                double pct = now.passLength > 1.0 ? 100.0 * runDistance / now.passLength : 0;
+                entry = "ord " + now.order + " off " + now.offsetIdx + " zone " + now.zone
+                    + " run " + runDistance.ToString("F0") + "/" + now.passLength.ToString("F0")
+                    + " m (" + pct.ToString("F0") + "%)"
+                    + (now.isWorked ? " WORKED" : "") + (now.isSkipped ? " SKIPPED" : "");
+            }
+
+            return "trkIdx " + trkIdx + " track '" + track + "' offset " + offset
+                + " lat " + lateral + " m | entry " + entry
+                + " | worked " + WorkedCount() + "/" + entries.Count
+                + " | steer " + (mf.isBtnAutoSteerOn ? "ON" : "off")
+                + " turnBtn " + (mf.yt.isYouTurnBtnOn ? "ON" : "off")
+                + (mf.yt.turnArmed ? " ARMED" : "") + (mf.yt.isYouTurnTriggered ? " TRIGGERED" : "")
+                + (mf.isReverse ? " REVERSE" : "")
+                + (isFlexPause ? " FLEXPAUSE" : "")
+                + " | sect auto " + mf.autoBtnState + " man " + mf.manualBtnState;
+        }
+
+        /// <summary>
+        /// One line whenever the runtime state changes, plus a 1 s heartbeat while no
+        /// pass is recognized (that is the state worth catching - the plan is running
+        /// blind). Called once per fix from UpdateProgress.
+        /// </summary>
+        private void TracePerFix()
+        {
+            if (!IsRuntimeOn || !mf.tnl.IsFeatureOn) return;
+
+            string line = TraceState();
+            bool blind = CurrentEntry() == null;
+            bool due = blind && (DateTime.UtcNow - lastTraceAt).TotalSeconds >= traceHeartbeatSeconds;
+
+            if (line == lastTraceLine && !due) return;
+
+            lastTraceLine = line;
+            lastTraceAt = DateTime.UtcNow;
+            Log.EventWriter("TurnPlan trace: " + line);
+        }
+
+        /// <summary>One line for an event (pass change, worked, skip, seeding decision…).</summary>
+        public void TraceEvent(string what)
+        {
+            if (!IsRuntimeOn || !mf.tnl.IsFeatureOn) return;
+            Log.EventWriter("TurnPlan trace: " + what + " || " + TraceState());
+        }
+
         /// <summary>
         /// Forget the pass the vehicle is running so the next fix re-picks the first
         /// not-worked entry. Call after a manual worked-flag correction (phase 3.3).
@@ -807,6 +885,7 @@ namespace AgOpenGPS
             t.isSkipped = true;
             lastSkipped = t;
             lastSkipAt = DateTime.UtcNow;
+            TraceEvent("SKIP: ord " + t.order + " off " + t.offsetIdx);
             InvalidateRun();
             mf.FileSaveTurnPlan();
             return t;
@@ -832,6 +911,7 @@ namespace AgOpenGPS
         {
             if (UndoSkipSecondsLeft() <= 0) return false;
             lastSkipped.isSkipped = false;
+            TraceEvent("UNDO skip: ord " + lastSkipped.order);
             lastSkipped = null;
             InvalidateRun();
             mf.FileSaveTurnPlan();
@@ -1105,32 +1185,21 @@ namespace AgOpenGPS
         /// (laterally within half a width of its line); leaving the pass with more
         /// than 50 % of its length covered marks it worked and saves the plan.
         /// </summary>
-        //field 2026-07-16 diag: throttle for the no-matching-entry log below
-        private DateTime lastNoEntryLog = DateTime.MinValue;
-
         public void UpdateProgress()
         {
             if (!IsRuntimeOn || !mf.isJobStarted) return;
 
             CPlanEntry now = CurrentEntry();
 
-            //field 2026-07-16 diag: the FIRST pass sometimes never counts down nor
-            //marks worked - log when the active line matches NO plan entry so the
-            //next field test says exactly what mismatched (offset vs track name)
-            if (now == null && (DateTime.UtcNow - lastNoEntryLog).TotalSeconds > 15)
-            {
-                lastNoEntryLog = DateTime.UtcNow;
-                int idx = mf.trk.idx >= 0 && mf.trk.idx < mf.trk.gArr.Count
-                    ? (mf.trk.gArr[mf.trk.idx].mode == TrackMode.AB
-                        ? mf.ABLine.howManyPathsAway : mf.curve.howManyPathsAway)
-                    : -999;
-                Log.EventWriter("TurnPlan diag: no entry matches track '"
-                    + CurrentTrackName() + "' offset " + idx);
-            }
+            //field 2026-08-15: replaces the old 15 s "no entry matches" diag - the full
+            //state, on change and once a second while the plan runs blind
+            TracePerFix();
 
             // left the previous pass? (fallback - normally the 50% check below already fired)
             if (runEntry != null && now != runEntry)
             {
+                TraceEvent("pass change: ord " + runEntry.order + " -> "
+                    + (now == null ? "<none>" : now.order.ToString()));
                 EnsureGeometry(runEntry);
                 if (!runEntry.isWorked && runEntry.passLength > 1.0
                     && runDistance > 0.5 * runEntry.passLength)
@@ -1178,6 +1247,7 @@ namespace AgOpenGPS
         private void MarkWorked(CPlanEntry p)
         {
             p.isWorked = true;
+            TraceEvent("marked worked: ord " + p.order + " off " + p.offsetIdx);
             mf.FileSaveTurnPlan();
 
             if (p.IsManual && FlexResumePass() == null && mf.yt.isYouTurnBtnOn)
