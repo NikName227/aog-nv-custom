@@ -16,6 +16,15 @@ namespace AgOpenGPS
         /// <summary>/// triggered right after youTurnTriggerPoint is set /// </summary>
         public bool isYouTurnTriggered, isGoingStraightThrough = false;
 
+        /// <summary>
+        /// REQ 2026-08-15-6: while OUR maneuver is running the active pass belongs to the
+        /// turn - it is the turn that swaps the line (ApplyTriggerLineSwap). Guidance must
+        /// not re-pick it from the vehicle position meanwhile, or the swap is overwritten
+        /// within half a second and the line follows the vehicle instead of the plan.
+        /// Releases when the turn ends or is reset - by then the vehicle IS on the new pass.
+        /// </summary>
+        public bool IsPassPinned { get { return mf.tnl.IsFeatureOn && isYouTurnTriggered; } }
+
         /// <summary>  /// turning right or left?/// </summary>
         public bool isTurnLeft;
         private int semiCircleIndex = -1;

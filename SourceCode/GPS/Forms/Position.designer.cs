@@ -882,7 +882,11 @@ namespace AgOpenGPS
                     OrchardPickNearestPass(false);
 
                 //auto track routine
-                if (trk.isAutoTrack && !isBtnAutoSteerOn && trk.autoTrack3SecTimer >= 1)
+                //REQ 2026-08-15-6: this one changes the whole TRACK every 3 s while autosteer
+                //is off - under a running turn it would move the ground beneath the maneuver,
+                //so it waits until the turn is done (same pin as the pass in CABLine/CABCurve)
+                if (trk.isAutoTrack && !isBtnAutoSteerOn && trk.autoTrack3SecTimer >= 1
+                    && !yt.IsPassPinned)
                 {
                     trk.autoTrack3SecTimer = 0;
                     int lastIndex = trk.idx;
