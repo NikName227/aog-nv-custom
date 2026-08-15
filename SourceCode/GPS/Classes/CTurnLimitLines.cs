@@ -375,6 +375,11 @@ namespace AgOpenGPS
         /// where the boundary runs, and the driver should not have to think about it. Only the
         /// drawn extent counts, not the extrapolation, so the band cannot appear off the ends.
         /// </summary>
+        // how far past its drawn ends the line still counts for the bands below. Field
+        // 2026-08-16: the driver refills the seeder OFF the field, past the end of the drawn
+        // line, and that spot must still count as "at the headland" (REQ 2026-08-15-9).
+        public const double bandEndExtension = 30.0;
+
         public double DistanceToEffectiveLines(double easting, double northing)
         {
             if (lines.Count == 0) return -1;
@@ -383,7 +388,8 @@ namespace AgOpenGPS
             double best = -1;
             foreach (var ln in lines)
             {
-                for (int i = 0; i < ln.effPts.Count - 1; i++)
+                int last = ln.effPts.Count - 2;
+                for (int i = 0; i <= last; i++)
                 {
                     double ax = ln.effPts[i].easting, ay = ln.effPts[i].northing;
                     double dx = ln.effPts[i + 1].easting - ax;
@@ -391,8 +397,13 @@ namespace AgOpenGPS
                     double len2 = dx * dx + dy * dy;
                     if (len2 < 0.0001) continue;
 
+                    //the first and last segment reach bandEndExtension past the drawn end
+                    double reach = bandEndExtension / Math.Sqrt(len2);
+                    double tMin = i == 0 ? -reach : 0;
+                    double tMax = i == last ? 1.0 + reach : 1.0;
+
                     double t = ((easting - ax) * dx + (northing - ay) * dy) / len2;
-                    if (t < 0) t = 0; else if (t > 1) t = 1;
+                    if (t < tMin) t = tMin; else if (t > tMax) t = tMax;
 
                     double ex = ax + t * dx - easting, ey = ay + t * dy - northing;
                     double d = Math.Sqrt(ex * ex + ey * ey);

@@ -806,6 +806,10 @@ namespace AgOpenGPS
         // (REQ 2026-08-15-9, driver's figure)
         public const double passDoneBand = 6.0;
 
+        // and how far the driver must step off to mean it: the working width, but never
+        // less than this - with a narrow implement the width alone trips too easily
+        public const double passDoneStepMin = 3.0;
+
         // the last plan action that can still be taken back - a skipped pass, or (REQ
         // 2026-08-15-9) a pass written off by stepping aside in the headland
         private CPlanEntry lastUndoEntry;
@@ -1211,7 +1215,7 @@ namespace AgOpenGPS
                                                               mf.pivotAxlePos.northing);
             if (mf.tnl.IsFeatureOn && !mf.isBtnAutoSteerOn && !mf.yt.isYouTurnTriggered
                 && now != null && !now.isWorked
-                && Math.Abs(lateral) >= WorkWidth()
+                && Math.Abs(lateral) >= Math.Max(passDoneStepMin, WorkWidth())
                 && bandDist >= 0 && bandDist <= passDoneBand)
             {
                 bool wasWorked = now.isWorked;

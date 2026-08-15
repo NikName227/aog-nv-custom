@@ -3465,6 +3465,10 @@ namespace AgOpenGPS
         // there the driver leads himself back onto the line (field 2026-08-15)
         private const double approachEntryMax = 30.0;
 
+        // band around the turn line that counts as "where turning happens" even when it falls
+        // outside the field boundary (field 2026-08-16, driver's figure)
+        private const double approachZoneBand = 10.0;
+
         // outside this band the "approach" would be a turn (or a nudge), not an entry
         private const double approachTurnMax = 2.09, approachTurnMin = 0.087;
 
@@ -3500,18 +3504,26 @@ namespace AgOpenGPS
         }
 
         /// <summary>
-        /// Does the path END inside the field? Only the part from fromIndex on is judged -
-        /// the straight and the arc live in the headland, which on some fields lies OUTSIDE
-        /// the fence entirely (field 2026-08-15: the turn area is regularly reported outside
-        /// it). What must be true is that the maneuver leads INTO the field, not out of it.
+        /// Does the path END somewhere the maneuver is allowed? Only the part from fromIndex on
+        /// is judged - the straight and the arc live in the headland, which on some fields lies
+        /// OUTSIDE the fence entirely. Allowed = inside the fence, OR within the band around the
+        /// turn line: field 2026-08-16, a perfectly good entry was thrown away because the row
+        /// end itself sits outside the boundary on this field. The turn line is the authority on
+        /// where turning happens, so the band around it is the yardstick.
         /// </summary>
         private bool PathEndsInsideField(List<vec3> path, int fromIndex)
         {
             if (mf.bnd.bndList.Count == 0) return true;   //no boundary drawn: nothing to judge
 
             for (int i = Math.Max(0, fromIndex); i < path.Count; i++)
-                if (!mf.bnd.IsPointInsideFenceArea(path[i])) return false;
+            {
+                if (mf.bnd.IsPointInsideFenceArea(path[i])) continue;
 
+                double toLine = mf.tnl.DistanceToEffectiveLines(path[i].easting, path[i].northing);
+                if (toLine >= 0 && toLine <= approachZoneBand) continue;
+
+                return false;
+            }
             return true;
         }
 
@@ -3844,9 +3856,31 @@ namespace AgOpenGPS
             //ahead of the tangent point, or the driver would have nothing under him to back along
             double aheadOfEntry = isReverseOnly ? Math.Max(0, -alongToEntry) + approachRunIn + 5.0 : 0;
 
+            //The follower's convention is that a path's points carry the NOSE heading, and
+            //reverse travel walks them backwards (that is how the K turn's reverse leg is
+            //ordered). Phase B fires exactly when the vehicle faces the other way, so ordering
+            //the straight toward the entry put the path 180 deg against the nose: driving
+            //forward threw the lookahead point BEHIND the vehicle (field 2026-08-16). Same
+            //straight, laid the way the vehicle looks.
+            bool alongNose = isReverseOnly && facingWrongWay;
+            double pathHead = parHead;
+            if (alongNose)
+            {
+                pathHead += Math.PI;
+                if (pathHead >= glm.twoPI) pathHead -= glm.twoPI;
+            }
+
             path = new List<vec3>();
-            for (double s = parLen; s > -aheadOfEntry; s -= ps)
-                path.Add(new vec3(tanPar.easting - tx * s, tanPar.northing - ty * s, parHead));
+            if (alongNose)
+            {
+                for (double s = -aheadOfEntry; s < parLen; s += ps)
+                    path.Add(new vec3(tanPar.easting - tx * s, tanPar.northing - ty * s, pathHead));
+            }
+            else
+            {
+                for (double s = parLen; s > -aheadOfEntry; s -= ps)
+                    path.Add(new vec3(tanPar.easting - tx * s, tanPar.northing - ty * s, pathHead));
+            }
 
             if (isReverseOnly)
             {
