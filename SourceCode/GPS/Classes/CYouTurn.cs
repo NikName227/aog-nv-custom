@@ -34,10 +34,25 @@ namespace AgOpenGPS
                 if (isYouTurnTriggered) return true;
                 if (!approachHoldPass) return false;
 
-                if (IsSettledOnPass())
+                //REQ 2026-08-15-7 (field 2026-08-15): the hold used to end on geometry - close
+                //enough to the pass, or so far off that the driver had "clearly gone elsewhere".
+                //That second escape is exactly what let the target line drift away while
+                //manoeuvring in reverse. The driver's rule instead: once the target is set it
+                //STAYS set until he drives it (the plan marks it worked at 50 %) or skips it.
+                if (!mf.plan.IsRuntimeOn)
                 {
                     approachHoldPass = false;
-                    Log.EventWriter("LineApproach: settled on the pass, guidance takes over");
+                    heldEntry = null;
+                    return false;
+                }
+
+                if (heldEntry == null) heldEntry = mf.plan.CurrentEntry();
+
+                if (heldEntry != null && (heldEntry.isWorked || heldEntry.isSkipped))
+                {
+                    approachHoldPass = false;
+                    heldEntry = null;
+                    Log.EventWriter("LineApproach: target pass done or skipped - pass released");
                     return false;
                 }
                 return true;
@@ -50,25 +65,6 @@ namespace AgOpenGPS
         /// finished approach into an instant U-turn), while the PASS stays held above.
         /// </summary>
         public bool IsDirPinned { get { return mf.tnl.IsFeatureOn && isYouTurnTriggered; } }
-
-        /// <summary>
-        /// On the pass and pointing along it - or so far off it that holding on makes no
-        /// sense any more (the driver went somewhere else and guidance should follow him).
-        /// </summary>
-        private bool IsSettledOnPass()
-        {
-            if (mf.trk.idx < 0 || mf.trk.idx >= mf.trk.gArr.Count) return true;
-
-            bool isAB = mf.trk.gArr[mf.trk.idx].mode == TrackMode.AB;
-            double lateral = Math.Abs(isAB ? mf.ABLine.distanceFromCurrentLinePivot
-                                           : mf.curve.distanceFromCurrentLinePivot);
-            double head = isAB ? mf.ABLine.abHeading : mf.curve.manualUturnHeading;
-            double err = Math.Abs(AngleDiff(mf.fixHeading, head));
-            if (err > glm.PIBy2) err = Math.PI - err;      //either way along the line counts
-
-            if (lateral > 3.0 * mf.tool.width) return true;     //gone - stop holding
-            return lateral < 0.5 * (mf.tool.width - mf.tool.overlap) && err < 0.35;
-        }
 
         /// <summary>  /// turning right or left?/// </summary>
         public bool isTurnLeft;
@@ -3374,10 +3370,11 @@ namespace AgOpenGPS
 
             if (wasApproach)
             {
-                //the DIRECTION is re-derived at once; the PASS stays held until the vehicle
-                //has actually settled onto it (at speed it is still swinging in, and the
-                //nearest pass is then the one next to it)
+                //the DIRECTION is re-derived at once; the PASS stays held until the plan moves
+                //on from it (driven to 50 % or skipped) - at speed the vehicle is still swinging
+                //in when the path ends, and the nearest pass is then the one next to it
                 approachHoldPass = true;
+                heldEntry = null;
                 mf.ABLine.isABValid = false;
                 mf.curve.isCurveValid = false;
                 Log.EventWriter("LineApproach: done, direction re-derived, pass held until settled");
@@ -3454,8 +3451,9 @@ namespace AgOpenGPS
         // the built approach is the phase B shape: straight only, waiting for room
         private bool approachReverse;
 
-        // the pass stays held after the approach until the vehicle has settled onto it
+        // the pass stays held after the approach until the PLAN moves on from it
         private bool approachHoldPass;
+        private CPlanEntry heldEntry;
 
         // the straight part reaches this far back from the entry, or past the vehicle,
         // whichever is longer. Past the arc the path stops AT the row (field 2026-08-15:
@@ -3648,8 +3646,9 @@ namespace AgOpenGPS
                     if (isAB) { mf.ABLine.howManyPathsAway = planIdx; mf.ABLine.isABValid = false; }
                     else { mf.curve.howManyPathsAway = planIdx; mf.curve.isCurveValid = false; }
 
-                    //hold it against the position re-pick until the approach has done its job
+                    //hold it against the position re-pick until the plan moves on from it
                     approachHoldPass = true;
+                    heldEntry = null;
                     approachPending = true;
 
                     Log.EventWriter("LineApproach: target pass " + curIdx + " -> " + planIdx
@@ -4271,8 +4270,11 @@ namespace AgOpenGPS
                     }
 
                     //turn limit lines: a U-turn has no reverse phase, so backing up after the
-                    //arc means the driver is on the new row - end the turn, hand back to the line
-                    if (mf.tnl.IsFeatureOn && activeTurnStyle == 0 && mf.isReverse && hasProgressedEnough)
+                    //arc means the driver is on the new row - end the turn, hand back to the line.
+                    //An APPROACH is exempt (REQ 2026-08-15-7): reversing is part of it, phase B is
+                    //driven backwards on purpose, and ending it here made the target line jump.
+                    if (mf.tnl.IsFeatureOn && !isLineApproach
+                        && activeTurnStyle == 0 && mf.isReverse && hasProgressedEnough)
                     {
                         CompleteYouTurn();
                         return false;
@@ -4394,8 +4396,11 @@ namespace AgOpenGPS
                     }
 
                     //turn limit lines: U-turn has no reverse phase - backing up after the arc
-                    //ends the turn and hands guidance back to the AB/curve line
-                    if (mf.tnl.IsFeatureOn && activeTurnStyle == 0 && mf.isReverse && hasProgressedEnough)
+                    //ends the turn and hands guidance back to the AB/curve line. An APPROACH is
+                    //exempt (REQ 2026-08-15-7) - reversing is part of it, phase B is driven
+                    //backwards on purpose.
+                    if (mf.tnl.IsFeatureOn && !isLineApproach
+                        && activeTurnStyle == 0 && mf.isReverse && hasProgressedEnough)
                     {
                         CompleteYouTurn();
                         return false;
