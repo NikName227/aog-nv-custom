@@ -1989,7 +1989,9 @@ namespace AgOpenGPS
             //NV HUD skip (2026-07-11): small transparent button - thin rounded
             //outline + text. SKIP writes off the targeted pass; for 10 s after a
             //skip the same button shows UNDO with a countdown. Only with a plan.
-            double undoLeft = plan.UndoSkipSecondsLeft();
+            //REQ 2026-08-15-9: the same UNDO also takes back a pass written off by
+            //stepping a full width aside in the headland.
+            double undoLeft = plan.UndoSecondsLeft();
             if (plan.HasSkipTarget() || undoLeft > 0)
             {
                 GL.Disable(EnableCap.Texture2D);

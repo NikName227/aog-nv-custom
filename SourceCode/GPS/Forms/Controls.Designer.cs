@@ -234,6 +234,12 @@ namespace AgOpenGPS
                     if (yt.isYouTurnBtnOn)
                     {
                         yt.ResetYouTurn();
+
+                        //REQ 2026-08-15-7: engaging autosteer off the pass asks for the way back
+                        //onto it - straight along the turn line, then the entry radius into the
+                        //row. Built on the next fix (the pass may have to be retargeted to the
+                        //plan first); nothing is built when it does not fit - the log says why.
+                        if (tnl.IsFeatureOn) yt.RequestLineApproach();
                     }
                 }
                 else
@@ -260,6 +266,26 @@ namespace AgOpenGPS
             {
                 //new direction so reset where to put turn diagnostic
                 yt.ResetCreatedYouTurn();
+
+                //NV (field 2026-08-15): the plan is laid out on ONE working width. The plan
+                //file is per width and its signature is checked when the field opens - but
+                //only then. Change the implement with the field open (settings OK also drops
+                //autosteer and this button) and the plan in memory silently keeps the old
+                //raster. So the width is checked here, where the driver re-engages: mismatch
+                //means the plan no longer describes this machine and has to be made again.
+                //Orchard is exempt - its passes are derived and OrchardSyncPlan regenerates
+                //them by itself when they stop matching.
+                if (plan.HasPlan && !tool.isToolOrchard && plan.builtWidth > 0.01
+                    && Math.Abs(plan.builtWidth - (tool.width - tool.overlap)) > 0.01)
+                {
+                    string have = (tool.width - tool.overlap).ToString("N2");
+                    string want = plan.builtWidth.ToString("N2");
+                    TimedMessageBox(3500, "Turn Plan",
+                        "Plan is for " + want + " m, machine is " + have + " m - generate a new plan");
+                    Log.EventWriter("TurnPlan: width mismatch, plan " + want + " m vs machine "
+                        + have + " m - auto turn not engaged");
+                    return;
+                }
 
                 //NV follow plan: engaging auto turn switches guidance to the track
                 //the plan was built on, so the turns target the plan's passes and

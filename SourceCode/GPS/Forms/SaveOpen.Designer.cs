@@ -172,6 +172,11 @@ namespace AgOpenGPS
                 || (tool.isToolOrchard && CFeatureLock.IsOn(CFeatureLock.FeatureOrchard)))
             {
                 tnl.ApplyLoaded(TurnLinesFiles.Load(dir));
+
+                //the turn lines above were built before this, when it was not yet known
+                //whether our feature is on - and that decides their inset (CTurn.cs:128)
+                bnd.BuildTurnLines();
+
                 plan.ApplyLoaded(TurnPlanFiles.Load(dir, tool.width - tool.overlap));
 
                 //F50 t10 D: the orchard rows were read before this (the path is derived from

@@ -1871,4 +1871,16 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsOrchStateSaved" xml:space="preserve">
     <value>Spremljeno</value>
   </data>
+  <data name="gsStartFrom" xml:space="preserve">
+    <value>Kreni od</value>
+  </data>
+  <data name="gsPass" xml:space="preserve">
+    <value>Prolaz</value>
+  </data>
+  <data name="gsApply" xml:space="preserve">
+    <value>Primijeni</value>
+  </data>
+  <data name="gsMinTurnRadiusIs" xml:space="preserve">
+    <value>min radijus okreta je</value>
+  </data>
 </root>

@@ -5616,6 +5616,30 @@ public static string gsOrchPlanterBehind {
             }
         }
         
+        public static string gsStartFrom {
+            get {
+                return ResourceManager.GetString("gsStartFrom", resourceCulture);
+            }
+        }
+        
+        public static string gsPass {
+            get {
+                return ResourceManager.GetString("gsPass", resourceCulture);
+            }
+        }
+        
+        public static string gsApply {
+            get {
+                return ResourceManager.GetString("gsApply", resourceCulture);
+            }
+        }
+        
+        public static string gsMinTurnRadiusIs {
+            get {
+                return ResourceManager.GetString("gsMinTurnRadiusIs", resourceCulture);
+            }
+        }
+        
         public static string gsOrchTree {
             get {
                 return ResourceManager.GetString("gsOrchTree", resourceCulture);

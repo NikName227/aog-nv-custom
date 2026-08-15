@@ -16,6 +16,56 @@ namespace AgOpenGPS
         /// <summary>/// triggered right after youTurnTriggerPoint is set /// </summary>
         public bool isYouTurnTriggered, isGoingStraightThrough = false;
 
+        /// <summary>
+        /// REQ 2026-08-15-6: while OUR maneuver is running the active pass belongs to the
+        /// turn - it is the turn that swaps the line (ApplyTriggerLineSwap). Guidance must
+        /// not re-pick it from the vehicle position meanwhile, or the swap is overwritten
+        /// within half a second and the line follows the vehicle instead of the plan.
+        /// REQ 2026-08-15-7: the hold outlives an approach - the path ends AT the row, so at
+        /// speed the vehicle is still settling onto it and the nearest pass is briefly the one
+        /// NEXT to it (field 2026-08-15: "skoci na sljedecu ab liniju"). The pass is released
+        /// once the vehicle really is on it, or once it has clearly gone somewhere else.
+        /// </summary>
+        public bool IsPassPinned
+        {
+            get
+            {
+                if (!mf.tnl.IsFeatureOn) return false;
+                if (isYouTurnTriggered) return true;
+                if (!approachHoldPass) return false;
+
+                //REQ 2026-08-15-7 (field 2026-08-15): the hold used to end on geometry - close
+                //enough to the pass, or so far off that the driver had "clearly gone elsewhere".
+                //That second escape is exactly what let the target line drift away while
+                //manoeuvring in reverse. The driver's rule instead: once the target is set it
+                //STAYS set until he drives it (the plan marks it worked at 50 %) or skips it.
+                if (!mf.plan.IsRuntimeOn)
+                {
+                    approachHoldPass = false;
+                    heldEntry = null;
+                    return false;
+                }
+
+                if (heldEntry == null) heldEntry = mf.plan.CurrentEntry();
+
+                if (heldEntry != null && (heldEntry.isWorked || heldEntry.isSkipped))
+                {
+                    approachHoldPass = false;
+                    heldEntry = null;
+                    Log.EventWriter("LineApproach: target pass done or skipped - pass released");
+                    return false;
+                }
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// The DIRECTION of travel along the line is pinned only while the maneuver itself
+        /// runs. After it, the direction must be re-derived at once (that is what turned a
+        /// finished approach into an instant U-turn), while the PASS stays held above.
+        /// </summary>
+        public bool IsDirPinned { get { return mf.tnl.IsFeatureOn && isYouTurnTriggered; } }
+
         /// <summary>  /// turning right or left?/// </summary>
         public bool isTurnLeft;
         private int semiCircleIndex = -1;
@@ -36,6 +86,30 @@ namespace AgOpenGPS
 
         //guidance values
         public double distanceFromCurrentLine, uturnDistanceFromBoundary;
+
+        /// <summary>
+        /// What the tractor can physically do: bicycle model, R = wheelbase / tan(max steer).
+        /// The radius travels with the implement now, and an implement can ask for a tighter turn
+        /// than the tractor can drive - that would plan a turn nobody can follow. So this is the
+        /// floor. No safety margin on top (decision 2026-08-12): the margin is that one does not
+        /// drive at full lock anyway, and a second silent add-on would only hide the real number.
+        /// </summary>
+        public double MinTurnRadius()
+        {
+            double wb = Math.Abs(Properties.VehicleSettings.Default.setVehicle_wheelbase);
+            double maxDeg = Math.Abs(Properties.VehicleSettings.Default.setVehicle_maxSteerAngle);
+            if (wb < 0.1 || maxDeg < 1.0) return 0;      // profile not filled in - no opinion
+
+            double r = wb / Math.Tan(maxDeg * Math.PI / 180.0);
+            return r > 0 ? r : 0;
+        }
+
+        /// <summary>Implement's wish, never below what the tractor can drive.</summary>
+        public double TurnRadius(double wanted)
+        {
+            double min = MinTurnRadius();
+            return (min > 0 && wanted < min) ? min : wanted;
+        }
 
         private int A, B;
         private bool isHeadingSameWay = true;
@@ -159,7 +233,7 @@ namespace AgOpenGPS
 
             rowSkipsWidth = Properties.Settings.Default.set_youSkipWidth;
 
-            youTurnRadius = Properties.VehicleSettings.Default.setTurn_youTurnRadius;
+            youTurnRadius = TurnRadius(Properties.ToolSettings.Default.setTurn_youTurnRadius);
 
             uTurnStyle = Properties.Settings.Default.set_uTurnStyle;
             activeTurnStyle = uTurnStyle;
@@ -232,15 +306,15 @@ namespace AgOpenGPS
         // youturn geometry is left exactly as it was.
         private double KExitRadius
         {
-            get { double v = Properties.VehicleSettings.Default.setTurn_K_exitRadius; return v > 0.5 ? v : youTurnRadius; }
+            get { double v = Properties.ToolSettings.Default.setTurn_K_exitRadius; return v > 0.5 ? TurnRadius(v) : youTurnRadius; }
         }
         private double UOutRadius
         {
-            get { double v = Properties.VehicleSettings.Default.setTurn_U_exitRadius; return v > 0.5 ? v : youTurnRadius; }
+            get { double v = Properties.ToolSettings.Default.setTurn_U_exitRadius; return v > 0.5 ? TurnRadius(v) : youTurnRadius; }
         }
         private double UInRadius
         {
-            get { double v = Properties.VehicleSettings.Default.setTurn_U_entryRadius; return v > 0.5 ? v : youTurnRadius; }
+            get { double v = Properties.ToolSettings.Default.setTurn_U_entryRadius; return v > 0.5 ? TurnRadius(v) : youTurnRadius; }
         }
 
         // Spacing (turnOffset) at/above which a clean U-turn fits. Stock = 2x the general
@@ -1309,7 +1383,7 @@ namespace AgOpenGPS
                     //(driver) then aligns onto the real row. 0 = tangent the real line (stock).
                     if (mf.tnl.IsFeatureOn)
                     {
-                        double over = Properties.VehicleSettings.Default.setTurn_U_overshootDist;
+                        double over = Properties.ToolSettings.Default.setTurn_U_overshootDist;
                         if (over > 0.01)
                             distAway += ((isTurnLeft ^ mf.ABLine.isHeadingSameWay) ? over : -over);
                     }
@@ -2159,7 +2233,7 @@ namespace AgOpenGPS
 
             double ps = Math.Max(0.1, youTurnRadius * 0.1);
             double Rout = UOutRadius, Rin = UInRadius;
-            double over = Properties.VehicleSettings.Default.setTurn_U_overshootDist;
+            double over = Properties.ToolSettings.Default.setTurn_U_overshootDist;
             if (over < 0) over = 0;
 
             // auto-shrink both radii (max -30%), then automatic overshoot for the rest
@@ -2245,10 +2319,10 @@ namespace AgOpenGPS
 
             double ps = Math.Max(0.1, youTurnRadius * 0.1);
             double R = KExitRadius; if (R < 1.0) R = 1.0;
-            double d = Properties.VehicleSettings.Default.setTurn_K_entryStartDist;
+            double d = Properties.ToolSettings.Default.setTurn_K_entryStartDist;
             if (d < 0.1) d = 0.1;
             if (d > o - 0.2) d = Math.Max(0.1, o - 0.2);
-            double alpha = Properties.VehicleSettings.Default.setTurn_K_entryAngle * Math.PI / 180.0;
+            double alpha = Properties.ToolSettings.Default.setTurn_K_entryAngle * Math.PI / 180.0;
             if (alpha < 0.10) alpha = 0.10;
             if (alpha > 1.40) alpha = 1.40;
 
@@ -3144,8 +3218,19 @@ namespace AgOpenGPS
 
         public void SmoothYouTurn(int smPts)
         {
-            //countExit the reference list of original curve
-            int cnt = ytList.Count;
+            ytList = SmoothPathPoints(ytList, smPts);
+        }
+
+        /// <summary>
+        /// Centre-weighted moving average over a path, headings recomputed on the smoothed
+        /// line. The turn paths have always been built this way; the approach uses the same
+        /// filter so a bend in the turn line, or the seam where the curve meets the entry arc,
+        /// never shows up as a step (REQ 2026-08-16-2).
+        /// </summary>
+        private static List<vec3> SmoothPathPoints(List<vec3> src, int smPts)
+        {
+            int cnt = src.Count;
+            if (cnt < smPts + 2) return src;
 
             //the temp array
             vec3[] arr = new vec3[cnt];
@@ -3153,16 +3238,16 @@ namespace AgOpenGPS
             //read the points before and after the setpoint
             for (int s = 0; s < smPts / 2; s++)
             {
-                arr[s].easting = ytList[s].easting;
-                arr[s].northing = ytList[s].northing;
-                arr[s].heading = ytList[s].heading;
+                arr[s].easting = src[s].easting;
+                arr[s].northing = src[s].northing;
+                arr[s].heading = src[s].heading;
             }
 
             for (int s = cnt - (smPts / 2); s < cnt; s++)
             {
-                arr[s].easting = ytList[s].easting;
-                arr[s].northing = ytList[s].northing;
-                arr[s].heading = ytList[s].heading;
+                arr[s].easting = src[s].easting;
+                arr[s].northing = src[s].northing;
+                arr[s].heading = src[s].heading;
             }
 
             //average them - center weighted average
@@ -3170,23 +3255,62 @@ namespace AgOpenGPS
             {
                 for (int j = -smPts / 2; j < smPts / 2; j++)
                 {
-                    arr[i].easting += ytList[j + i].easting;
-                    arr[i].northing += ytList[j + i].northing;
+                    arr[i].easting += src[j + i].easting;
+                    arr[i].northing += src[j + i].northing;
                 }
                 arr[i].easting /= smPts;
                 arr[i].northing /= smPts;
-                arr[i].heading = ytList[i].heading;
+                arr[i].heading = src[i].heading;
             }
 
-            ytList?.Clear();
+            List<vec3> smoothed = new List<vec3>(cnt);
 
             //calculate new headings on smoothed line
             for (int i = 1; i < cnt - 1; i++)
             {
                 arr[i].heading = Math.Atan2(arr[i + 1].easting - arr[i].easting, arr[i + 1].northing - arr[i].northing);
                 if (arr[i].heading < 0) arr[i].heading += glm.twoPI;
-                ytList.Add(arr[i]);
+                smoothed.Add(arr[i]);
             }
+            return smoothed;
+        }
+
+        /// <summary>
+        /// Even spacing along a polyline, ordered so that walking it agrees with (dirX, dirY).
+        /// </summary>
+        private static List<vec2> ResamplePolyline(List<vec2> src, double step, double dirX, double dirY)
+        {
+            List<vec2> pts = new List<vec2>();
+            if (src == null || src.Count < 2) return pts;
+
+            double along = 0;
+            for (int i = 0; i < src.Count - 1; i++)
+                along += (src[i + 1].easting - src[i].easting) * dirX
+                       + (src[i + 1].northing - src[i].northing) * dirY;
+
+            List<vec2> line = src;
+            if (along < 0) { line = new List<vec2>(src); line.Reverse(); }
+
+            pts.Add(line[0]);
+            double carry = 0;
+
+            for (int i = 0; i < line.Count - 1; i++)
+            {
+                double dx = line[i + 1].easting - line[i].easting;
+                double dy = line[i + 1].northing - line[i].northing;
+                double len = Math.Sqrt(dx * dx + dy * dy);
+                if (len < 0.001) continue;
+                dx /= len; dy /= len;
+
+                double at = step - carry;
+                while (at <= len)
+                {
+                    pts.Add(new vec2(line[i].easting + dx * at, line[i].northing + dy * at));
+                    at += step;
+                }
+                carry = len - (at - step);
+            }
+            return pts;
         }
 
         //called to initiate turn
@@ -3283,7 +3407,29 @@ namespace AgOpenGPS
                 crossTurnOffset = 0;
             }
 
+            //REQ 2026-08-15-7: an approach turns the vehicle by most of a right angle while
+            //the pass is pinned (REQ-6), so isHeadingSameWay still holds the direction from
+            //BEFORE the maneuver. Handing guidance back with that stale direction made the
+            //builder look for the turn line the way we CAME from - it found it a metre or two
+            //away and fired a U-turn on the spot (field 2026-08-15 21:04: "Rigid turn built:
+            //start 6,6 m ahead ... eff line 1 at 1,7 m"). The line is invalidated so both the
+            //direction and the pass are re-derived from where the vehicle actually is.
+            bool wasApproach = isLineApproach;
+
             ResetCreatedYouTurn();
+
+            if (wasApproach)
+            {
+                //the DIRECTION is re-derived at once; the PASS stays held until the plan moves
+                //on from it (driven to 50 % or skipped) - at speed the vehicle is still swinging
+                //in when the path ends, and the nearest pass is then the one next to it
+                approachHoldPass = true;
+                heldEntry = null;
+                mf.ABLine.isABValid = false;
+                mf.curve.isCurveValid = false;
+                Log.EventWriter("LineApproach: done, direction re-derived, pass held until settled");
+            }
+
             mf.sounds.isBoundAlarming = false;
         }
 
@@ -3333,7 +3479,547 @@ namespace AgOpenGPS
             ytRedIndex = -1;
             part2RedIndex = -1;
             turnLineSwapPending = false;
+            isLineApproach = false;
+            approachReverse = false;
         }
+
+        #region line approach (REQ 2026-08-15-7)
+
+        // The way back onto a pass is always the same simple shape: a straight run ALONG
+        // the effective turn line, then ONE entry arc of the U entry radius into the row.
+        // No free Dubins and no half turns - the straight is made long enough to reach back
+        // past the vehicle, so wherever it stands the follower pulls it onto the parallel
+        // first and the row is entered exactly the way a normal turn enters it.
+        // Phase A only: if the arc does not fit, or the entry lies behind the vehicle,
+        // nothing is built (the reverse case is phase B).
+        public bool isLineApproach;
+
+        // asked for (autosteer engaged) but not built yet: retargeting the pass needs one
+        // fix to pass before the line's own reference point is on the NEW pass
+        private bool approachPending;
+
+        // the built approach is the phase B shape: straight only, waiting for room
+        private bool approachReverse;
+
+        // the pass stays held after the approach until the PLAN moves on from it
+        private bool approachHoldPass;
+        private CPlanEntry heldEntry;
+
+        // the straight part reaches this far back from the entry, or past the vehicle,
+        // whichever is longer. Past the arc the path stops AT the row (field 2026-08-15:
+        // "nakon radijusa mora zavrsiti") - only a stub is kept so the follower has a
+        // segment to hand guidance over on.
+        private const double approachParallelLen = 20.0, approachRunIn = 0.1;
+
+        // a row crossing further ahead than this is the FAR headland, not our entry -
+        // there the driver leads himself back onto the line (field 2026-08-15)
+        private const double approachEntryMax = 30.0;
+
+        // the band around the turn line is the same one the turn-area gate uses - one number,
+        // one idea: this is where turning happens (field 2026-08-16)
+        private const double approachZoneBand = CTurnLimitLines.turnBandWidth;
+
+        // outside this band the "approach" would be a turn (or a nudge), not an entry
+        private const double approachTurnMax = 2.09, approachTurnMin = 0.087;
+
+        /// <summary>
+        /// Unit direction of the effective turn line at (near) the crossing point.
+        /// </summary>
+        private static bool TryTurnLineDir(List<vec2> eff, vec2 at, out double tx, out double ty)
+        {
+            tx = ty = 0;
+            double best = -1;
+            for (int i = 0; i < eff.Count - 1; i++)
+            {
+                double dx = eff[i + 1].easting - eff[i].easting;
+                double dy = eff[i + 1].northing - eff[i].northing;
+                double len2 = dx * dx + dy * dy;
+                if (len2 < 0.0001) continue;
+
+                double u = ((at.easting - eff[i].easting) * dx + (at.northing - eff[i].northing) * dy) / len2;
+                if (u < 0) u = 0; else if (u > 1) u = 1;
+
+                double ex = eff[i].easting + u * dx - at.easting;
+                double ey = eff[i].northing + u * dy - at.northing;
+                double dist = ex * ex + ey * ey;
+
+                if (best < 0 || dist < best)
+                {
+                    best = dist;
+                    double len = Math.Sqrt(len2);
+                    tx = dx / len; ty = dy / len;
+                }
+            }
+            return best >= 0;
+        }
+
+        /// <summary>
+        /// Does the path END somewhere the maneuver is allowed? Only the part from fromIndex on
+        /// is judged - the straight and the arc live in the headland, which on some fields lies
+        /// OUTSIDE the fence entirely. Allowed = inside the fence, OR within the band around the
+        /// turn line: field 2026-08-16, a perfectly good entry was thrown away because the row
+        /// end itself sits outside the boundary on this field. The turn line is the authority on
+        /// where turning happens, so the band around it is the yardstick.
+        /// </summary>
+        private bool PathEndsInsideField(List<vec3> path, int fromIndex)
+        {
+            if (mf.bnd.bndList.Count == 0) return true;   //no boundary drawn: nothing to judge
+
+            for (int i = Math.Max(0, fromIndex); i < path.Count; i++)
+            {
+                if (mf.bnd.IsPointInsideFenceArea(path[i])) continue;
+
+                double toLine = mf.tnl.DistanceToEffectiveLines(path[i].easting, path[i].northing);
+                if (toLine >= 0 && toLine <= approachZoneBand) continue;
+
+                return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Build the way back onto the ACTIVE pass: parallel along the turn line + entry arc.
+        /// Called when autosteer is engaged with the vehicle off the pass.
+        /// </summary>
+        // REQ 2026-08-15-8: what the approach WOULD be if autosteer were engaged now. Display
+        // only - built by the pure geometry, never by the real builder, so looking at the
+        // screen can never change what happens when the driver actually engages.
+        public List<vec3> previewList = new List<vec3>();
+        private double previewLastSecond;
+        private string previewLastWhy;
+
+        /// <summary>
+        /// Once a second while autosteer is OFF, work out the approach that engaging it would
+        /// build. Nothing to show = empty list = nothing on screen (the driver asked for it
+        /// that way); the reason goes to the log, and only when it CHANGES - a per-second
+        /// line would bury the log, and the distances in it move with every fix.
+        /// </summary>
+        public void UpdateApproachPreview()
+        {
+            if (!mf.tnl.IsFeatureOn || !isYouTurnBtnOn || mf.isBtnAutoSteerOn
+                || isYouTurnTriggered || !mf.plan.IsRuntimeOn)
+            {
+                previewList.Clear();
+                previewLastWhy = null;
+                return;
+            }
+
+            if (mf.secondsSinceStart - previewLastSecond < 1.0) return;
+            previewLastSecond = mf.secondsSinceStart;
+
+            bool ok = TryBuildApproachPath(out List<vec3> path, out string why);
+            previewList = ok ? path : new List<vec3>();
+
+            //compare without the numbers, so "only 3,4 m off the pass" and "only 3,6 m off
+            //the pass" count as the same thing to say
+            string key = WithoutNumbers(why);
+            if (key != previewLastWhy)
+            {
+                previewLastWhy = key;
+                Log.EventWriter("LineApproach preview: " + why);
+            }
+        }
+
+        private static string WithoutNumbers(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return s;
+            var sb = new System.Text.StringBuilder(s.Length);
+            foreach (char c in s) if (!char.IsDigit(c)) sb.Append(c);
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// The preview, drawn the way the pending K part is drawn: grey, sparse, thin - never
+        /// mistakable for a maneuver that is actually armed.
+        /// </summary>
+        public void DrawApproachPreview()
+        {
+            if (previewList.Count < 3) return;
+
+            //bigger than the real path's dots: only every third point is drawn, so they need
+            //the size to read as a line at all (field 2026-08-15)
+            GL.PointSize(mf.ABLine.lineWidth + 3);
+            GL.Color3(0.75f, 0.75f, 0.75f);
+            GL.Begin(PrimitiveType.Points);
+            for (int i = 0; i < previewList.Count; i += 3)
+                GL.Vertex3(previewList[i].easting, previewList[i].northing, 0);
+            GL.End();
+        }
+
+        /// <summary>
+        /// Autosteer was engaged: ask for the way back onto the pass. The build itself waits
+        /// for the next fix, so the guidance line's own reference point is current.
+        /// </summary>
+        public void RequestLineApproach()
+        {
+            approachPending = true;
+        }
+
+        /// <summary>
+        /// Per fix: build the requested approach as soon as it can be built.
+        /// </summary>
+        public void UpdateLineApproach()
+        {
+            //PHASE B -> A: while the driver backs along the straight, ask every fix whether the
+            //entry radius fits yet. The moment it does, the tail of the path becomes the arc -
+            //the straight underneath him does not move, so the follower keeps its reference and
+            //the maneuver simply carries on forward.
+            if (isLineApproach && approachReverse && isYouTurnTriggered)
+            {
+                //while backing up there is nothing to convert to - the driver is making room,
+                //not entering the row (his words, 2026-08-16). The check runs when he goes
+                //forward again.
+                if (mf.isReverse) return;
+
+                if (TryBuildApproachPath(out List<vec3> full, out string fwhy, out bool stillReverse)
+                    && !stillReverse)
+                {
+                    ytList = full;
+                    approachReverse = false;
+                    maxProgressIndexReached = 0;
+                    ytRedIndex = -1;
+                    Log.EventWriter("LineApproach: room for the entry radius - " + fwhy);
+                }
+                return;
+            }
+
+            if (!approachPending) return;
+            if (isYouTurnTriggered || !isYouTurnBtnOn || !mf.tnl.IsFeatureOn)
+            {
+                approachPending = false;
+                return;
+            }
+            BuildLineApproach();
+        }
+
+        public void BuildLineApproach()
+        {
+            approachPending = false;
+            if (!mf.tnl.IsFeatureOn || !isYouTurnBtnOn || isYouTurnTriggered) return;
+            if (mf.trk.idx < 0 || mf.trk.idx >= mf.trk.gArr.Count) return;
+
+            //The pass to go back to is the one the PLAN calls next, not the one guidance
+            //happens to sit on. Field 2026-08-15: finishing a pass with autosteer off does
+            //not always swap the line, so the approach led back to the pass just driven -
+            //and only switching autosteer off and on again fixed it, because the seeding in
+            //CABLine runs on autosteer OFF only. Retarget here, then build on the next fix:
+            //the line's reference point (rEastAB / rEastCu) is still on the OLD pass now.
+            if (mf.plan.TryGuidanceOffset(out int planIdx))
+            {
+                bool isAB = mf.trk.gArr[mf.trk.idx].mode == TrackMode.AB;
+                int curIdx = isAB ? mf.ABLine.howManyPathsAway : mf.curve.howManyPathsAway;
+                if (curIdx != planIdx)
+                {
+                    if (isAB) { mf.ABLine.howManyPathsAway = planIdx; mf.ABLine.isABValid = false; }
+                    else { mf.curve.howManyPathsAway = planIdx; mf.curve.isCurveValid = false; }
+
+                    //hold it against the position re-pick until the plan moves on from it
+                    approachHoldPass = true;
+                    heldEntry = null;
+                    approachPending = true;
+
+                    Log.EventWriter("LineApproach: target pass " + curIdx + " -> " + planIdx
+                        + " (plan), building on the next fix");
+                    return;
+                }
+            }
+
+            if (!TryBuildApproachPath(out List<vec3> path, out string why, out bool reverseOnly))
+            {
+                Log.EventWriter("LineApproach: " + why + ", no maneuver");
+                return;
+            }
+
+            ResetCreatedYouTurn();
+            ytList = path;
+            isGoingStraightThrough = true;   //target = the pass we are already on: no line swap
+            isLineApproach = true;
+            approachReverse = reverseOnly;
+            activeTurnStyle = 0;
+            youTurnPhase = 10;
+
+            Log.EventWriter("LineApproach: " + why);
+
+            //the driver just asked for it by engaging autosteer - no trigger window to wait for
+            YouTurnTrigger();
+        }
+
+        /// <summary>
+        /// The approach geometry, with NO side effects - the caller decides what to do with
+        /// the result, and gets a plain-language reason when there is nothing to build. This
+        /// is what lets the preview ask the same question once a second without changing
+        /// anything (REQ 2026-08-15-8).
+        /// </summary>
+        public bool TryBuildApproachPath(out List<vec3> path, out string why)
+        {
+            return TryBuildApproachPath(out path, out why, out _);
+        }
+
+        /// <summary>
+        /// Same, plus whether what came back is the PHASE B shape: just the straight along the
+        /// turn line, with no entry arc - the driver backs along it until there is room.
+        /// </summary>
+        public bool TryBuildApproachPath(out List<vec3> path, out string why, out bool isReverseOnly)
+        {
+            path = null;
+            why = null;
+            isReverseOnly = false;
+
+            if (mf.trk.idx < 0 || mf.trk.idx >= mf.trk.gArr.Count)
+            {
+                why = "no guidance line";
+                return false;
+            }
+
+            //WHICH WAY the pass is driven comes from the plan. Never from the vehicle
+            //heading: the approach is built exactly when the vehicle sits square to the row,
+            //where a 90 deg test flips on a couple of degrees of yaw and the target jumps
+            //180 deg - that is how an earlier version aimed out of the field (f05tl-14).
+            CPlanEntry entry = mf.plan.IsRuntimeOn ? mf.plan.CurrentEntry() : null;
+            if (entry == null)
+            {
+                why = "no plan pass to lead back to";
+                return false;
+            }
+
+            double rE, rN, lineHead;
+            if (mf.trk.gArr[mf.trk.idx].mode == TrackMode.AB)
+            {
+                rE = mf.ABLine.rEastAB; rN = mf.ABLine.rNorthAB;
+                lineHead = mf.ABLine.abHeading;
+            }
+            else
+            {
+                rE = mf.curve.rEastCu; rN = mf.curve.rNorthCu;
+                lineHead = mf.curve.manualUturnHeading;
+            }
+
+            if (!entry.isSameWay) lineHead += Math.PI;
+            if (lineHead >= glm.twoPI) lineHead -= glm.twoPI;
+            else if (lineHead < 0) lineHead += glm.twoPI;
+
+            vec3 piv = mf.pivotAxlePos;
+            double rowX = Math.Sin(lineHead), rowY = Math.Cos(lineHead);
+            double y0 = Math.Abs((piv.easting - rE) * rowY - (piv.northing - rN) * rowX);
+            double alpha = AngleDiff(mf.fixHeading, lineHead);
+
+            //on the pass and pointing along it: there is nothing to lead back to
+            if (y0 < 0.5 * (mf.tool.width - mf.tool.overlap) && Math.Abs(alpha) < 0.1745)
+            {
+                why = "already on the pass";
+                return false;
+            }
+
+            //where the row crosses the effective turn line - THAT is the entry point.
+            //Field 2026-08-15 (log 20:51): probing only ALONG the drive direction found the
+            //crossing 172 m away - the OPPOSITE headland. Standing at a headland about to
+            //drive into the field, the crossing we want lies behind that projection, so both
+            //directions are probed and the one nearer the vehicle wins.
+            //Only DRAWN turn lines count: since the turn line is built with zero inset the
+            //boundary ring lies ON the fence, and a parallel taken from it would run the
+            //wheels along the boundary.
+            vec2 rowRef = new vec2(rE, rN);
+            double backHead = lineHead + Math.PI;
+            if (backHead >= glm.twoPI) backHead -= glm.twoPI;
+
+            List<vec2> effAhead = mf.tnl.GetEffPolylineByRay(rowRef, lineHead, out _, out double dAhead);
+            List<vec2> effBack = mf.tnl.GetEffPolylineByRay(rowRef, backHead, out _, out double dBack);
+
+            List<vec2> eff; double entryAt;
+            if (effAhead != null && dAhead >= 0 && (effBack == null || dBack < 0 || dAhead <= dBack))
+            { eff = effAhead; entryAt = dAhead; }
+            else if (effBack != null && dBack >= 0)
+            { eff = effBack; entryAt = -dBack; }
+            else { eff = null; entryAt = -1; }
+
+            if (eff == null || Math.Abs(entryAt) > approachEntryMax)
+            {
+                why = "no turn line within " + approachEntryMax.ToString("N0") + " m along the pass"
+                    + (eff != null ? " (nearest " + Math.Abs(entryAt).ToString("N0") + " m)" : "");
+                return false;
+            }
+
+            vec2 cross = new vec2(rE + rowX * entryAt, rN + rowY * entryAt);
+            if (!TryTurnLineDir(eff, cross, out double tx, out double ty))
+            {
+                why = "turn line has no usable segment";
+                return false;
+            }
+
+            //the parallel is driven TOWARD the entry point
+            if (tx * (cross.easting - piv.easting) + ty * (cross.northing - piv.northing) < 0)
+            { tx = -tx; ty = -ty; }
+
+            double parHead = Math.Atan2(tx, ty);
+            if (parHead < 0) parHead += glm.twoPI;
+
+            //the fillet that joins the parallel to the row: tangent points sit
+            //d = R * tan(delta/2) either side of the crossing (delta = the turn itself,
+            //so a row square to the headland gives the familiar d = R)
+            double delta = AngleDiff(lineHead, parHead);
+            double absDelta = Math.Abs(delta);
+            if (absDelta > approachTurnMax || absDelta < approachTurnMin)
+            {
+                why = "row meets the turn line at " + ((int)glm.toDegrees(absDelta)) + " deg";
+                return false;
+            }
+
+            double R = Math.Max(2.0, UInRadius);
+            double d = R * Math.Tan(0.5 * absDelta);
+
+            //room for the entry arc: the fillet eats d*sin(delta) of lateral offset, plus
+            //half a machine width the driver asked for (2026-08-15) - that margin doubles
+            //as the hysteresis that keeps this from flapping right at the threshold
+            double need = d * Math.Sin(absDelta) + 0.5 * mf.tool.width;
+
+            vec2 tanPar = new vec2(cross.easting - tx * d, cross.northing - ty * d);
+            vec2 tanRow = new vec2(cross.easting + rowX * d, cross.northing + rowY * d);
+
+            double alongToEntry = (tanPar.easting - piv.easting) * tx + (tanPar.northing - piv.northing) * ty;
+
+            //PHASE B (REQ 2026-08-15-7): too close to the row for the arc to fit, the entry is
+            //already behind us, or the vehicle FACES THE WRONG WAY. Then the maneuver is JUST
+            //the straight along the turn line: the driver backs along it (guided - the follower
+            //reads the path backwards when reversing) until there is room, and the moment there
+            //is, the tail becomes the entry arc. Only these two shapes exist, by the driver's
+            //own decision.
+            //The heading test earns its place from the field (2026-08-15): standing with the
+            //target line BEHIND the vehicle, both position tests passed, so the arc was built -
+            //and reaching it meant turning almost 180 deg, which the follower drove as a half
+            //circle. Hysteresis, because the shape of the path must not flip back and forth
+            //while the driver manoeuvres around the threshold: enter B past 90 deg, leave it
+            //only under 70.
+            double headErr = Math.Abs(AngleDiff(mf.fixHeading, parHead));
+            bool facingWrongWay = approachReverse ? headErr > 1.22 : headErr > glm.PIBy2;
+
+            isReverseOnly = y0 < need || alongToEntry < 0 || facingWrongWay;
+            string bReason = y0 < need
+                ? "only " + y0.ToString("N1") + " m off the pass, " + need.ToString("N1") + " m needed"
+                : alongToEntry < 0
+                    ? "entry " + (-alongToEntry).ToString("N1") + " m behind the vehicle"
+                    : "facing " + ((int)glm.toDegrees(headErr)) + " deg off the straight";
+
+            //the straight reaches back PAST the vehicle - that is what lets the follower pull
+            //it onto the parallel from wherever it stands. It is NOT tested against the fence:
+            //it runs along the turn line, through the headland, and on this field the headland
+            //is regularly outside the fence (log 2026-08-15 21:03, "only 0,0 m of straight fits"
+            //on one side of the field - the maneuver was never built there).
+            double ps = Math.Max(0.2, R * 0.1);
+
+            //a metre between points is plenty along the headland, and keeps the list short when
+            //the turn line is a few hundred metres long
+            double step = Math.Max(ps, 1.0);
+
+            //REQ 2026-08-16-2: the way back FOLLOWS the turn line, it does not tangent it. With
+            //three or more points the drawn line bends, and a straight laid along the local
+            //segment walks away from it. The effective line already is the parallel we want
+            //(the drawn line offset inward by the wheel margin), so the path is that polyline,
+            //resampled and smoothed. It runs the whole line, extension included: field
+            //2026-08-16, a 20 m straight ran out under the driver while he reversed and the
+            //maneuver ended ("straight 20 m", then "done" seconds later).
+            List<vec2> along = ResamplePolyline(eff, step, tx, ty);
+            if (along.Count < 6)
+            {
+                why = "turn line too short to follow";
+                return false;
+            }
+
+            //where the entry arc leaves the line
+            int iTan = 0;
+            double bestTan = double.MaxValue;
+            for (int i = 0; i < along.Count; i++)
+            {
+                double ex2 = along[i].easting - tanPar.easting, ny2 = along[i].northing - tanPar.northing;
+                double dd = ex2 * ex2 + ny2 * ny2;
+                if (dd < bestTan) { bestTan = dd; iTan = i; }
+            }
+
+            //forward the path stops at the tangent point; backing up it runs to the far end
+            int lastIdx = isReverseOnly ? along.Count - 1 : iTan;
+            if (lastIdx < 5)
+            {
+                why = "no room on the turn line before the entry";
+                return false;
+            }
+
+            List<vec2> run = along.GetRange(0, lastIdx + 1);
+
+            //The follower's convention is that a path's points carry the NOSE heading, and
+            //reverse travel walks them backwards (that is how the K turn's reverse leg is
+            //ordered). Phase B fires exactly when the vehicle faces the other way, so laying the
+            //path toward the entry put it 180 deg against the nose: driving forward threw the
+            //lookahead point BEHIND the vehicle (field 2026-08-16). Same curve, laid the way the
+            //vehicle looks.
+            bool alongNose = isReverseOnly && facingWrongWay;
+            if (alongNose) run.Reverse();
+
+            path = new List<vec3>();
+            for (int i = 0; i < run.Count; i++)
+            {
+                double h;
+                if (i < run.Count - 1)
+                {
+                    h = Math.Atan2(run[i + 1].easting - run[i].easting,
+                                   run[i + 1].northing - run[i].northing);
+                    if (h < 0) h += glm.twoPI;
+                }
+                else h = path[path.Count - 1].heading;
+
+                path.Add(new vec3(run[i].easting, run[i].northing, h));
+            }
+
+            if (isReverseOnly)
+            {
+                why = "reverse leg only (" + bReason + "), curve "
+                    + (run.Count * step).ToString("N0") + " m";
+                path = SmoothPathPoints(path, 6);
+                return true;
+            }
+
+            //the entry arc itself
+            double turnSign = delta > 0 ? 1.0 : -1.0;
+            double head = parHead, arcE = tanPar.easting, arcN = tanPar.northing;
+            for (double arcRun = 0; arcRun < absDelta * R; arcRun += ps)
+            {
+                arcE += Math.Sin(head) * ps;
+                arcN += Math.Cos(head) * ps;
+                head += turnSign * ps / R;
+                if (head >= glm.twoPI) head -= glm.twoPI;
+                else if (head < 0) head += glm.twoPI;
+                path.Add(new vec3(arcE, arcN, head));
+            }
+
+            //and the stub in the row - taken from the tangent point, so the arc's rounding
+            //cannot walk the end of the path off the pass
+            int rowFrom = path.Count;
+            for (double s = 0; s <= approachRunIn; s += ps)
+                path.Add(new vec3(tanRow.easting + rowX * s, tanRow.northing + rowY * s, lineHead));
+
+            if (path.Count < 6)
+            {
+                path = null;
+                why = "path too short to follow";
+                return false;
+            }
+
+            if (!PathEndsInsideField(path, rowFrom))
+            {
+                path = null;
+                why = "the entry into the row lies outside the field";
+                return false;
+            }
+
+            //the same filter the turn paths get: no abrupt steps where the line bends, or
+            //where the curve meets the entry arc
+            path = SmoothPathPoints(path, 6);
+
+            why = "built, " + y0.ToString("N1") + " m off the pass, entry "
+                + entryAt.ToString("N1") + " m along it, turn " + ((int)glm.toDegrees(absDelta))
+                + " deg, R " + R.ToString("N1") + " m, curve " + (run.Count * step).ToString("N0") + " m";
+            return true;
+        }
+
+        #endregion
 
         public void FailCreate()
         {
@@ -3498,8 +4184,12 @@ namespace AgOpenGPS
                 //turn (guidance returns to the ORIGINAL row line, the built turn stays armed;
                 //driving forward re-triggers it). After turning off, reversing in the K stage
                 //machine goes straight to the guided reverse leg instead.
+                //REQ 2026-08-15-7: an approach is exempt - the driver engages autosteer while
+                //standing still, so this would un-trigger it on the very next fix and nothing
+                //would ever bring it back (the vehicle is far past the path start, so the
+                //trigger window cannot fire again).
                 bool turnedOff = Math.Abs(AngleDiff(mf.fixHeading, ytList[0].heading)) > 0.26;
-                if (mf.tnl.IsFeatureOn && (kTurnStage == 0 || kTurnStage == 1) && !turnedOff
+                if (mf.tnl.IsFeatureOn && !isLineApproach && (kTurnStage == 0 || kTurnStage == 1) && !turnedOff
                     && (mf.isReverse || Math.Abs(mf.avgSpeed) < 0.4))
                 {
                     //nothing was swapped yet if the swap is still pending - just un-trigger
@@ -3617,7 +4307,13 @@ namespace AgOpenGPS
                     //find the closest 2 points to current fix
                     //Start search from max progress minus small lookback to prevent jumping back to start
                     //when start and end positions overlap
-                    int searchStartIndex = Math.Max(0, maxProgressIndexReached - 5);
+                    //REQ 2026-08-15-7: the forward-only search exists so a turn cannot snap
+                    //back to its own start where start and end overlap. An approach is driven
+                    //BOTH ways - reversing along the straight is the whole point of phase B -
+                    //so there the index must be free to walk back. Field 2026-08-16: without
+                    //this the goal point froze a few metres along and the vehicle tried to
+                    //spin around to reach it.
+                    int searchStartIndex = isLineApproach ? 0 : Math.Max(0, maxProgressIndexReached - 5);
                     for (int t = searchStartIndex; t < ptCount; t++)
                     {
                         double dist = ((pivot.easting - ytList[t].easting) * (pivot.easting - ytList[t].easting))
@@ -3636,7 +4332,14 @@ namespace AgOpenGPS
                         }
                     }
 
-                    if (minDistA > 16)
+                    //REQ 2026-08-15-7: 4 m (16 = squared) says "the vehicle is not on this
+                    //path any more, the turn is over" - true for a turn, which always starts
+                    //ON the row. An approach is the opposite by design: the straight lies on
+                    //the turn line and the vehicle is 10-30 m away, waiting to be picked up.
+                    //Field 2026-08-15: this dropped the approach on the very first fix, the
+                    //normal builder took over, swapped the line and drove a half circle.
+                    double giveUpDist = isLineApproach ? 2500.0 : 16.0;   //50 m vs 4 m
+                    if (minDistA > giveUpDist)
                     {
                         CompleteYouTurn();
                         return false;
@@ -3685,15 +4388,21 @@ namespace AgOpenGPS
 
                     //return and reset if too far away or end of the line
                     //(K split holds at the end of part 1 - the reverse leg follows)
-                    if (B >= ptCount - 1 && hasProgressedEnough && !kSplitHold)
+                    //an approach ends at the row - but only if the driver is going FORWARD;
+                    //in reverse he is still working his way back along the straight
+                    if (B >= ptCount - 1 && hasProgressedEnough && !kSplitHold
+                        && !(isLineApproach && mf.isReverse))
                     {
                         CompleteYouTurn();
                         return false;
                     }
 
                     //turn limit lines: a U-turn has no reverse phase, so backing up after the
-                    //arc means the driver is on the new row - end the turn, hand back to the line
-                    if (mf.tnl.IsFeatureOn && activeTurnStyle == 0 && mf.isReverse && hasProgressedEnough)
+                    //arc means the driver is on the new row - end the turn, hand back to the line.
+                    //An APPROACH is exempt (REQ 2026-08-15-7): reversing is part of it, phase B is
+                    //driven backwards on purpose, and ending it here made the target line jump.
+                    if (mf.tnl.IsFeatureOn && !isLineApproach
+                        && activeTurnStyle == 0 && mf.isReverse && hasProgressedEnough)
                     {
                         CompleteYouTurn();
                         return false;
@@ -3770,7 +4479,13 @@ namespace AgOpenGPS
                     //find the closest 2 points to current fix
                     //Start search from max progress minus small lookback to prevent jumping back to start
                     //when start and end positions overlap
-                    int searchStartIndex = Math.Max(0, maxProgressIndexReached - 5);
+                    //REQ 2026-08-15-7: the forward-only search exists so a turn cannot snap
+                    //back to its own start where start and end overlap. An approach is driven
+                    //BOTH ways - reversing along the straight is the whole point of phase B -
+                    //so there the index must be free to walk back. Field 2026-08-16: without
+                    //this the goal point froze a few metres along and the vehicle tried to
+                    //spin around to reach it.
+                    int searchStartIndex = isLineApproach ? 0 : Math.Max(0, maxProgressIndexReached - 5);
                     for (int t = searchStartIndex; t < ptCount; t++)
                     {
                         double dist = ((pivot.easting - ytList[t].easting) * (pivot.easting - ytList[t].easting))
@@ -3808,15 +4523,23 @@ namespace AgOpenGPS
                     bool hasProgressedEnough = maxProgressIndexReached > (ptCount / 2);
 
                     //(K split holds at the end of part 1 - the reverse leg follows)
-                    if (((A > 0 && distancePiv > 2) || (B >= ptCount - 1)) && hasProgressedEnough && !kSplitHold)
+                    //An approach is exempt from "2 m off the path = done": it starts with the
+                    //vehicle far from the straight on purpose, and it ends at the row only when
+                    //the driver is going forward (same rule as the Stanley branch).
+                    bool offPathDone = A > 0 && distancePiv > 2 && !isLineApproach;
+                    bool atPathEnd = B >= ptCount - 1 && !(isLineApproach && mf.isReverse);
+                    if ((offPathDone || atPathEnd) && hasProgressedEnough && !kSplitHold)
                     {
                         CompleteYouTurn();
                         return false;
                     }
 
                     //turn limit lines: U-turn has no reverse phase - backing up after the arc
-                    //ends the turn and hands guidance back to the AB/curve line
-                    if (mf.tnl.IsFeatureOn && activeTurnStyle == 0 && mf.isReverse && hasProgressedEnough)
+                    //ends the turn and hands guidance back to the AB/curve line. An APPROACH is
+                    //exempt (REQ 2026-08-15-7) - reversing is part of it, phase B is driven
+                    //backwards on purpose.
+                    if (mf.tnl.IsFeatureOn && !isLineApproach
+                        && activeTurnStyle == 0 && mf.isReverse && hasProgressedEnough)
                     {
                         CompleteYouTurn();
                         return false;

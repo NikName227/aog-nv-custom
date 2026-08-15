@@ -25,6 +25,8 @@ namespace AgOpenGPS.IO
         public string zoneOrder = "";
         public string trackName = "";
         public bool clipHeadland = true;
+        // working width the plan was built for; 0 = the file did not say (old file)
+        public double builtWidth;
         public List<CPlanEntry> entries = new List<CPlanEntry>();
     }
 
@@ -35,7 +37,9 @@ namespace AgOpenGPS.IO
         /// </summary>
         public static string Signature(double workWidth)
         {
-            var v = AgOpenGPS.Properties.VehicleSettings.Default;
+            // 2026-08-12: the whole turn shape lives on the implement, so the signature is
+            // read from one profile instead of two
+            var v = AgOpenGPS.Properties.ToolSettings.Default;
             var t = AgOpenGPS.Properties.ToolSettings.Default;
 
             return string.Join("/", new[]
@@ -121,6 +125,13 @@ namespace AgOpenGPS.IO
                                 if (int.TryParse(kv[1].Trim(), NumberStyles.Integer,
                                     CultureInfo.InvariantCulture, out int z)) data.zoneCount = z;
                                 continue;
+                            //working width the plan was built for. The file name carries it
+                            //too, but not for the legacy single-file fallback below - and the
+                            //width is what decides whether the plan still fits the machine.
+                            case "Width":
+                                if (double.TryParse(kv[1].Trim(), NumberStyles.Float,
+                                    CultureInfo.InvariantCulture, out double bw)) data.builtWidth = bw;
+                                continue;
                         }
                     }
 
@@ -185,6 +196,7 @@ namespace AgOpenGPS.IO
                 writer.WriteLine("ClipHeadland," + plan.clipToHeadland);
                 writer.WriteLine("Mode," + plan.mode.ToString(CultureInfo.InvariantCulture));
                 writer.WriteLine("ZoneCount," + plan.zoneCount.ToString(CultureInfo.InvariantCulture));
+                writer.WriteLine("Width," + workWidth.ToString("0.000", CultureInfo.InvariantCulture));
                 if (!string.IsNullOrEmpty(plan.zoneOrder))
                     writer.WriteLine("ZoneOrder," + plan.zoneOrder);
                 if (!string.IsNullOrEmpty(plan.trackName))

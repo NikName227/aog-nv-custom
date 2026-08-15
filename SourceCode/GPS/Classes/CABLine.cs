@@ -117,7 +117,15 @@ namespace AgOpenGPS
 
                 distanceFromRefLine -= (0.5 * widthMinusOverlap);
 
-                isHeadingSameWay = Math.PI - Math.Abs(Math.Abs(pivot.heading - abHeading) - Math.PI) < glm.PIBy2;
+                //REQ 2026-08-15-6: this block runs every 0.66 s precisely while autosteer is
+                //OFF, and it re-picked the pass from the vehicle position - overwriting the
+                //swap our turn had just applied. The maneuver was drawn while guidance stayed
+                //on the nearest line. While the turn owns the pass, only distanceFromRefLine
+                //keeps updating (guidance display needs it); the pass itself is pinned.
+                bool isPassPinned = mf.yt.IsPassPinned;
+
+                if (!mf.yt.IsDirPinned)
+                    isHeadingSameWay = Math.PI - Math.Abs(Math.Abs(pivot.heading - abHeading) - Math.PI) < glm.PIBy2;
 
                 //if (mf.yt.isYouTurnTriggered && !mf.yt.isGoingStraightThrough) isHeadingSameWay = !isHeadingSameWay;
 
@@ -125,8 +133,11 @@ namespace AgOpenGPS
 
                 double RefDist = (distanceFromRefLine + (isHeadingSameWay ? mf.tool.offset : -mf.tool.offset) - track.nudgeDistance) / widthMinusOverlap;
 
-                if (RefDist < 0) howManyPathsAway = (int)(RefDist - 0.5);
-                else howManyPathsAway = (int)(RefDist + 0.5);
+                if (!isPassPinned)
+                {
+                    if (RefDist < 0) howManyPathsAway = (int)(RefDist - 0.5);
+                    else howManyPathsAway = (int)(RefDist + 0.5);
+                }
 
                 //NV follow plan: before autosteer is engaged, lead the driver to the
                 //plan's first not-worked pass instead of the nearest one (spec 4.3).
@@ -466,6 +477,7 @@ namespace AgOpenGPS
                     extraGuidelinesForegroundStyle);
             }
             mf.yt.DrawYouTurn();
+            mf.yt.DrawApproachPreview();
 
             GLW.SetPointSize(1.0f);
             GLW.SetLineWidth(1.0f);

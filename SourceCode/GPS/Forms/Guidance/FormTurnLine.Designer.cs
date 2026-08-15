@@ -180,7 +180,7 @@
             this.btnResetPath.BackColor = System.Drawing.Color.MistyRose;
             this.btnResetPath.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnResetPath.Font = new System.Drawing.Font("Tahoma", 10F, System.Drawing.FontStyle.Bold);
-            this.btnResetPath.Location = new System.Drawing.Point(372, 62);
+            this.btnResetPath.Location = new System.Drawing.Point(10, 120);
             this.btnResetPath.Name = "btnResetPath";
             this.btnResetPath.Size = new System.Drawing.Size(150, 44);
             this.btnResetPath.TabIndex = 7;
@@ -464,6 +464,7 @@
             this.pnlPath.Controls.Add(this.nudZones);
             this.pnlPath.Controls.Add(this.lblZoneOrderRead);
             this.pnlPath.Controls.Add(this.chkHeadlandClip);
+            this.pnlPath.Controls.Add(this.btnResetPath);
             this.pnlPath.Controls.Add(this.lblPlanInfo);
             this.pnlPath.Controls.Add(this.btnGeneratePlan);
             this.pnlPath.Controls.Add(this.btnAddPath);
@@ -992,7 +993,7 @@
             this.Controls.Add(this.btnTabPath);
             this.Controls.Add(this.btnTabParams);
             this.Controls.Add(this.btnTabMap);
-            this.Controls.Add(this.btnResetPath);
+
             this.Controls.Add(this.btnWinFull);
             this.Controls.Add(this.btnWinClose);
             this.Controls.Add(this.btnZoomIn);

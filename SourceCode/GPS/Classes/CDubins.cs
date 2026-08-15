@@ -19,7 +19,7 @@ namespace AgOpenGPS
         public static readonly double driveDistance = 0.05;
 
         //The radius the car can turn 360 degrees with
-        public static double turningRadius = Properties.VehicleSettings.Default.setTurn_youTurnRadius;
+        public static double turningRadius = Properties.ToolSettings.Default.setTurn_youTurnRadius;
 
         //Position, Heading is in radians
         private vec2 startPos, goalPos;

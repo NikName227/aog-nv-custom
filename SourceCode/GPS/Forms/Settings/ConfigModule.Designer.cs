@@ -398,8 +398,9 @@ namespace AgOpenGPS
             if (bob < 0.2) bob = 0.2;
             nudTurnDistanceFromBoundary.Value = (decimal)(Math.Round(bob, 2));
 
-            //F51: the turn radius belongs to the vehicle profile
-            bob = Properties.VehicleSettings.Default.setTurn_youTurnRadius * mf.m2FtOrM;
+            //F51: the turn radius belonged to the vehicle profile; since 2026-08-12 it travels
+            //with the implement (the vehicle still caps it from below - CYouTurn.MinTurnRadius)
+            bob = Properties.ToolSettings.Default.setTurn_youTurnRadius * mf.m2FtOrM;
             if (bob < 2) bob = 2;
             nudYouTurnRadius.Value = (decimal)(Math.Round(bob, 2));
 
@@ -415,8 +416,8 @@ namespace AgOpenGPS
 
             Properties.Settings.Default.Save();
 
-            Properties.VehicleSettings.Default.setTurn_youTurnRadius = mf.yt.youTurnRadius;
-            Properties.VehicleSettings.Default.Save();
+            Properties.ToolSettings.Default.setTurn_youTurnRadius = mf.yt.youTurnRadius;
+            Properties.ToolSettings.Default.Save();
 
             mf.bnd.BuildTurnLines();
             mf.yt.ResetCreatedYouTurn();

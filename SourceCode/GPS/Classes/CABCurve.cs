@@ -138,6 +138,15 @@ namespace AgOpenGPS
             {
                 lastSecond = mf.secondsSinceStart;
 
+                //REQ 2026-08-15-6: same as CABLine - while our turn owns the pass it must not
+                //be re-picked from the vehicle position (that overwrote the turn's line swap
+                //within half a second while autosteer was off). The curve sets isHeadingSameWay
+                //in two branches, so the pass is captured here and put back below; everything
+                //in between (distanceFromRefLine, the point search) keeps running.
+                bool isPassPinned = mf.yt.IsPassPinned;
+                bool pinnedSameWay = isHeadingSameWay;
+                int pinnedPathsAway = howManyPathsAway;
+
                 if (track.mode != TrackMode.waterPivot)
                 {
                     int refCount = track.curvePts.Count;
@@ -228,6 +237,10 @@ namespace AgOpenGPS
 
                 if (RefDist < 0) howManyPathsAway = (int)(RefDist - 0.5);
                 else howManyPathsAway = (int)(RefDist + 0.5);
+
+                //the turn owns the pass while it runs - put back what it decided
+                if (isPassPinned) howManyPathsAway = pinnedPathsAway;
+                if (mf.yt.IsDirPinned) isHeadingSameWay = pinnedSameWay;
 
                 //NV follow plan: before autosteer is engaged, lead the driver to the
                 //plan's first not-worked pass instead of the nearest one (spec 4.3).
@@ -1177,6 +1190,7 @@ namespace AgOpenGPS
                     GL.End();
 
                     mf.yt.DrawYouTurn();
+                    mf.yt.DrawApproachPreview();
                 }
             }
 

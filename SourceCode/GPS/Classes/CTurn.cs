@@ -1,4 +1,5 @@
-﻿using System;
+﻿using AgLibrary.Logging;
+using System;
 using System.Collections.Generic;
 
 namespace AgOpenGPS
@@ -125,7 +126,16 @@ namespace AgOpenGPS
             vec3 point = new vec3();
 
             //determine how wide a headland space
-            double totalHeadWidth = mf.yt.uturnDistanceFromBoundary;
+            //NV (field 2026-08-15): with our turn feature on this inset is 0, so the turn line
+            //lies ON the field boundary. What limits our maneuver are the DRAWN turn limit
+            //lines, not this stock setting - and while it was applied, the strip between the
+            //fence and this polygon silently killed the whole feature: no turn was ever built
+            //there and nothing said so. The setting itself is NOT overwritten - switch the
+            //feature off and it takes effect again exactly as before.
+            double totalHeadWidth = mf.tnl.IsFeatureOn ? 0 : mf.yt.uturnDistanceFromBoundary;
+            if (mf.tnl.IsFeatureOn && mf.yt.uturnDistanceFromBoundary > 0.01)
+                Log.EventWriter("Turn lines built with 0 inset (turn limit lines feature on; setting says "
+                    + mf.yt.uturnDistanceFromBoundary.ToString("N2") + " m)");
 
             //inside boundaries
             for (int j = 0; j < bndList.Count; j++)

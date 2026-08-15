@@ -30,6 +30,12 @@ namespace AgOpenGPS
         //guidance line look ahead
         public double guidanceLookAheadTime = 2;
         public vec2 guidanceLookPos = new vec2(0, 0);
+
+        // turn area state, so leaving/entering it is logged once instead of every fix
+        private bool wasOutOfTurnBounds;
+
+        // same for the after-stop rule being overridden while autosteer is off
+        private bool isAfterStopOverridden;
         public double dualReverseDetectionDistance;
 
         //for heading or Atan2 as camera
@@ -96,6 +102,13 @@ namespace AgOpenGPS
         private bool hasBeenFirstHeadingSet = false;
 
         public bool isChangingDirection, isReverseWithIMU;
+
+        //turn limit lines: distance-based direction decision while a turn is armed or running.
+        //The GPS heading vector lags a direction change by minHeadingStepDist (0.5-1 m), so the
+        //stock reverse checks answer late; here 0.3 m of travel against fixHeading decides.
+        private double dirAnchorE, dirAnchorN;
+        private bool dirAnchorSet, turnCtxReverse;
+        private const double turnDirDecideDistance = 0.3;
 
         private double nowHz = 0, filteredDelta = 0, delta = 0;
 
@@ -380,6 +393,37 @@ namespace AgOpenGPS
                                                 pn.fix.northing - stepFixPts[currentStepFix].northing);
                         if (newGPSHeading < 0) newGPSHeading += glm.twoPI;
 
+                        //turn limit lines: while working to the plan, forward/reverse is decided
+                        //from 0.3 m of travel against the vehicle heading - identical with or
+                        //without an IMU. The stock GPS heading vector lags a direction change by
+                        //minHeadingStepDist (0.5-1 m), so it answers late.
+                        //Field 2026-08-15: this used to hold only while a turn was armed or
+                        //running, so it fell back to the slow check the moment the maneuver ended
+                        //- which is exactly when the driver comes back along the AB line and still
+                        //needs it. It now covers the whole time the plan is being worked.
+                        //Turn button off, plan off or feature off = stock, untouched.
+                        bool turnDirCtx = tnl.IsFeatureOn && yt.isYouTurnBtnOn && ahrs.isReverseOn
+                            && plan.IsRuntimeOn;
+                        if (turnDirCtx)
+                        {
+                            if (!dirAnchorSet)
+                            {
+                                dirAnchorE = pn.fix.easting; dirAnchorN = pn.fix.northing;
+                                dirAnchorSet = true;
+                                turnCtxReverse = isReverse;
+                            }
+                            else
+                            {
+                                double dirE = pn.fix.easting - dirAnchorE, dirN = pn.fix.northing - dirAnchorN;
+                                if ((dirE * dirE + dirN * dirN) >= turnDirDecideDistance * turnDirDecideDistance)
+                                {
+                                    turnCtxReverse = (Math.Sin(fixHeading) * dirE + Math.Cos(fixHeading) * dirN) < 0;
+                                    dirAnchorE = pn.fix.easting; dirAnchorN = pn.fix.northing;
+                                }
+                            }
+                        }
+                        else dirAnchorSet = false;
+
                         //imu on board
                         if (ahrs.imuHeading != 99999)
                         {
@@ -387,23 +431,27 @@ namespace AgOpenGPS
 
                             if (ahrs.isReverseOn)
                             {
-                                ////what is angle between the last valid heading before stopping and one just now
-                                delta = Math.Abs(Math.PI - Math.Abs(Math.Abs(newGPSHeading - imuCorrected) - Math.PI));
-
-                                //ie change in direction
-                                if (delta > 1.57) //
+                                if (turnDirCtx)
                                 {
-                                    isReverse = true;
-                                    newGPSHeading += Math.PI;
-                                    if (newGPSHeading < 0) newGPSHeading += glm.twoPI;
-                                    else if (newGPSHeading >= glm.twoPI) newGPSHeading -= glm.twoPI;
-                                    isReverseWithIMU = true;
+                                    //turn context: distance-based decision replaces the lagged vector check
+                                    isReverse = turnCtxReverse;
                                 }
                                 else
                                 {
-                                    isReverse = false;
-                                    isReverseWithIMU = false;
+                                    ////what is angle between the last valid heading before stopping and one just now
+                                    delta = Math.Abs(Math.PI - Math.Abs(Math.Abs(newGPSHeading - imuCorrected) - Math.PI));
+
+                                    //ie change in direction
+                                    isReverse = delta > 1.57;
                                 }
+
+                                if (isReverse)
+                                {
+                                    newGPSHeading += Math.PI;
+                                    if (newGPSHeading < 0) newGPSHeading += glm.twoPI;
+                                    else if (newGPSHeading >= glm.twoPI) newGPSHeading -= glm.twoPI;
+                                }
+                                isReverseWithIMU = isReverse;
                             }
                             else
                             {
@@ -470,35 +518,43 @@ namespace AgOpenGPS
                         {
                             if (ahrs.isReverseOn)
                             {
-                                ////what is angle between the last valid heading before stopping and one just now
-                                delta = Math.Abs(Math.PI - Math.Abs(Math.Abs(newGPSHeading - gpsHeading) - Math.PI));
-
-                                filteredDelta = delta * 0.2 + filteredDelta * 0.8;
-
-                                //filtered delta different then delta
-                                if (Math.Abs(filteredDelta - delta) > 0.5)
+                                if (turnDirCtx)
                                 {
-                                    isChangingDirection = true;
+                                    //turn context: distance-based decision, no slow filter, no bypass
+                                    isReverse = turnCtxReverse;
+                                    isChangingDirection = false;
                                 }
                                 else
                                 {
-                                    isChangingDirection = false;
+                                    ////what is angle between the last valid heading before stopping and one just now
+                                    delta = Math.Abs(Math.PI - Math.Abs(Math.Abs(newGPSHeading - gpsHeading) - Math.PI));
+
+                                    filteredDelta = delta * 0.2 + filteredDelta * 0.8;
+
+                                    //filtered delta different then delta
+                                    if (Math.Abs(filteredDelta - delta) > 0.5)
+                                    {
+                                        isChangingDirection = true;
+                                    }
+                                    else
+                                    {
+                                        isChangingDirection = false;
+                                    }
+
+                                    //we can't be sure if changing direction so do nothing
+                                    if (isChangingDirection)
+                                        goto byPass;
+
+                                    //ie change in direction
+                                    isReverse = filteredDelta > 1.57;
                                 }
 
-                                //we can't be sure if changing direction so do nothing
-                                if (isChangingDirection)
-                                    goto byPass;
-
-                                //ie change in direction
-                                if (filteredDelta > 1.57) //
+                                if (isReverse)
                                 {
-                                    isReverse = true;
                                     newGPSHeading += Math.PI;
                                     if (newGPSHeading < 0) newGPSHeading += glm.twoPI;
                                     else if (newGPSHeading >= glm.twoPI) newGPSHeading -= glm.twoPI;
                                 }
-                                else
-                                    isReverse = false;
 
                                 if (isReverse)
                                     newGPSHeading -= glm.toRadians(vehicle.VehicleConfig.AntennaPivot / 1 * mc.actualSteerAngleDegrees * ahrs.reverseComp);
@@ -826,7 +882,11 @@ namespace AgOpenGPS
                     OrchardPickNearestPass(false);
 
                 //auto track routine
-                if (trk.isAutoTrack && !isBtnAutoSteerOn && trk.autoTrack3SecTimer >= 1)
+                //REQ 2026-08-15-6: this one changes the whole TRACK every 3 s while autosteer
+                //is off - under a running turn it would move the ground beneath the maneuver,
+                //so it waits until the turn is done (same pin as the pass in CABLine/CABCurve)
+                if (trk.isAutoTrack && !isBtnAutoSteerOn && trk.autoTrack3SecTimer >= 1
+                    && !yt.IsPassPinned)
                 {
                     trk.autoTrack3SecTimer = 0;
                     int lastIndex = trk.idx;
@@ -850,6 +910,17 @@ namespace AgOpenGPS
                     {
                         curve.BuildCurveCurrentList(pivotAxlePos);
                         curve.GetCurrentCurveLine(pivotAxlePos, steerAxlePos);
+                    }
+
+                    //REQ 2026-08-15-7: the approach is built here, after the guidance line has
+                    //been rebuilt for this fix - it needs the line's own reference point, and
+                    //that point moves when the approach retargets the pass to the plan's next one
+                    if (tnl.IsFeatureOn)
+                    {
+                        yt.UpdateLineApproach();
+
+                        //REQ 2026-08-15-8: and with autosteer off, show what engaging it would build
+                        yt.UpdateApproachPreview();
                     }
                 }
             }
@@ -1052,8 +1123,35 @@ namespace AgOpenGPS
                 else //Youturn is on
                 {
                     //turn limit lines: the bounded strip out to a drawn line counts as turn bounds too
-                    bool isInTurnBounds = bnd.IsPointInsideTurnArea(pivotAxlePos) != -1
-                        || tnl.IsInAllowedExtension(pivotAxlePos);
+                    //Field 2026-08-15: the stock turn area is the boundary pulled inward by
+                    //set_youTurnDistanceFromBoundary (CTurn.cs:113-149, the light purple
+                    //polygon). Outside it NO turn is ever built - and nothing says so: not a
+                    //message, not a log line. A whole day went into that: the plan's first
+                    //pass lay in the strip between the fence and that polygon, so the builder
+                    //was never even called. That setting carries no meaning for our maneuver -
+                    //what limits it are the DRAWN turn limit lines and UWideThreshold. So with
+                    //our feature on the gate is simply "inside the field". Feature off = stock.
+                    //REQ 2026-08-16: plus the band around a drawn turn line, whichever side of
+                    //it - on fields where the headland lies OUTSIDE the boundary this gate kept
+                    //flapping ("outside the allowed turn area" every few seconds) exactly where
+                    //turning actually happens. Same band the approach uses, so one number
+                    //answers "is this a place where we turn" everywhere.
+                    bool isInTurnBounds = tnl.IsFeatureOn
+                        ? bnd.IsPointInsideFenceArea(pivotAxlePos) || tnl.IsWithinTurnBand(pivotAxlePos)
+                        : bnd.IsPointInsideTurnArea(pivotAxlePos) != -1 || tnl.IsInAllowedExtension(pivotAxlePos);
+
+                    //never silent again: say it when no turn can be built where we are
+                    if (isInTurnBounds == wasOutOfTurnBounds)
+                    {
+                        wasOutOfTurnBounds = !isInTurnBounds;
+                        if (wasOutOfTurnBounds)
+                        {
+                            Log.EventWriter("Turn: vehicle outside the allowed turn area - no maneuver can be built here");
+                            if (plan.IsRuntimeOn)
+                                TimedMessageBox(2500, "Turn Plan", "Outside the turn area - no turn here");
+                        }
+                        else Log.EventWriter("Turn: back inside the allowed turn area");
+                    }
                     //Are we inside outer and outside inner all turn boundaries, no turn creation problems
                     //if we are too much off track > 1.3m, kill the diagnostic creation, start again
                     //if (!yt.isYouTurnTriggered) 
@@ -1143,7 +1241,23 @@ namespace AgOpenGPS
                                 //the maneuver; phases inside a running turn are unchanged.
                                 bool afterStopGate = true;
                                 bool shuttledToForward = yt.UpdateReverseEdge(isReverse);
-                                if (tnl.isAfterStop)
+
+                                //REQ 2026-08-15-6: with autosteer OFF the driver turns by hand
+                                //and simply drives through the headland - the stop this rule
+                                //waits for never happens, so the maneuver is drawn and never
+                                //fires. While our feature is on, turn-after-stop applies only
+                                //with autosteer ON; without it the trigger is automatic. The
+                                //SAVED setting is untouched (TurnLinesFiles.cs) - runtime only.
+                                bool afterStopRule = tnl.isAfterStop && isBtnAutoSteerOn;
+                                if (tnl.isAfterStop && afterStopRule == isAfterStopOverridden)
+                                {
+                                    isAfterStopOverridden = !afterStopRule;
+                                    Log.EventWriter("Turn: after-stop rule "
+                                        + (isAfterStopOverridden ? "overridden - autosteer off, trigger is automatic"
+                                                                 : "back in force - autosteer on"));
+                                }
+
+                                if (afterStopRule)
                                 {
                                     if (inTriggerWindow && (avgSpeed < 0.3 || shuttledToForward))
                                         yt.afterStopStopped = true;

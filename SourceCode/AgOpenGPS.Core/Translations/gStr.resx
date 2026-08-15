@@ -2238,4 +2238,16 @@ USE AT OWN RISK.</value>
   <data name="gsOrchStateSaved" xml:space="preserve">
     <value>Saved</value>
   </data>
+  <data name="gsStartFrom" xml:space="preserve">
+    <value>Start from</value>
+  </data>
+  <data name="gsPass" xml:space="preserve">
+    <value>Pass</value>
+  </data>
+  <data name="gsApply" xml:space="preserve">
+    <value>Apply</value>
+  </data>
+  <data name="gsMinTurnRadiusIs" xml:space="preserve">
+    <value>min turn radius is</value>
+  </data>
 </root>
