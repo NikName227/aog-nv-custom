@@ -369,6 +369,40 @@ namespace AgOpenGPS
         }
 
         /// <summary>
+        /// Shortest perpendicular distance from a point to any effective limit line, -1 when
+        /// there is none. Side-agnostic on purpose (REQ 2026-08-15-9): what matters is the
+        /// BAND around the line, not which side of it the vehicle is on - fields differ in
+        /// where the boundary runs, and the driver should not have to think about it. Only the
+        /// drawn extent counts, not the extrapolation, so the band cannot appear off the ends.
+        /// </summary>
+        public double DistanceToEffectiveLines(double easting, double northing)
+        {
+            if (lines.Count == 0) return -1;
+            EnsureBuilt();
+
+            double best = -1;
+            foreach (var ln in lines)
+            {
+                for (int i = 0; i < ln.effPts.Count - 1; i++)
+                {
+                    double ax = ln.effPts[i].easting, ay = ln.effPts[i].northing;
+                    double dx = ln.effPts[i + 1].easting - ax;
+                    double dy = ln.effPts[i + 1].northing - ay;
+                    double len2 = dx * dx + dy * dy;
+                    if (len2 < 0.0001) continue;
+
+                    double t = ((easting - ax) * dx + (northing - ay) * dy) / len2;
+                    if (t < 0) t = 0; else if (t > 1) t = 1;
+
+                    double ex = ax + t * dx - easting, ey = ay + t * dy - northing;
+                    double d = Math.Sqrt(ex * ex + ey * ey);
+                    if (best < 0 || d < best) best = d;
+                }
+            }
+            return best;
+        }
+
+        /// <summary>
         /// Distance along the ray (origin, heading) to the nearest effective limit line,
         /// -1 when no line is hit. Used to measure the space available for a U-turn.
         /// </summary>

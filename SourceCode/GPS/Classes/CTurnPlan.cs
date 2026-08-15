@@ -802,6 +802,10 @@ namespace AgOpenGPS
         // field; the first seconds go on "what just happened" - user decision)
         public const double undoSeconds = 10.0;
 
+        // band either side of the turn line in which stepping off ends the pass
+        // (REQ 2026-08-15-9, driver's figure)
+        public const double passDoneBand = 6.0;
+
         // the last plan action that can still be taken back - a skipped pass, or (REQ
         // 2026-08-15-9) a pass written off by stepping aside in the headland
         private CPlanEntry lastUndoEntry;
@@ -1192,25 +1196,32 @@ namespace AgOpenGPS
 
             UpdatePassLock(now, lateral);
 
-            // REQ 2026-08-15-9: at the headland, with autosteer off, stepping a FULL working
-            // width off the pass is how the driver says "done with this one" - he drives away
-            // to refill the seeder and comes back to the next pass. Without this the plan
-            // deadlocks: worked is only set when guidance LEAVES the pass, and while autosteer
-            // is off the seeding holds guidance on the first not-worked pass, which is this
-            // one. Undoable for a few seconds through the HUD button, like a skip.
+            // REQ 2026-08-15-9: autosteer switched off before the turn fired, and the driver
+            // steps a FULL working width off the pass - that is how he says "done with this
+            // one" (drive away to refill the seeder, come back to the next pass). Without it
+            // the plan deadlocks: worked is only set when guidance LEAVES the pass, and while
+            // autosteer is off the seeding holds guidance on the first not-worked pass, which
+            // is this one. The band around the turn line is what makes it a deliberate move -
+            // no side test, because where the boundary runs differs from field to field.
+            // The 50 % rule still decides (it lives in MarkRunEntryWorked): a pass that was
+            // not really driven is never written off, and the pass we switch TO cannot be
+            // written off in turn, because its own distance starts at zero.
+            // Undoable for a few seconds through the HUD button, like a skip.
+            double bandDist = mf.tnl.DistanceToEffectiveLines(mf.pivotAxlePos.easting,
+                                                              mf.pivotAxlePos.northing);
             if (mf.tnl.IsFeatureOn && !mf.isBtnAutoSteerOn && !mf.yt.isYouTurnTriggered
                 && now != null && !now.isWorked
                 && Math.Abs(lateral) >= WorkWidth()
-                && mf.tnl.IsInAllowedExtension(mf.pivotAxlePos))
+                && bandDist >= 0 && bandDist <= passDoneBand)
             {
-                EnsureGeometry(now);
-                if (now.passLength > 1.0 && runDistance > 0.5 * now.passLength)
+                bool wasWorked = now.isWorked;
+                MarkRunEntryWorked(now, true);
+                if (!wasWorked && now.isWorked)
                 {
-                    MarkRunEntryWorked(now, true);
                     runDistance = 0;
                     Log.EventWriter("TurnPlan: stepped " + Math.Abs(lateral).ToString("N1")
-                        + " m off the pass in the headland - pass marked worked (undoable "
-                        + undoSeconds.ToString("N0") + " s)");
+                        + " m off the pass, " + bandDist.ToString("N1") + " m from the turn line"
+                        + " - pass marked worked (undoable " + undoSeconds.ToString("N0") + " s)");
                 }
             }
 
