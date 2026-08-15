@@ -1153,6 +1153,52 @@ namespace AgOpenGPS
             return true;
         }
 
+        // how close to the turn line the vehicle has to be before the guidance line may
+        // move to the next pass (field decision 2026-08-15)
+        public const double switchNearBoundary = 20.0;
+
+        /// <summary>
+        /// May the guidance line move to the plan's next pass right now? Only at the
+        /// headland end of a pass that is essentially done, and only when the driver has
+        /// already left the line - holding the line means the pass gets driven out.
+        /// Every refusal is traced with its reason, so the log shows the rule working.
+        /// </summary>
+        private bool AllowLineSwitch()
+        {
+            if (mf.isReverse) { TraceSwitch("reverse"); return false; }
+            if (runEntry == null) { TraceSwitch("no current pass"); return false; }
+
+            EnsureGeometry(runEntry);
+            bool passDone = runEntry.isWorked
+                || (runEntry.passLength > 1.0 && runDistance > 0.5 * runEntry.passLength);
+            if (!passDone) { TraceSwitch("pass under 50%"); return false; }
+
+            if (mf.trk.idx < 0 || mf.trk.idx >= mf.trk.gArr.Count) return false;
+            double lateral = mf.trk.gArr[mf.trk.idx].mode == TrackMode.AB
+                ? mf.ABLine.distanceFromCurrentLinePivot
+                : mf.curve.distanceFromCurrentLinePivot;
+            if (Math.Abs(lateral) < 0.5 * WorkWidth()) { TraceSwitch("on the line"); return false; }
+
+            //last, because it walks every effective line segment and this runs per fix
+            double toLine = mf.tnl.RayDistanceToEffectiveLines(
+                new vec2(mf.pivotAxlePos.easting, mf.pivotAxlePos.northing), mf.fixHeading);
+            //-1 = the travel ray hits no turn line: there is no turn to make here either
+            if (toLine < 0) { TraceSwitch("no turn line ahead"); return false; }
+            if (toLine > switchNearBoundary) { TraceSwitch("turn line too far"); return false; }
+
+            TraceSwitch("ALLOWED");
+            return true;
+        }
+
+        // refusals are frequent (every fix), so they are traced only when the reason changes
+        private string lastSwitchReason = "";
+        private void TraceSwitch(string why)
+        {
+            if (why == lastSwitchReason) return;
+            lastSwitchReason = why;
+            TraceEvent("line switch held: " + why);
+        }
+
         /// <summary>
         /// Offset index the guidance should lead to when Follow plan is ON = the first
         /// not-worked entry (by order) on the current track. Used to seed the active
@@ -1176,6 +1222,16 @@ namespace AgOpenGPS
                 idx = resume.offsetIdx;
                 return true;
             }
+
+            //Field 2026-08-15 (f05tl-13): the line may only move to the next pass right
+            //at the headland. Marking a pass worked at 50 % used to hand the seeding the
+            //NEXT pass immediately, so the guidance line jumped mid-field and the counter
+            //restarted there - one drive across the field could mark three passes done.
+            //The driver's rule: a new path comes from the turn or from SKIP, never from
+            //driving. With autosteer ON (checked by the caller) nothing moves at all -
+            //the pass is driven out and the turn maneuver picks the next one.
+            if (!AllowLineSwitch()) return false;
+
             CPlanEntry best = null;
             foreach (var p in entries)
             {
