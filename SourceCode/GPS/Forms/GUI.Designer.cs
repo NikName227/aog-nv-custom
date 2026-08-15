@@ -1276,7 +1276,7 @@ namespace AgOpenGPS
                     {
                         //NV HUD skip button (below the turn icon, same x column)
                         if (point.Y > 184 && point.Y < 224
-                            && (plan.HasSkipTarget() || plan.UndoSkipSecondsLeft() > 0))
+                            && (plan.HasSkipTarget() || plan.UndoSecondsLeft() > 0))
                         {
                             int skipMid = oglMain.Width / 2 + oglMain.Width / 5 + 8;
                             if (point.X > skipMid - 58 && point.X < skipMid + 58)
@@ -1537,15 +1537,16 @@ namespace AgOpenGPS
 
         /// <summary>
         /// HUD SKIP/UNDO tap (2026-07-11). Within the undo window the tap takes the
-        /// last skip back; otherwise it writes off the pass the plan targets. A
+        /// last skip - or headland write-off (REQ 2026-08-15-9) - back; otherwise it
+        /// writes off the pass the plan targets. A
         /// maneuver already running toward it is cancelled and re-targeted - the
         /// auto-turn button STAYS on.
         /// </summary>
         public void HudSkipTapped()
         {
-            if (plan.UndoSkipSecondsLeft() > 0)
+            if (plan.UndoSecondsLeft() > 0)
             {
-                plan.UndoSkip();
+                plan.UndoLast();
                 yt.ResetCreatedYouTurn();
                 return;
             }

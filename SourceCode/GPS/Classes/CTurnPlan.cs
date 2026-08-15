@@ -496,7 +496,7 @@ namespace AgOpenGPS
                 entries.Add(p);
             }
             isFlexPause = false;
-            lastSkipped = null;
+            lastUndoEntry = null;
             builtWidth = WorkWidth();      // the raster these passes sit on
             return true;
         }
@@ -716,7 +716,7 @@ namespace AgOpenGPS
             runEntry = null;
             runDistance = 0;
             isFlexPause = false;
-            lastSkipped = null;
+            lastUndoEntry = null;
             trackName = "";
 
             for (int i = 0; i < passes.Count; i++)
@@ -800,10 +800,13 @@ namespace AgOpenGPS
 
         // window in which the last skip can be taken back (slow processes in the
         // field; the first seconds go on "what just happened" - user decision)
-        public const double undoSkipSeconds = 10.0;
+        public const double undoSeconds = 10.0;
 
-        private CPlanEntry lastSkipped;
-        private DateTime lastSkipAt;
+        // the last plan action that can still be taken back - a skipped pass, or (REQ
+        // 2026-08-15-9) a pass written off by stepping aside in the headland
+        private CPlanEntry lastUndoEntry;
+        private DateTime lastUndoAt;
+        private bool lastUndoWasWorked;
 
         /// <summary>
         /// Write off the pass the plan currently targets (the dashed one): it is
@@ -816,8 +819,9 @@ namespace AgOpenGPS
             if (t == null) return null;
 
             t.isSkipped = true;
-            lastSkipped = t;
-            lastSkipAt = DateTime.UtcNow;
+            lastUndoEntry = t;
+            lastUndoAt = DateTime.UtcNow;
+            lastUndoWasWorked = false;
             InvalidateRun();
             mf.FileSaveTurnPlan();
             return t;
@@ -829,21 +833,24 @@ namespace AgOpenGPS
             return IsRuntimeOn && (isFlexPause ? FlexResumePass() : NextEntry()) != null;
         }
 
-        /// <summary>Seconds left in which the last skip can be undone (0 = none).</summary>
-        public double UndoSkipSecondsLeft()
+        /// <summary>Seconds left in which the last skip / write-off can be undone (0 = none).</summary>
+        public double UndoSecondsLeft()
         {
-            if (lastSkipped == null) return 0;
-            double left = undoSkipSeconds - (DateTime.UtcNow - lastSkipAt).TotalSeconds;
-            if (left <= 0) { lastSkipped = null; return 0; }
+            if (lastUndoEntry == null) return 0;
+            double left = undoSeconds - (DateTime.UtcNow - lastUndoAt).TotalSeconds;
+            if (left <= 0) { lastUndoEntry = null; return 0; }
             return left;
         }
 
-        /// <summary>Take back the last skip (within the undo window).</summary>
-        public bool UndoSkip()
+        /// <summary>Take back the last skip or write-off (within the undo window).</summary>
+        public bool UndoLast()
         {
-            if (UndoSkipSecondsLeft() <= 0) return false;
-            lastSkipped.isSkipped = false;
-            lastSkipped = null;
+            if (UndoSecondsLeft() <= 0) return false;
+
+            if (lastUndoWasWorked) lastUndoEntry.isWorked = false;
+            else lastUndoEntry.isSkipped = false;
+
+            lastUndoEntry = null;
             InvalidateRun();
             mf.FileSaveTurnPlan();
             return true;
@@ -1119,6 +1126,33 @@ namespace AgOpenGPS
         //field 2026-07-16 diag: throttle for the no-matching-entry log below
         private DateTime lastNoEntryLog = DateTime.MinValue;
 
+        /// <summary>
+        /// Mark a pass worked (the 50 % rule and the headland step-off both land here) and
+        /// save the plan. undoable = arm the HUD undo window, so the driver can take it back;
+        /// only the step-off does that - after a normal turn the button must stay SKIP.
+        /// </summary>
+        private void MarkRunEntryWorked(CPlanEntry e, bool undoable)
+        {
+            EnsureGeometry(e);
+            if (e.isWorked || e.passLength <= 1.0 || runDistance <= 0.5 * e.passLength) return;
+
+            e.isWorked = true;
+
+            if (undoable)
+            {
+                lastUndoEntry = e;
+                lastUndoAt = DateTime.UtcNow;
+                lastUndoWasWorked = true;
+            }
+
+            mf.FileSaveTurnPlan();
+
+            // last manual (closing) pass finished = the job is done:
+            // switch the auto turn button off (test f05-3.2-08)
+            if (e.IsManual && FlexResumePass() == null && mf.yt.isYouTurnBtnOn)
+                mf.btnAutoYouTurn.PerformClick();
+        }
+
         public void UpdateProgress()
         {
             if (!IsRuntimeOn || !mf.isJobStarted) return;
@@ -1142,19 +1176,7 @@ namespace AgOpenGPS
             // left the previous pass?
             if (runEntry != null && now != runEntry)
             {
-                EnsureGeometry(runEntry);
-                if (!runEntry.isWorked && runEntry.passLength > 1.0
-                    && runDistance > 0.5 * runEntry.passLength)
-                {
-                    runEntry.isWorked = true;
-                    mf.FileSaveTurnPlan();
-
-                    // last manual (closing) pass finished = the job is done:
-                    // switch the auto turn button off (test f05-3.2-08)
-                    if (runEntry.IsManual && FlexResumePass() == null
-                        && mf.yt.isYouTurnBtnOn)
-                        mf.btnAutoYouTurn.PerformClick();
-                }
+                MarkRunEntryWorked(runEntry, false);
                 runDistance = 0;
             }
             runEntry = now;
@@ -1169,6 +1191,28 @@ namespace AgOpenGPS
                 runDistance += mf.distanceCurrentStepFix;
 
             UpdatePassLock(now, lateral);
+
+            // REQ 2026-08-15-9: at the headland, with autosteer off, stepping a FULL working
+            // width off the pass is how the driver says "done with this one" - he drives away
+            // to refill the seeder and comes back to the next pass. Without this the plan
+            // deadlocks: worked is only set when guidance LEAVES the pass, and while autosteer
+            // is off the seeding holds guidance on the first not-worked pass, which is this
+            // one. Undoable for a few seconds through the HUD button, like a skip.
+            if (mf.tnl.IsFeatureOn && !mf.isBtnAutoSteerOn && !mf.yt.isYouTurnTriggered
+                && now != null && !now.isWorked
+                && Math.Abs(lateral) >= WorkWidth()
+                && mf.tnl.IsInAllowedExtension(mf.pivotAxlePos))
+            {
+                EnsureGeometry(now);
+                if (now.passLength > 1.0 && runDistance > 0.5 * now.passLength)
+                {
+                    MarkRunEntryWorked(now, true);
+                    runDistance = 0;
+                    Log.EventWriter("TurnPlan: stepped " + Math.Abs(lateral).ToString("N1")
+                        + " m off the pass in the headland - pass marked worked (undoable "
+                        + undoSeconds.ToString("N0") + " s)");
+                }
+            }
 
             // manual-flex: forward driving on the dashed resume pass re-engages
             // the plan; with no manual pass left there is nothing to wait for
