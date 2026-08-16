@@ -1580,18 +1580,28 @@ namespace AgOpenGPS
         private void btnSnapToPivot_Click(object sender, EventArgs e)
         {
             //F50 2026-08-16: a long press (see MouseDown/MouseUp below) already handled this
-            //click as an orchard row-offset reset - skip the stock action so it does not ALSO
-            //snap the track to the pivot right after.
+            //click as an orchard row-offset reset - skip the short-press action so it does not
+            //ALSO fire right after.
             if (orchardResetHoldFired) { orchardResetHoldFired = false; return; }
+
+            if (tool.isToolOrchard)
+            {
+                //short press in orchard mode: force an immediate re-check of the nearest pass,
+                //bypassing OrchardSwitchHysteresis - the fixed orchard geometry sometimes does
+                //not trigger the expected line on its own (driver not far enough into the turn
+                //yet) and waiting for the hysteresis to give way is the complaint this answers.
+                OrchardPickNearestPass(true);
+                return;
+            }
             trk.SnapToPivot();
         }
 
         /// <summary>
-        /// NV custom F50 (2026-08-16): btnSnapToPivot repurposed with a long press in orchard
-        /// mode - "reset the whole row" for the manual offset feature (TestBench markup
-        /// 2026-08-16 05:55, marker 1). A plain Button.Click cannot tell a tap from a hold, so
-        /// this times the press with a one-shot Timer; short press still falls through to the
-        /// stock SnapToPivot Click handler above, untouched outside orchard mode.
+        /// NV custom F50 (2026-08-16): btnSnapToPivot repurposed in orchard mode - short press
+        /// forces the nearest-pass re-check above, long press (5s) resets the whole active row's
+        /// manual offset (TestBench markup 2026-08-16 05:55, marker 1). A plain Button.Click
+        /// cannot tell a tap from a hold, so this times the press with a one-shot Timer; both are
+        /// untouched outside orchard mode (stock SnapToPivot Click handler above).
         /// </summary>
         private System.Windows.Forms.Timer orchardResetHoldTimer;
         private bool orchardResetHoldFired;
@@ -1603,7 +1613,7 @@ namespace AgOpenGPS
             orchardResetHoldFired = false;
             if (orchardResetHoldTimer == null)
             {
-                orchardResetHoldTimer = new System.Windows.Forms.Timer { Interval = 3000 };
+                orchardResetHoldTimer = new System.Windows.Forms.Timer { Interval = 5000 };
                 orchardResetHoldTimer.Tick += (s, ev) =>
                 {
                     orchardResetHoldTimer.Stop();

@@ -563,7 +563,7 @@ namespace AgOpenGPS
         }
 
         /// <summary>
-        /// NV custom F50 (2026-08-16): long-press (3s) on btnSnapToPivot in orchard mode - clears
+        /// NV custom F50 (2026-08-16): long-press (5s) on btnSnapToPivot in orchard mode - clears
         /// the WHOLE manual offset profile of the active pass (every breakpoint along the row, not
         /// just from the current position on), unlike the minus button which only walks the value
         /// at the current spot back down. For fixing a row entirely, e.g. after deciding a tree
