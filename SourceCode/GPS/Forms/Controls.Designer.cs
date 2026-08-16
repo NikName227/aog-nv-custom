@@ -1584,11 +1584,28 @@ namespace AgOpenGPS
 
         private void btnAdjRight_Click(object sender, EventArgs e)
         {
+            //F50 2026-08-16: in orchard mode these two buttons are repurposed as the manual row
+            //offset HUD (TestBench markup 2026-08-16) instead of the stock track nudge (blocked
+            //for orchard tracks anyway, CTrack.IsFixedTrack). "+clearance" always means away from
+            //the tree line the active pass hugs - which PHYSICAL button that is depends on which
+            //side the tool is mounted: tool right -> left button moves away, tool left -> mirrored.
+            if (tool.isToolOrchard)
+            {
+                double inc = Properties.ToolSettings.Default.setAS_snapDistance * 0.01;
+                OrchardApplyOffsetStep(tool.offset < 0 ? inc : -inc);
+                return;
+            }
             trk.NudgeTrack(Properties.ToolSettings.Default.setAS_snapDistance * 0.01);
         }
 
         private void btnAdjLeft_Click(object sender, EventArgs e)
         {
+            if (tool.isToolOrchard)
+            {
+                double inc = Properties.ToolSettings.Default.setAS_snapDistance * 0.01;
+                OrchardApplyOffsetStep(tool.offset < 0 ? -inc : inc);
+                return;
+            }
             trk.NudgeTrack(-Properties.ToolSettings.Default.setAS_snapDistance * 0.01);
         }
 
