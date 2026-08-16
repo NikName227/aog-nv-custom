@@ -3522,6 +3522,28 @@ namespace AgOpenGPS
         // outside this band the "approach" would be a turn (or a nudge), not an entry
         private const double approachTurnMax = 2.09, approachTurnMin = 0.087;
 
+        // how far along the row the field is probed when checking the plan's direction,
+        // and the step of that probe
+        private const double roomProbe = 60.0, roomProbeStep = 5.0;
+
+        /// <summary>
+        /// Room along the row from (e, n) in direction head that stays inside the fence, capped
+        /// at roomProbe. 0 = the very first step is already outside.
+        /// </summary>
+        private double RoomAlongRow(double e, double n, double head)
+        {
+            if (mf.bnd.bndList.Count == 0) return roomProbe;   //no boundary drawn: nothing to judge
+
+            double sx = Math.Sin(head), sy = Math.Cos(head);
+            double room = 0;
+            for (double d = roomProbeStep; d <= roomProbe; d += roomProbeStep)
+            {
+                if (!mf.bnd.IsPointInsideFenceArea(new vec2(e + sx * d, n + sy * d))) break;
+                room = d;
+            }
+            return room;
+        }
+
         /// <summary>
         /// Unit direction of the effective turn line at (near) the crossing point.
         /// </summary>
@@ -3797,6 +3819,26 @@ namespace AgOpenGPS
             if (!entry.isSameWay) lineHead += Math.PI;
             if (lineHead >= glm.twoPI) lineHead -= glm.twoPI;
             else if (lineHead < 0) lineHead += glm.twoPI;
+
+            //The plan's direction is an ASSUMPTION: isSameWay alternates by pass order, which
+            //holds while the field is worked serpentine from the start. Open a field and resume
+            //on pass 2 or 3, or from the other end, and that assumption can be the wrong way
+            //round - the approach then leads out of the field (SIM 2026-08-16, only ever on the
+            //first pass after opening; once a turn is done, plan and reality agree again).
+            //So the field gets a veto, but only where it is unambiguous: if the plan's way has
+            //no room inside the fence and the other way has, take the other way. Both open =
+            //the plan decides, as before. The vehicle HEADING is still never asked - it flips
+            //when the vehicle stands square to the row, which is exactly when this is built.
+            double roomPlan = RoomAlongRow(rE, rN, lineHead);
+            double roomBack = RoomAlongRow(rE, rN, lineHead + Math.PI);
+            if (roomPlan < roomProbeStep && roomBack >= roomProbeStep)
+            {
+                lineHead += Math.PI;
+                if (lineHead >= glm.twoPI) lineHead -= glm.twoPI;
+                Log.EventWriter("LineApproach: plan says the pass runs the other way, but there is "
+                    + roomBack.ToString("N0") + " m of field that way and none the plan's way"
+                    + " - approach flipped");
+            }
 
             vec3 piv = mf.pivotAxlePos;
             double rowX = Math.Sin(lineHead), rowY = Math.Cos(lineHead);

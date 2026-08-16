@@ -103,12 +103,14 @@ namespace AgOpenGPS
 
         public bool isChangingDirection, isReverseWithIMU;
 
-        //turn limit lines: distance-based direction decision while a turn is armed or running.
-        //The GPS heading vector lags a direction change by minHeadingStepDist (0.5-1 m), so the
-        //stock reverse checks answer late; here 0.3 m of travel against fixHeading decides.
-        private double dirAnchorE, dirAnchorN;
-        private bool dirAnchorSet, turnCtxReverse;
-        private const double turnDirDecideDistance = 0.3;
+        //turn limit lines: inside a running maneuver the STOCK direction check is kept - the
+        //filter, the thresholds and the "do nothing while ambiguous" freeze - and only its two
+        //numbers are tightened, so it answers sooner without snapping. The earlier replacement
+        //(anchor + 0.3 m of travel, no filter) decided against fixHeading, which the previous
+        //decision itself sets, and re-decided every 0.3 m: shuttling back and forth flipped the
+        //heading by 180 deg over and over and the steer setpoint jumped with it.
+        private const double turnHeadingStepDist = 0.6;   //never longer than the driver's setting
+        private const double turnFilterGain = 0.4;        //stock is 0.2
 
         private double nowHz = 0, filteredDelta = 0, delta = 0;
 
@@ -372,7 +374,18 @@ namespace AgOpenGPS
                         
                         if ((fd.distanceUser += distanceCurrentStepFix) > 9999) fd.distanceUser = 0;
 
-                        double minFixHeadingDistSquared = minHeadingStepDist * minHeadingStepDist;
+                        //REQ 2026-08-15-5 (2. krug): while a maneuver is actually running the
+                        //heading vector gets a shorter baseline, so the stock direction check
+                        //answers sooner. Never SLOWER than the driver's own setting - min(),
+                        //not a fixed number.
+                        bool turnDirCtx = tnl.IsFeatureOn && yt.isYouTurnBtnOn && ahrs.isReverseOn
+                            && (yt.turnArmed || yt.isYouTurnTriggered || yt.turnOvershot);
+
+                        double headingStepDist = turnDirCtx
+                            ? Math.Min(minHeadingStepDist, turnHeadingStepDist)
+                            : minHeadingStepDist;
+
+                        double minFixHeadingDistSquared = headingStepDist * headingStepDist;
                         fixToFixHeadingDistance = 0;
 
                         for (int i = 0; i < totalFixSteps; i++)
@@ -393,37 +406,6 @@ namespace AgOpenGPS
                                                 pn.fix.northing - stepFixPts[currentStepFix].northing);
                         if (newGPSHeading < 0) newGPSHeading += glm.twoPI;
 
-                        //turn limit lines: while working to the plan, forward/reverse is decided
-                        //from 0.3 m of travel against the vehicle heading - identical with or
-                        //without an IMU. The stock GPS heading vector lags a direction change by
-                        //minHeadingStepDist (0.5-1 m), so it answers late.
-                        //Field 2026-08-15: this used to hold only while a turn was armed or
-                        //running, so it fell back to the slow check the moment the maneuver ended
-                        //- which is exactly when the driver comes back along the AB line and still
-                        //needs it. It now covers the whole time the plan is being worked.
-                        //Turn button off, plan off or feature off = stock, untouched.
-                        bool turnDirCtx = tnl.IsFeatureOn && yt.isYouTurnBtnOn && ahrs.isReverseOn
-                            && plan.IsRuntimeOn;
-                        if (turnDirCtx)
-                        {
-                            if (!dirAnchorSet)
-                            {
-                                dirAnchorE = pn.fix.easting; dirAnchorN = pn.fix.northing;
-                                dirAnchorSet = true;
-                                turnCtxReverse = isReverse;
-                            }
-                            else
-                            {
-                                double dirE = pn.fix.easting - dirAnchorE, dirN = pn.fix.northing - dirAnchorN;
-                                if ((dirE * dirE + dirN * dirN) >= turnDirDecideDistance * turnDirDecideDistance)
-                                {
-                                    turnCtxReverse = (Math.Sin(fixHeading) * dirE + Math.Cos(fixHeading) * dirN) < 0;
-                                    dirAnchorE = pn.fix.easting; dirAnchorN = pn.fix.northing;
-                                }
-                            }
-                        }
-                        else dirAnchorSet = false;
-
                         //imu on board
                         if (ahrs.imuHeading != 99999)
                         {
@@ -431,19 +413,11 @@ namespace AgOpenGPS
 
                             if (ahrs.isReverseOn)
                             {
-                                if (turnDirCtx)
-                                {
-                                    //turn context: distance-based decision replaces the lagged vector check
-                                    isReverse = turnCtxReverse;
-                                }
-                                else
-                                {
-                                    ////what is angle between the last valid heading before stopping and one just now
-                                    delta = Math.Abs(Math.PI - Math.Abs(Math.Abs(newGPSHeading - imuCorrected) - Math.PI));
+                                ////what is angle between the last valid heading before stopping and one just now
+                                delta = Math.Abs(Math.PI - Math.Abs(Math.Abs(newGPSHeading - imuCorrected) - Math.PI));
 
-                                    //ie change in direction
-                                    isReverse = delta > 1.57;
-                                }
+                                //ie change in direction
+                                isReverse = delta > 1.57;
 
                                 if (isReverse)
                                 {
@@ -518,36 +492,34 @@ namespace AgOpenGPS
                         {
                             if (ahrs.isReverseOn)
                             {
-                                if (turnDirCtx)
+                                ////what is angle between the last valid heading before stopping and one just now
+                                delta = Math.Abs(Math.PI - Math.Abs(Math.Abs(newGPSHeading - gpsHeading) - Math.PI));
+
+                                //REQ 2026-08-15-5 (2. krug): inside a running maneuver the filter
+                                //catches up twice as fast; everywhere else it stays the stock 0.2.
+                                //The "do nothing while ambiguous" freeze below stays in BOTH cases
+                                //- taking it out is what made the steer setpoint snap on every
+                                //shuttle (SIM 2026-08-16; on a real machine that is a hydraulic
+                                //hit, so it was never going to be better there).
+                                double fk = turnDirCtx ? turnFilterGain : 0.2;
+                                filteredDelta = delta * fk + filteredDelta * (1.0 - fk);
+
+                                //filtered delta different then delta
+                                if (Math.Abs(filteredDelta - delta) > 0.5)
                                 {
-                                    //turn context: distance-based decision, no slow filter, no bypass
-                                    isReverse = turnCtxReverse;
-                                    isChangingDirection = false;
+                                    isChangingDirection = true;
                                 }
                                 else
                                 {
-                                    ////what is angle between the last valid heading before stopping and one just now
-                                    delta = Math.Abs(Math.PI - Math.Abs(Math.Abs(newGPSHeading - gpsHeading) - Math.PI));
-
-                                    filteredDelta = delta * 0.2 + filteredDelta * 0.8;
-
-                                    //filtered delta different then delta
-                                    if (Math.Abs(filteredDelta - delta) > 0.5)
-                                    {
-                                        isChangingDirection = true;
-                                    }
-                                    else
-                                    {
-                                        isChangingDirection = false;
-                                    }
-
-                                    //we can't be sure if changing direction so do nothing
-                                    if (isChangingDirection)
-                                        goto byPass;
-
-                                    //ie change in direction
-                                    isReverse = filteredDelta > 1.57;
+                                    isChangingDirection = false;
                                 }
+
+                                //we can't be sure if changing direction so do nothing
+                                if (isChangingDirection)
+                                    goto byPass;
+
+                                //ie change in direction
+                                isReverse = filteredDelta > 1.57;
 
                                 if (isReverse)
                                 {
