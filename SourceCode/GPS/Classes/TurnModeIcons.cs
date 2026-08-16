@@ -36,6 +36,7 @@ namespace AgOpenGPS
 
                 if (mode == 1) DrawRows(g);
                 else if (mode == 2) DrawContour(g);
+                else if (mode == 4) DrawMinUTurn(g);
                 else DrawZones(g);
             }
             return bmp;
@@ -127,6 +128,38 @@ namespace AgOpenGPS
             NumDisc(g, 28, Green, "3");
             NumDisc(g, 64, Gray, "4");
             NumDisc(g, 16, Gray, "5");
+        }
+
+        // Mode 4 (orchard): min U-turn - jump over the neighbour so the U fits. Same language
+        // as the other three; the bracket UNDER the passes is the room the turn needs, and it
+        // sits low so it never crowds the arc (user, 2026-08-14: measure below, arrow above).
+        // Source drawing: features/50_orchard-navigation/icons/mode_min_uturn.svg
+        private static void DrawMinUTurn(Graphics g)
+        {
+            Pass(g, 16, Green);
+            Pass(g, 28, Gray);
+            Pass(g, 40, Green, 3.5f, dashed: true);
+            Pass(g, 52, Gray);
+            Pass(g, 64, Gray);
+
+            //the jump, over one pass onto the next workable one
+            using (var arc = new Pen(Green, 2.6f) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+                g.DrawBezier(arc, 16, 17, 22, 7, 34, 7, 40, 17);
+            ArrowHeadDown(g, 40, 17, Green);
+
+            //how much room that jump needs
+            using (var bar = new Pen(Green, 1.4f) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+            {
+                g.DrawLine(bar, 16, 59, 40, 59);
+                g.DrawLine(bar, 16, 56.8f, 16, 61.2f);
+                g.DrawLine(bar, 40, 56.8f, 40, 61.2f);
+            }
+
+            NumDisc(g, 16, Green, "1");
+            NumDisc(g, 28, Gray, "4");
+            NumDisc(g, 40, Green, "2");
+            NumDisc(g, 52, Gray, "5");
+            NumDisc(g, 64, Gray, "3");
         }
 
         private static void DrawZones(Graphics g)
