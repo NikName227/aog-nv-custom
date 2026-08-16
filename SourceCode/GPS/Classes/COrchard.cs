@@ -1978,16 +1978,26 @@ namespace AgOpenGPS
         private static double EffectiveOffsetAt(List<OrchOffsetPoint> sorted, double d)
         {
             double prevValue = 0;
+            //F50 2026-08-16 fix: the ramp into breakpoint k must never start before the PREVIOUS
+            //breakpoint's own position, or two breakpoints closer together than OffsetRampMeters
+            //(easy to get clicking the HUD buttons a few times while driving) make their ramp
+            //zones overlap backwards - the value at the earlier breakpoint gets pulled toward the
+            //later one's target before it is even reached, so a clean +5cm step reads back as some
+            //other, wrong number. Clamping rampStart to prevDist means a tight pair of breakpoints
+            //just gets a short ramp across whatever gap they actually have, never a jump.
+            double prevDist = double.NegativeInfinity;
             for (int k = 0; k < sorted.Count; k++)
             {
-                double rampStart = sorted[k].dist - OffsetRampMeters;
+                double rampStart = Math.Max(sorted[k].dist - OffsetRampMeters, prevDist);
                 if (d < rampStart) return prevValue;
                 if (d < sorted[k].dist)
                 {
-                    double t = OffsetRampMeters < 1e-6 ? 1.0 : (d - rampStart) / OffsetRampMeters;
+                    double span = sorted[k].dist - rampStart;
+                    double t = span < 1e-6 ? 1.0 : (d - rampStart) / span;
                     return prevValue + (sorted[k].offset - prevValue) * t;
                 }
                 prevValue = sorted[k].offset;
+                prevDist = sorted[k].dist;
             }
             return prevValue;
         }
