@@ -2238,6 +2238,18 @@ USE AT OWN RISK.</value>
   <data name="gsOrchStateSaved" xml:space="preserve">
     <value>Saved</value>
   </data>
+  <data name="gsMinUTurn" xml:space="preserve">
+    <value>Min U-turn</value>
+  </data>
+  <data name="gsStartInterRow" xml:space="preserve">
+    <value>Start inter-row</value>
+  </data>
+  <data name="gsInterRow" xml:space="preserve">
+    <value>Inter-row</value>
+  </data>
+  <data name="gsOrchardSeqFallback" xml:space="preserve">
+    <value>Too narrow for min U-turn - row by row order used</value>
+  </data>
   <data name="gsStartFrom" xml:space="preserve">
     <value>Start from</value>
   </data>

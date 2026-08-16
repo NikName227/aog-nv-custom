@@ -5616,6 +5616,30 @@ public static string gsOrchPlanterBehind {
             }
         }
         
+        public static string gsMinUTurn {
+            get {
+                return ResourceManager.GetString("gsMinUTurn", resourceCulture);
+            }
+        }
+        
+        public static string gsStartInterRow {
+            get {
+                return ResourceManager.GetString("gsStartInterRow", resourceCulture);
+            }
+        }
+        
+        public static string gsInterRow {
+            get {
+                return ResourceManager.GetString("gsInterRow", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchardSeqFallback {
+            get {
+                return ResourceManager.GetString("gsOrchardSeqFallback", resourceCulture);
+            }
+        }
+        
         public static string gsStartFrom {
             get {
                 return ResourceManager.GetString("gsStartFrom", resourceCulture);
