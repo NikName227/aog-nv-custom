@@ -1824,5 +1824,136 @@ namespace AgOpenGPS
             }
             return rows;
         }
+
+        // ── Manual row offset profile (F50 2026-08-16) ─────────────────────
+        // A dedicated file, not a tail section of Orchard.txt: independent of row geometry,
+        // written on every HUD button press (small file, cheap), and keeps SaveRows/LoadRows
+        // signatures - already called from several forms - untouched.
+        /// <summary>Manual offset profile, kept beside the field.</summary>
+        public const string OffsetsFile = "RowOffsets.txt";
+
+        public static void SaveOffsets(string fieldDir, Dictionary<string, List<OrchOffsetPoint>> offsets)
+        {
+            if (string.IsNullOrEmpty(fieldDir) || offsets == null) return;
+            string path = Path.Combine(fieldDir, OffsetsFile);
+            using (var w = new StreamWriter(path, false))
+            {
+                w.WriteLine("$OrchOffsets");
+                var keys = new List<string>(offsets.Keys);
+                w.WriteLine(keys.Count.ToString(CultureInfo.InvariantCulture));
+                foreach (string name in keys)
+                {
+                    var pts = offsets[name];
+                    w.WriteLine(name);
+                    w.WriteLine(pts.Count.ToString(CultureInfo.InvariantCulture));
+                    foreach (var p in pts)
+                        w.WriteLine(p.dist.ToString(CultureInfo.InvariantCulture) + "," + p.offset.ToString(CultureInfo.InvariantCulture));
+                }
+            }
+        }
+
+        public static Dictionary<string, List<OrchOffsetPoint>> LoadOffsets(string fieldDir)
+        {
+            var result = new Dictionary<string, List<OrchOffsetPoint>>();
+            if (string.IsNullOrEmpty(fieldDir)) return result;
+            string path = Path.Combine(fieldDir, OffsetsFile);
+            if (!File.Exists(path)) return result;
+            try
+            {
+                string[] L = File.ReadAllLines(path);
+                int i = 0;
+                if (i < L.Length && L[i].StartsWith("$OrchOffsets")) i++;
+                if (i >= L.Length) return result;
+                int.TryParse(L[i++], out int trackCount);
+                for (int t = 0; t < trackCount && i < L.Length; t++)
+                {
+                    string name = L[i++];
+                    if (i >= L.Length) break;
+                    int.TryParse(L[i++], out int nP);
+                    var pts = new List<OrchOffsetPoint>(nP);
+                    for (int k = 0; k < nP && i < L.Length; k++, i++)
+                    {
+                        string[] c = L[i].Split(',');
+                        if (c.Length >= 2
+                            && double.TryParse(c[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double d)
+                            && double.TryParse(c[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double off))
+                            pts.Add(new OrchOffsetPoint(d, off));
+                    }
+                    result[name] = pts;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.EventWriter("Orchard LoadOffsets: " + ex);
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// One manual breakpoint in a pass's offset profile: from "dist" (along-track metres from
+        /// the start of that pass) onward, "offset" extra clearance applies - + = further from the
+        /// row this pass hugs (away from the tree line), - = closer. Ramped in over the 2 m before
+        /// each breakpoint (ApplyOffsetProfile) so the transition is not a jerk in the wheel.
+        /// </summary>
+        public struct OrchOffsetPoint
+        {
+            public double dist;
+            public double offset;
+            public OrchOffsetPoint(double dist, double offset) { this.dist = dist; this.offset = offset; }
+        }
+
+        /// <summary>How far into a breakpoint's approach the offset ramps in, in metres.</summary>
+        public const double OffsetRampMeters = 2.0;
+
+        /// <summary>
+        /// Apply a manual offset profile to an already-built pass line, in place. Points are
+        /// pushed sideways along their own heading's normal by the effective offset at their
+        /// along-track distance from the start of the line - constant between breakpoints, ramped
+        /// linearly over the OffsetRampMeters before each one (and into the first one, off 0).
+        /// </summary>
+        private static void ApplyOffsetProfile(List<vec3> line, List<OrchOffsetPoint> pts)
+        {
+            if (pts == null || pts.Count == 0 || line.Count < 2) return;
+
+            var sorted = new List<OrchOffsetPoint>(pts);
+            sorted.Sort((a, b) => a.dist.CompareTo(b.dist));
+
+            double along = 0;
+            for (int i = 0; i < line.Count; i++)
+            {
+                if (i > 0)
+                {
+                    double de = line[i].easting - line[i - 1].easting;
+                    double dn = line[i].northing - line[i - 1].northing;
+                    along += Math.Sqrt(de * de + dn * dn);
+                }
+
+                double off = EffectiveOffsetAt(sorted, along);
+                if (Math.Abs(off) < 1e-6) continue;
+
+                double h = line[i].heading;
+                line[i] = new vec3(
+                    line[i].easting + Math.Sin(h + glm.PIBy2) * off,
+                    line[i].northing + Math.Cos(h + glm.PIBy2) * off,
+                    h);
+            }
+        }
+
+        private static double EffectiveOffsetAt(List<OrchOffsetPoint> sorted, double d)
+        {
+            double prevValue = 0;
+            for (int k = 0; k < sorted.Count; k++)
+            {
+                double rampStart = sorted[k].dist - OffsetRampMeters;
+                if (d < rampStart) return prevValue;
+                if (d < sorted[k].dist)
+                {
+                    double t = OffsetRampMeters < 1e-6 ? 1.0 : (d - rampStart) / OffsetRampMeters;
+                    return prevValue + (sorted[k].offset - prevValue) * t;
+                }
+                prevValue = sorted[k].offset;
+            }
+            return prevValue;
+        }
     }
 }
