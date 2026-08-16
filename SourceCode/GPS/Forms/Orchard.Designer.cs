@@ -517,8 +517,8 @@ namespace AgOpenGPS
         /// <summary>
         /// NV custom F50 (2026-08-16): HUD minus/plus for the row offset feature - add a signed
         /// clearance step to the active orchard pass's manual offset profile at the vehicle's
-        /// current position, apply it immediately (temporary nudgeDistance, no rebuild wait) and
-        /// persist it so it survives the next rebuild. "step" is already signed in clearance terms
+        /// current position, rebuild the derived tracks so the new (variable) profile is baked
+        /// into the actual geometry, and persist it. "step" is already signed in clearance terms
         /// (+ = further from the row this pass hugs) - the HUD button handlers work out that sign
         /// from which physical button was pressed and which side the tool is mounted on.
         /// No-op for passes with no row of their own (TrackSide.None: on-row/planting mode, or a
@@ -548,14 +548,12 @@ namespace AgOpenGPS
             if (existing >= 0) profile[existing] = new COrchard.OrchOffsetPoint(along, newValue);
             else profile.Add(new COrchard.OrchOffsetPoint(along, newValue));
 
-            //immediate feedback for the rest of this pass, without waiting for a rebuild
-            curve.isCurveValid = false;
-            t.nudgeDistance = newValue * t.orchardClearanceSign;
-            yt.RebuildAfterNudge();
-
-            //F50 2026-08-16 fix: without this the HUD counter label (which now shows the offset,
-            //CTrack.DisplayCounterText) does not refresh - it is only redrawn from other UI
-            //events, not on every fix, so a click here left the old text on screen.
+            //F50 2026-08-16 fix: a full rebuild, not a flat nudgeDistance shift. nudgeDistance can
+            //only move the WHOLE line by one constant - it looked right for a moment right after
+            //the click, but then the SAME constant (the latest step) applied to the entire pass
+            //the next time through it, wiping out the variation the profile is supposed to have
+            //(0 at the start, +10 further on, say - not +10 for the whole row).
+            OrchardRebuildTracks("orchard offset step");
             PanelUpdateRightAndBottom();
 
             if (currentFieldDirectory.Length > 0)
@@ -579,13 +577,10 @@ namespace AgOpenGPS
                 && profile.Count > 0;
             if (hadAny) profile.Clear();
 
-            curve.isCurveValid = false;
-            t.nudgeDistance = 0;
-            yt.RebuildAfterNudge();
-            PanelUpdateRightAndBottom();
-
             if (hadAny)
             {
+                OrchardRebuildTracks("orchard offset reset");
+                PanelUpdateRightAndBottom();
                 Log.EventWriter("Orchard offset reset (long press): " + t.name);
                 if (currentFieldDirectory.Length > 0)
                     COrchard.SaveOffsets(Path.Combine(RegistrySettings.fieldsDirectory, currentFieldDirectory), orchOffsets);
