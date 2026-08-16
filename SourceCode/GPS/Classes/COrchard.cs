@@ -811,7 +811,6 @@ namespace AgOpenGPS
                 }
 
                 double outer = treeWidth * 0.5 + toolWidth * 0.5;   // row line -> outer centre
-                double span = gap - treeWidth - toolWidth;          // outer centre -> outer centre
 
                 int n = 2;
                 if (multiPass)
@@ -825,11 +824,6 @@ namespace AgOpenGPS
                         if (n > 40) n = 40;
                     }
                 }
-                double step = n > 1 ? span / (n - 1) : 0;
-
-                //offsets measured from row a, toward row b
-                var offsets = new List<double>();
-                for (int k = 0; k < n; k++) offsets.Add(outer + step * k);
 
                 //order: the two row passes first, then the middle - or the other way round
                 var order = new List<int>();
@@ -850,26 +844,38 @@ namespace AgOpenGPS
                 //offsets reach half an inter-row, so heading noise is amplified by it
                 var aPrep = PrepareForOffset(a.curve);
                 if (aPrep.Count < 2) continue;
+                var bPrep = PrepareForOffset(b.curve);
+                if (bPrep.Count < 2) continue;
 
-                double signAB = OffsetSignTowardB(aPrep, b);   // + = right of row a's heading
+                double signAB = OffsetSignTowardB(aPrep, b);                       // + = toward b, off row a's heading
+                double signBA = OffsetSignTowardB(bPrep, new OrchRow { curve = a.curve }); // + = toward a, off row b's heading
+
+                //F50 2026-08-16: each hugging pass is offset from ITS OWN row by "outer" only,
+                //not from row a by a distance stretched to the far end of a fixed global span -
+                //that made the pass "hugging" row b just a parallel copy of row a's shape, which
+                //drifted off row b wherever the two rows were not perfectly parallel (drift up
+                //to the local gap - the whole inter-row's minimum gap).
+                var hugA = BuildHugPass(aPrep, signAB * outer, toolWidth);
+                var hugB = BuildHugPass(bPrep, signBA * outer, toolWidth);
+                if (hugA == null || hugB == null) continue;
 
                 int passNo = 0;
                 foreach (int k in order)
                 {
                     passNo++;
 
-                    var line = OffsetCurve(aPrep, signAB * offsets[k]);
-                    if (line.Count < 2) continue;
-                    CABCurve.CalculateHeadings(ref line);
-                    SanitizeLine(line);
-                    if (line.Count < 2) continue;
-                    SmoothHeadings(line, HeadingSmoothWin);
-
-                    line = OffsetCurve(line, -0.5 * toolWidth);
-                    if (line.Count < 2) continue;
-                    CABCurve.CalculateHeadings(ref line);
-                    SanitizeLine(line);
-                    if (line.Count < 2) continue;
+                    //own copy per pass: ExtendEnds below mutates its list in place, and hugA/hugB
+                    //are reused by every middle-pass blend, so they must stay untouched
+                    List<vec3> line;
+                    if (k == 0) line = new List<vec3>(hugA);
+                    else if (k == n - 1) line = new List<vec3>(hugB);
+                    else
+                    {
+                        //multi-pass middle tracks: blend between the two hugging lines instead
+                        //of a fixed offset from row a, so they follow local geometry too.
+                        line = BlendHugPasses(hugA, hugB, (double)k / (n - 1));
+                        if (line == null) continue;
+                    }
 
                     double head = line[line.Count / 2].heading;
                     if (head < 0) head += glm.twoPI;
@@ -894,6 +900,70 @@ namespace AgOpenGPS
                 }
             }
             return result;
+        }
+
+        /// <summary>
+        /// One hugging pass: offset a prepared row curve sideways to the tool-centre distance,
+        /// then in again by half the tool width, same pipeline for row a and row b (F50
+        /// 2026-08-16). Returns null if any step collapses the line below 2 points.
+        /// </summary>
+        private static List<vec3> BuildHugPass(List<vec3> basePrep, double offset, double toolWidth)
+        {
+            var line = OffsetCurve(basePrep, offset);
+            if (line.Count < 2) return null;
+            CABCurve.CalculateHeadings(ref line);
+            SanitizeLine(line);
+            if (line.Count < 2) return null;
+            SmoothHeadings(line, HeadingSmoothWin);
+
+            line = OffsetCurve(line, -0.5 * toolWidth);
+            if (line.Count < 2) return null;
+            CABCurve.CalculateHeadings(ref line);
+            SanitizeLine(line);
+            if (line.Count < 2) return null;
+            return line;
+        }
+
+        /// <summary>
+        /// Middle multi-pass track: blend two hugging lines point-by-point at matching
+        /// index-fraction (both are resampled at the same step, so index fraction tracks
+        /// arc-length fraction closely enough here), t=0 -> lo, t=1 -> hi.
+        /// </summary>
+        private static List<vec3> BlendHugPasses(List<vec3> lo, List<vec3> hi, double t)
+        {
+            int n = Math.Max(lo.Count, hi.Count);
+            if (n < 2) return null;
+
+            var outPts = new List<vec3>(n);
+            for (int i = 0; i < n; i++)
+            {
+                double frac = (double)i / (n - 1);
+                vec3 pl = SampleByFraction(lo, frac);
+                vec3 ph = SampleByFraction(hi, frac);
+                outPts.Add(new vec3(
+                    pl.easting + (ph.easting - pl.easting) * t,
+                    pl.northing + (ph.northing - pl.northing) * t,
+                    0));
+            }
+
+            CABCurve.CalculateHeadings(ref outPts);
+            SanitizeLine(outPts);
+            return outPts.Count < 2 ? null : outPts;
+        }
+
+        /// <summary>Point at fraction 0..1 along a polyline, linearly interpolated by index.</summary>
+        private static vec3 SampleByFraction(List<vec3> pts, double frac)
+        {
+            double idx = frac * (pts.Count - 1);
+            int i0 = (int)Math.Floor(idx);
+            if (i0 < 0) i0 = 0;
+            if (i0 >= pts.Count - 1) return pts[pts.Count - 1];
+            int i1 = i0 + 1;
+            double lf = idx - i0;
+            return new vec3(
+                pts[i0].easting + (pts[i1].easting - pts[i0].easting) * lf,
+                pts[i0].northing + (pts[i1].northing - pts[i0].northing) * lf,
+                0);
         }
 
         // ── On row (planting): the line IS the row ────────────────────────
