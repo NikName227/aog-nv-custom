@@ -325,6 +325,13 @@ namespace AgOpenGPS
             get { return mf.tnl.IsFeatureOn ? (UOutRadius + UInRadius) : (youTurnRadius * 2.0); }
         }
 
+        /// <summary>
+        /// Lateral room a clean U-turn needs, for callers outside the turn builder (F50 min
+        /// U-turn ordering). Same number the builder itself uses - there is no second idea of
+        /// "does a U fit" anywhere.
+        /// </summary>
+        public double UTurnSpanNeeded { get { return UWideThreshold; } }
+
         #endregion
 
         //find next not worked lane after the defined lanes to skip
