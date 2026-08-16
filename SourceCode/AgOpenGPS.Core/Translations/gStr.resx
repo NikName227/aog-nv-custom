@@ -2250,6 +2250,12 @@ USE AT OWN RISK.</value>
   <data name="gsOrchardSeqFallback" xml:space="preserve">
     <value>Too narrow for min U-turn - row by row order used</value>
   </data>
+  <data name="gsRows" xml:space="preserve">
+    <value>Rows</value>
+  </data>
+  <data name="gsOrchardPasses" xml:space="preserve">
+    <value>Derived passes</value>
+  </data>
   <data name="gsStartFrom" xml:space="preserve">
     <value>Start from</value>
   </data>

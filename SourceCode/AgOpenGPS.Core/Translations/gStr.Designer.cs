@@ -5640,6 +5640,18 @@ public static string gsOrchPlanterBehind {
             }
         }
         
+        public static string gsRows {
+            get {
+                return ResourceManager.GetString("gsRows", resourceCulture);
+            }
+        }
+        
+        public static string gsOrchardPasses {
+            get {
+                return ResourceManager.GetString("gsOrchardPasses", resourceCulture);
+            }
+        }
+        
         public static string gsStartFrom {
             get {
                 return ResourceManager.GetString("gsStartFrom", resourceCulture);

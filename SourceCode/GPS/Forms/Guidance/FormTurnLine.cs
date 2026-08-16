@@ -1583,8 +1583,21 @@ namespace AgOpenGPS
 
         private bool PlanPrereqsOk()
         {
-            if (mf.tool.isToolOrchard) return true;   // orchard plans from rows
+            if (mf.tool.isToolOrchard)
+                return HasOrchardRows() && HasOrchardPasses() && HasTurnBoundaries();
             return HasFieldBoundary() && HasReferenceLine() && HasTurnBoundaries();
+        }
+
+        // ── orchard prerequisites (field 2026-08-16) ─────────────────────────
+        // The orchard wizard used to answer "ready" to everything, so a field without turn
+        // limit lines still reported a finished plan while the whole turn feature was in fact
+        // asleep (tnl.IsFeatureOn needs drawn lines) - the driver had no way of telling.
+        private bool HasOrchardRows() => mf.orchRows != null && mf.orchRows.Count >= 2;
+
+        private bool HasOrchardPasses()
+        {
+            foreach (var t in mf.trk.gArr) if (t.isOrchardDerived) return true;
+            return false;
         }
 
         // three checklist rows shown under "Generiraj plan" when a prereq is missing.
@@ -1624,8 +1637,12 @@ namespace AgOpenGPS
 
         private void RenderPrereqChecklist()
         {
-            bool[] ok = { HasFieldBoundary(), HasReferenceLine(), HasTurnBoundaries() };
-            string[] names = { gStr.gsBoundary, gStr.gsTrack + " / " + gStr.gsCurve, gStr.gsTurnLimitLines };
+            bool[] ok = mf.tool.isToolOrchard
+                ? new[] { HasOrchardRows(), HasOrchardPasses(), HasTurnBoundaries() }
+                : new[] { HasFieldBoundary(), HasReferenceLine(), HasTurnBoundaries() };
+            string[] names = mf.tool.isToolOrchard
+                ? new[] { gStr.gsOrchard + " - " + gStr.gsRows, gStr.gsOrchardPasses, gStr.gsTurnLimitLines }
+                : new[] { gStr.gsBoundary, gStr.gsTrack + " / " + gStr.gsCurve, gStr.gsTurnLimitLines };
             for (int i = 0; i < 3; i++)
             {
                 var lbl = prereqLabels[i];
@@ -1750,6 +1767,17 @@ namespace AgOpenGPS
             lblPlanInfo.Visible = false;
             if (lblStartFrom != null) foreach (Control c in StartFromControls()) c.Visible = false;
             SetOrchardStartVisible(false);
+            HidePrereqChecklist();
+
+            //nothing to plan with? say what is missing instead of pretending a plan exists
+            if (!PlanPrereqsOk())
+            {
+                lblWizTitle.Text = gStr.gsGeneratePlan;
+                lblPlanStatus.Text = "";
+                RenderPrereqChecklist();
+                return;
+            }
+            HidePrereqChecklist();
 
             switch (wizStep)
             {
