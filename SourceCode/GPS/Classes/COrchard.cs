@@ -616,7 +616,8 @@ namespace AgOpenGPS
         // get their pass too; without a boundary they are simply skipped.
         public static List<CTrk> BuildTracks(List<OrchRow> rows, int pathMode, double toolWidth,
             double treeWidth, bool centerFirst, int passCount,
-            out List<string> warnings, List<List<vec2>> bounds = null)
+            out List<string> warnings, List<List<vec2>> bounds = null,
+            Dictionary<string, List<OrchOffsetPoint>> offsets = null)
         {
             if (pathMode == PathOnRow)
                 return BuildOnRowTracks(rows, toolWidth, out warnings);
@@ -626,7 +627,7 @@ namespace AgOpenGPS
             if (pathMode == PathTwoPass || pathMode == PathMultiPass)
             {
                 var along = BuildRowPassTracks(rows, toolWidth, treeWidth,
-                    pathMode == PathMultiPass, centerFirst, passCount, out warnings);
+                    pathMode == PathMultiPass, centerFirst, passCount, out warnings, offsets);
                 //the outer rows get their one strip along the boundary side as well
                 AddOuterStripPasses(rows, bounds, toolWidth, treeWidth, true, along, warnings);
                 return along;
@@ -781,7 +782,7 @@ namespace AgOpenGPS
         // modes), so anything below 3 is treated as 0 here.
         public static List<CTrk> BuildRowPassTracks(List<OrchRow> rows, double toolWidth,
             double treeWidth, bool multiPass, bool middleFirst, int passCount,
-            out List<string> warnings)
+            out List<string> warnings, Dictionary<string, List<OrchOffsetPoint>> offsets = null)
         {
             warnings = new List<string>();
             var result = new List<CTrk>();
@@ -877,6 +878,15 @@ namespace AgOpenGPS
                         if (line == null) continue;
                     }
 
+                    string passName = DerivedPrefix + interName + " p" + passNo;
+
+                    //F50 2026-08-16: manual clearance offset only applies to a pass that hugs a
+                    //specific row (k = 0 or n-1) - a middle multi-pass track has no tree line of
+                    //its own to be "closer to" or "further from".
+                    if ((k == 0 || k == n - 1) && offsets != null
+                        && offsets.TryGetValue(passName, out List<OrchOffsetPoint> profile))
+                        ApplyOffsetProfile(line, profile);
+
                     double head = line[line.Count / 2].heading;
                     if (head < 0) head += glm.twoPI;
 
@@ -894,7 +904,7 @@ namespace AgOpenGPS
 
                     t.ptA = new vec2(line[0].easting, line[0].northing);
                     t.ptB = new vec2(line[line.Count - 1].easting, line[line.Count - 1].northing);
-                    t.name = DerivedPrefix + interName + " p" + passNo;
+                    t.name = passName;
                     foreach (vec3 p in line) t.curvePts.Add(p);
                     result.Add(t);
                 }
