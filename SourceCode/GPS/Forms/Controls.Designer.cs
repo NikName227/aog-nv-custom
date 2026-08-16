@@ -1579,7 +1579,44 @@ namespace AgOpenGPS
 
         private void btnSnapToPivot_Click(object sender, EventArgs e)
         {
+            //F50 2026-08-16: a long press (see MouseDown/MouseUp below) already handled this
+            //click as an orchard row-offset reset - skip the stock action so it does not ALSO
+            //snap the track to the pivot right after.
+            if (orchardResetHoldFired) { orchardResetHoldFired = false; return; }
             trk.SnapToPivot();
+        }
+
+        /// <summary>
+        /// NV custom F50 (2026-08-16): btnSnapToPivot repurposed with a long press in orchard
+        /// mode - "reset the whole row" for the manual offset feature (TestBench markup
+        /// 2026-08-16 05:55, marker 1). A plain Button.Click cannot tell a tap from a hold, so
+        /// this times the press with a one-shot Timer; short press still falls through to the
+        /// stock SnapToPivot Click handler above, untouched outside orchard mode.
+        /// </summary>
+        private System.Windows.Forms.Timer orchardResetHoldTimer;
+        private bool orchardResetHoldFired;
+
+        private void btnSnapToPivot_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (!tool.isToolOrchard) return;
+
+            orchardResetHoldFired = false;
+            if (orchardResetHoldTimer == null)
+            {
+                orchardResetHoldTimer = new System.Windows.Forms.Timer { Interval = 3000 };
+                orchardResetHoldTimer.Tick += (s, ev) =>
+                {
+                    orchardResetHoldTimer.Stop();
+                    orchardResetHoldFired = true;
+                    OrchardResetActiveRowOffset();
+                };
+            }
+            orchardResetHoldTimer.Start();
+        }
+
+        private void btnSnapToPivot_MouseUp(object sender, MouseEventArgs e)
+        {
+            orchardResetHoldTimer?.Stop();
         }
 
         private void btnAdjRight_Click(object sender, EventArgs e)

@@ -563,6 +563,36 @@ namespace AgOpenGPS
         }
 
         /// <summary>
+        /// NV custom F50 (2026-08-16): long-press (3s) on btnSnapToPivot in orchard mode - clears
+        /// the WHOLE manual offset profile of the active pass (every breakpoint along the row, not
+        /// just from the current position on), unlike the minus button which only walks the value
+        /// at the current spot back down. For fixing a row entirely, e.g. after deciding a tree
+        /// recording error correction was wrong for the whole row.
+        /// </summary>
+        public void OrchardResetActiveRowOffset()
+        {
+            if (!trk.IsActiveOrchardPass) return;
+            CTrk t = trk.gArr[trk.idx];
+            if (t.orchardRowSide == TrackSide.None) return;
+
+            bool hadAny = orchOffsets.TryGetValue(t.name, out List<COrchard.OrchOffsetPoint> profile)
+                && profile.Count > 0;
+            if (hadAny) profile.Clear();
+
+            curve.isCurveValid = false;
+            t.nudgeDistance = 0;
+            yt.RebuildAfterNudge();
+            PanelUpdateRightAndBottom();
+
+            if (hadAny)
+            {
+                Log.EventWriter("Orchard offset reset (long press): " + t.name);
+                if (currentFieldDirectory.Length > 0)
+                    COrchard.SaveOffsets(Path.Combine(RegistrySettings.fieldsDirectory, currentFieldDirectory), orchOffsets);
+            }
+        }
+
+        /// <summary>
         /// Make the derived pass nearest to the vehicle the active one (t10 B). This is how the
         /// next inter-row is reached in orchard mode - the pass itself is a fixed single line,
         /// so driving sideways selects the next line instead of stepping this one over.
