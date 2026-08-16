@@ -2745,15 +2745,10 @@ namespace AgOpenGPS
             // lblNumCu
             // 
             this.lblNumCu.Anchor = System.Windows.Forms.AnchorStyles.Top;
-            //F50 2026-08-16: AutoSize so the orchard manual-offset suffix (CTrack.DisplayCounterText,
-            //e.g. "1/2 +45cm") is not clipped by a fixed box sized only for "12/24" - safe here
-            //because the parent (panelRight) is a FlowLayoutPanel, it reflows the other controls.
-            this.lblNumCu.AutoSize = true;
             this.lblNumCu.Font = new System.Drawing.Font("Tahoma", 12F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.lblNumCu.ForeColor = System.Drawing.Color.Black;
             this.lblNumCu.Location = new System.Drawing.Point(6, 0);
             this.lblNumCu.Margin = new System.Windows.Forms.Padding(0);
-            this.lblNumCu.MinimumSize = new System.Drawing.Size(58, 26);
             this.lblNumCu.Name = "lblNumCu";
             this.lblNumCu.Size = new System.Drawing.Size(58, 26);
             this.lblNumCu.TabIndex = 542;

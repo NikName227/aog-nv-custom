@@ -2730,6 +2730,13 @@ namespace AgOpenGPS
 
             if (trk.gArr[trk.idx].nudgeDistance != 0)
                 offs = ((int)(trk.gArr[trk.idx].nudgeDistance * m2InchOrCm)).ToString() + unitsInCmNS;
+            //F50 2026-08-16: orchard derived passes don't use nudgeDistance any more (manual
+            //offset is baked into the track geometry on rebuild instead) - same readout spot,
+            //reading from the manual offset store. TestBench markup 2026-08-16 07:26.
+            else if (trk.gArr[trk.idx].isOrchardDerived
+                && orchOffsets.TryGetValue(trk.gArr[trk.idx].name, out double manualOff)
+                && Math.Abs(manualOff) > 0.001)
+                offs = (manualOff > 0 ? "+" : "") + ((int)(manualOff * m2InchOrCm)).ToString() + unitsInCmNS;
 
             string dire;
 

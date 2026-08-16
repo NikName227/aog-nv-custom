@@ -96,20 +96,8 @@ namespace AgOpenGPS
             }
         }
 
-        /// <summary>"1/2" for the counter label - the orchard as a single line. F50 2026-08-16:
-        /// with a manual clearance offset set on the active hug pass, appends it (e.g. "1/2 +5cm")
-        /// so the driver can see it without opening anything.</summary>
-        public string DisplayCounterText
-        {
-            get
-            {
-                string s = DisplayIndex + "/" + DisplayCount;
-                if (idx > -1 && idx < gArr.Count && gArr[idx].orchardRowSide != TrackSide.None
-                    && mf.orchOffsets.TryGetValue(gArr[idx].name, out double off) && Math.Abs(off) > 0.001)
-                    s += " " + (off > 0 ? "+" : "") + (off * 100).ToString("N0") + "cm";
-                return s;
-            }
-        }
+        /// <summary>"1/2" for the counter label - the orchard as a single line.</summary>
+        public string DisplayCounterText => DisplayIndex + "/" + DisplayCount;
 
         /// <summary>Does this field have a derived orchard path at all?</summary>
         public bool HasOrchardDerived
