@@ -553,6 +553,11 @@ namespace AgOpenGPS
             t.nudgeDistance = newValue * t.orchardClearanceSign;
             yt.RebuildAfterNudge();
 
+            //F50 2026-08-16 fix: without this the HUD counter label (which now shows the offset,
+            //CTrack.DisplayCounterText) does not refresh - it is only redrawn from other UI
+            //events, not on every fix, so a click here left the old text on screen.
+            PanelUpdateRightAndBottom();
+
             if (currentFieldDirectory.Length > 0)
                 COrchard.SaveOffsets(Path.Combine(RegistrySettings.fieldsDirectory, currentFieldDirectory), orchOffsets);
         }
