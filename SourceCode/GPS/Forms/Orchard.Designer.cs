@@ -484,45 +484,13 @@ namespace AgOpenGPS
         }
 
         /// <summary>
-        /// Cumulative along-track distance (m) from the REAL start of a hug pass - before
-        /// COrchard.ExtendEnds's straight guidance tail - to the point of t.curvePts nearest the
-        /// pivot. This is the same coordinate the manual offset profile's breakpoints are stored
-        /// in (COrchard.BuildRowPassTracks applies the profile before extending the ends).
-        /// </summary>
-        private double OrchardAlongTrackDistance(CTrk t)
-        {
-            var pts = t.curvePts;
-            if (pts.Count < 2) return 0;
-
-            int nearest = 0;
-            double best = double.MaxValue;
-            for (int i = 0; i < pts.Count; i++)
-            {
-                double de = pts[i].easting - pivotAxlePos.easting;
-                double dn = pts[i].northing - pivotAxlePos.northing;
-                double d = de * de + dn * dn;
-                if (d < best) { best = d; nearest = i; }
-            }
-
-            double along = 0;
-            for (int i = 1; i <= nearest; i++)
-            {
-                double de = pts[i].easting - pts[i - 1].easting;
-                double dn = pts[i].northing - pts[i - 1].northing;
-                along += Math.Sqrt(de * de + dn * dn);
-            }
-            return along - t.orchardFrontExtension;
-        }
-
-        /// <summary>
-        /// NV custom F50 (2026-08-16): HUD minus/plus for the row offset feature - add a signed
-        /// clearance step to the active orchard pass's manual offset profile at the vehicle's
-        /// current position, rebuild the derived tracks so the new (variable) profile is baked
-        /// into the actual geometry, and persist it. "step" is already signed in clearance terms
-        /// (+ = further from the row this pass hugs) - the HUD button handlers work out that sign
-        /// from which physical button was pressed and which side the tool is mounted on.
-        /// No-op for passes with no row of their own (TrackSide.None: on-row/planting mode, or a
-        /// multi-pass middle track) - "nemamo od cega odmaknuti".
+        /// NV custom F50 (2026-08-16): HUD minus/plus for the row offset feature - one constant
+        /// clearance value per pass (simplified from an earlier along-track profile: too much
+        /// machinery for what the field actually wanted - "just something to nudge off with").
+        /// "step" is already signed in clearance terms (+ = further from the row this pass hugs) -
+        /// the HUD button handlers work out that sign from which physical button was pressed and
+        /// which side the tool is mounted on. No-op for passes with no row of their own
+        /// (TrackSide.None: on-row/planting mode, or a multi-pass middle track).
         /// </summary>
         public void OrchardApplyOffsetStep(double step)
         {
@@ -530,29 +498,9 @@ namespace AgOpenGPS
             CTrk t = trk.gArr[trk.idx];
             if (t.orchardRowSide == TrackSide.None) return;
 
-            double along = Math.Max(0, OrchardAlongTrackDistance(t));
+            orchOffsets.TryGetValue(t.name, out double current);
+            orchOffsets[t.name] = current + step;
 
-            if (!orchOffsets.TryGetValue(t.name, out List<COrchard.OrchOffsetPoint> profile))
-            {
-                profile = new List<COrchard.OrchOffsetPoint>();
-                orchOffsets[t.name] = profile;
-            }
-
-            double newValue = COrchard.CurrentOffset(profile, along) + step;
-
-            //update the nearest existing breakpoint instead of piling up near-duplicates when
-            //the driver taps the button repeatedly at roughly the same spot
-            int existing = -1;
-            for (int i = 0; i < profile.Count; i++)
-                if (Math.Abs(profile[i].dist - along) < 0.5) { existing = i; break; }
-            if (existing >= 0) profile[existing] = new COrchard.OrchOffsetPoint(along, newValue);
-            else profile.Add(new COrchard.OrchOffsetPoint(along, newValue));
-
-            //F50 2026-08-16 fix: a full rebuild, not a flat nudgeDistance shift. nudgeDistance can
-            //only move the WHOLE line by one constant - it looked right for a moment right after
-            //the click, but then the SAME constant (the latest step) applied to the entire pass
-            //the next time through it, wiping out the variation the profile is supposed to have
-            //(0 at the start, +10 further on, say - not +10 for the whole row).
             OrchardRebuildTracks("orchard offset step");
             PanelUpdateRightAndBottom();
 
@@ -562,10 +510,7 @@ namespace AgOpenGPS
 
         /// <summary>
         /// NV custom F50 (2026-08-16): long-press (5s) on btnSnapToPivot in orchard mode - clears
-        /// the WHOLE manual offset profile of the active pass (every breakpoint along the row, not
-        /// just from the current position on), unlike the minus button which only walks the value
-        /// at the current spot back down. For fixing a row entirely, e.g. after deciding a tree
-        /// recording error correction was wrong for the whole row.
+        /// the active pass's manual offset back to 0.
         /// </summary>
         public void OrchardResetActiveRowOffset()
         {
@@ -573,18 +518,13 @@ namespace AgOpenGPS
             CTrk t = trk.gArr[trk.idx];
             if (t.orchardRowSide == TrackSide.None) return;
 
-            bool hadAny = orchOffsets.TryGetValue(t.name, out List<COrchard.OrchOffsetPoint> profile)
-                && profile.Count > 0;
-            if (hadAny) profile.Clear();
+            if (!orchOffsets.Remove(t.name)) return;
 
-            if (hadAny)
-            {
-                OrchardRebuildTracks("orchard offset reset");
-                PanelUpdateRightAndBottom();
-                Log.EventWriter("Orchard offset reset (long press): " + t.name);
-                if (currentFieldDirectory.Length > 0)
-                    COrchard.SaveOffsets(Path.Combine(RegistrySettings.fieldsDirectory, currentFieldDirectory), orchOffsets);
-            }
+            OrchardRebuildTracks("orchard offset reset");
+            PanelUpdateRightAndBottom();
+            Log.EventWriter("Orchard offset reset (long press): " + t.name);
+            if (currentFieldDirectory.Length > 0)
+                COrchard.SaveOffsets(Path.Combine(RegistrySettings.fieldsDirectory, currentFieldDirectory), orchOffsets);
         }
 
         /// <summary>

@@ -105,12 +105,8 @@ namespace AgOpenGPS
             {
                 string s = DisplayIndex + "/" + DisplayCount;
                 if (idx > -1 && idx < gArr.Count && gArr[idx].orchardRowSide != TrackSide.None
-                    && mf.orchOffsets.TryGetValue(gArr[idx].name, out List<COrchard.OrchOffsetPoint> profile))
-                {
-                    double off = COrchard.CurrentOffset(profile, double.MaxValue);
-                    if (Math.Abs(off) > 0.001)
-                        s += " " + (off > 0 ? "+" : "") + (off * 100).ToString("N0") + "cm";
-                }
+                    && mf.orchOffsets.TryGetValue(gArr[idx].name, out double off) && Math.Abs(off) > 0.001)
+                    s += " " + (off > 0 ? "+" : "") + (off * 100).ToString("N0") + "cm";
                 return s;
             }
         }
@@ -464,25 +460,6 @@ namespace AgOpenGPS
         public TrackSide orchardRowSide;
 
         /// <summary>
-        /// NV custom F50 (2026-08-16): which lateral direction, in this track's OWN OffsetCurve
-        /// convention (Math.Sin(heading + PIBy2) = right of heading), corresponds to MORE
-        /// clearance from the row this pass hugs (signAB for the pass hugging row a, signBA for
-        /// the one hugging row b - see COrchard.BuildRowPassTracks). 0 for orchardRowSide == None
-        /// (no row to be closer to or further from). Lets the manual offset HUD turn a "+clearance"
-        /// step into the correct geometric direction without recomputing signAB/signBA.
-        /// </summary>
-        public double orchardClearanceSign;
-
-        /// <summary>
-        /// NV custom F50 (2026-08-16): length of the straight guidance tail COrchard.ExtendEnds
-        /// prepended to curvePts, in metres. The manual offset profile's breakpoints are measured
-        /// from the real start of the row (before that tail), so the HUD subtracts this back out
-        /// when it converts "distance along curvePts to the nearest point" into a breakpoint
-        /// position.
-        /// </summary>
-        public double orchardFrontExtension;
-
-        /// <summary>
         /// NV custom F50: this track was DERIVED from the orchard rows + the implement
         /// settings, not made by the user. Derived tracks are rebuilt on every change and
         /// are never written to TrackLines.txt, so they cannot pile up (SIM 0729 t5).
@@ -517,8 +494,6 @@ namespace AgOpenGPS
             nudgeDistance = _trk.nudgeDistance;
             isOrchardDerived = _trk.isOrchardDerived;
             orchardRowSide = _trk.orchardRowSide;
-            orchardClearanceSign = _trk.orchardClearanceSign;
-            orchardFrontExtension = _trk.orchardFrontExtension;
         }
     }
 }

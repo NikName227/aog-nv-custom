@@ -283,7 +283,7 @@ namespace AgOpenGPS
         /// NV custom F50 (2026-08-16) - manual per-pass clearance offset profile (RowOffsets.txt),
         /// keyed by derived track name. See OrchardApplyOffsetStep / COrchard.ApplyOffsetProfile.
         /// </summary>
-        public readonly Dictionary<string, List<COrchard.OrchOffsetPoint>> orchOffsets = new Dictionary<string, List<COrchard.OrchOffsetPoint>>();
+        public readonly Dictionary<string, double> orchOffsets = new Dictionary<string, double>();
 
         /// <summary>
         /// NV custom F50 (2026-08-11) - records an orchard row from the painted sections while

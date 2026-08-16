@@ -617,7 +617,7 @@ namespace AgOpenGPS
         public static List<CTrk> BuildTracks(List<OrchRow> rows, int pathMode, double toolWidth,
             double treeWidth, bool centerFirst, int passCount,
             out List<string> warnings, List<List<vec2>> bounds = null,
-            Dictionary<string, List<OrchOffsetPoint>> offsets = null)
+            Dictionary<string, double> offsets = null)
         {
             if (pathMode == PathOnRow)
                 return BuildOnRowTracks(rows, toolWidth, out warnings);
@@ -782,7 +782,7 @@ namespace AgOpenGPS
         // modes), so anything below 3 is treated as 0 here.
         public static List<CTrk> BuildRowPassTracks(List<OrchRow> rows, double toolWidth,
             double treeWidth, bool multiPass, bool middleFirst, int passCount,
-            out List<string> warnings, Dictionary<string, List<OrchOffsetPoint>> offsets = null)
+            out List<string> warnings, Dictionary<string, double> offsets = null)
         {
             warnings = new List<string>();
             var result = new List<CTrk>();
@@ -885,22 +885,27 @@ namespace AgOpenGPS
                     //its own to be "closer to" or "further from". clearanceSign is signAB/signBA,
                     //the same sign the hug pass was originally offset by - "more offset in that
                     //direction" is what moved it away from its own row in the first place, so a
-                    //manual "+clearance" delta must be pushed the same way, not assumed positive.
+                    //manual "+clearance" value must be pushed the same way, not assumed positive.
+                    // Simplified 2026-08-16: one constant value for the whole pass, not a profile -
+                    // just another OffsetCurve on top of the hug offset, same as the -0.5*toolWidth
+                    // step already inside BuildHugPass.
                     double clearanceSign = k == 0 ? signAB : k == n - 1 ? signBA : 0;
                     if (clearanceSign != 0 && offsets != null
-                        && offsets.TryGetValue(passName, out List<OrchOffsetPoint> profile))
-                        ApplyOffsetProfile(line, profile, clearanceSign);
+                        && offsets.TryGetValue(passName, out double manualOffset)
+                        && Math.Abs(manualOffset) > 1e-6)
+                    {
+                        line = OffsetCurve(line, clearanceSign * manualOffset);
+                        CABCurve.CalculateHeadings(ref line);
+                    }
 
                     double head = line[line.Count / 2].heading;
                     if (head < 0) head += glm.twoPI;
 
-                    double frontExtension = ExtendEnds(line, ExtendMeters);
+                    ExtendEnds(line, ExtendMeters);
                     CABCurve.CalculateHeadings(ref line);
 
                     var t = new CTrk { mode = TrackMode.Curve, heading = head, isVisible = true };
                     t.isOrchardDerived = true;
-                    t.orchardClearanceSign = clearanceSign;
-                    t.orchardFrontExtension = frontExtension;
 
                     //which tree line this pass belongs to, as a side of ITS OWN heading:
                     //k = 0 hugs row a (row is on the -signAB side), k = n-1 hugs row b
@@ -1614,13 +1619,10 @@ namespace AgOpenGPS
             return list;
         }
 
-        /// <summary>Prepends/appends a straight guidance tail at each end. Returns the actual
-        /// length added at the front (n*step - "meters" rounds down to whole steps), so callers
-        /// that measure along-track distance from the finished curvePts can subtract it back out
-        /// to get distance from the real (pre-extension) start of the line.</summary>
-        public static double ExtendEnds(List<vec3> des, double meters)
+        /// <summary>Prepends/appends a straight guidance tail at each end.</summary>
+        public static void ExtendEnds(List<vec3> des, double meters)
         {
-            if (des.Count < 2) return 0;
+            if (des.Count < 2) return;
             const double step = 1.6;
             int n = Math.Max(1, (int)(meters / step));
 
@@ -1643,7 +1645,6 @@ namespace AgOpenGPS
 
             des.InsertRange(0, front);
             des.AddRange(back);
-            return n * step;
         }
 
         // ── KML import (reuse the FormFieldKML coordinate pipeline) ───────
@@ -1846,14 +1847,20 @@ namespace AgOpenGPS
             return rows;
         }
 
-        // ── Manual row offset profile (F50 2026-08-16) ─────────────────────
+        // ── Manual row offset (F50 2026-08-16) ─────────────────────────────
         // A dedicated file, not a tail section of Orchard.txt: independent of row geometry,
         // written on every HUD button press (small file, cheap), and keeps SaveRows/LoadRows
         // signatures - already called from several forms - untouched.
-        /// <summary>Manual offset profile, kept beside the field.</summary>
+        //
+        // Simplified 2026-08-16 (korisnik): one constant clearance value per pass, not a profile
+        // varying along the row - a per-point/breakpoint version existed briefly but was more
+        // trouble than the field wanted (needed an along-track position, a ramp, then a full
+        // rebuild on every click to apply correctly instead of a cheap runtime nudge). This is
+        // just "a bit more clearance on this whole pass if the recorded row needs it".
+        /// <summary>Manual clearance offset, kept beside the field.</summary>
         public const string OffsetsFile = "RowOffsets.txt";
 
-        public static void SaveOffsets(string fieldDir, Dictionary<string, List<OrchOffsetPoint>> offsets)
+        public static void SaveOffsets(string fieldDir, Dictionary<string, double> offsets)
         {
             if (string.IsNullOrEmpty(fieldDir) || offsets == null) return;
             string path = Path.Combine(fieldDir, OffsetsFile);
@@ -1864,18 +1871,15 @@ namespace AgOpenGPS
                 w.WriteLine(keys.Count.ToString(CultureInfo.InvariantCulture));
                 foreach (string name in keys)
                 {
-                    var pts = offsets[name];
                     w.WriteLine(name);
-                    w.WriteLine(pts.Count.ToString(CultureInfo.InvariantCulture));
-                    foreach (var p in pts)
-                        w.WriteLine(p.dist.ToString(CultureInfo.InvariantCulture) + "," + p.offset.ToString(CultureInfo.InvariantCulture));
+                    w.WriteLine(offsets[name].ToString(CultureInfo.InvariantCulture));
                 }
             }
         }
 
-        public static Dictionary<string, List<OrchOffsetPoint>> LoadOffsets(string fieldDir)
+        public static Dictionary<string, double> LoadOffsets(string fieldDir)
         {
-            var result = new Dictionary<string, List<OrchOffsetPoint>>();
+            var result = new Dictionary<string, double>();
             if (string.IsNullOrEmpty(fieldDir)) return result;
             string path = Path.Combine(fieldDir, OffsetsFile);
             if (!File.Exists(path)) return result;
@@ -1886,21 +1890,12 @@ namespace AgOpenGPS
                 if (i < L.Length && L[i].StartsWith("$OrchOffsets")) i++;
                 if (i >= L.Length) return result;
                 int.TryParse(L[i++], out int trackCount);
-                for (int t = 0; t < trackCount && i < L.Length; t++)
+                for (int t = 0; t < trackCount && i + 1 < L.Length; t++)
                 {
                     string name = L[i++];
-                    if (i >= L.Length) break;
-                    int.TryParse(L[i++], out int nP);
-                    var pts = new List<OrchOffsetPoint>(nP);
-                    for (int k = 0; k < nP && i < L.Length; k++, i++)
-                    {
-                        string[] c = L[i].Split(',');
-                        if (c.Length >= 2
-                            && double.TryParse(c[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double d)
-                            && double.TryParse(c[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double off))
-                            pts.Add(new OrchOffsetPoint(d, off));
-                    }
-                    result[name] = pts;
+                    if (double.TryParse(L[i], NumberStyles.Float, CultureInfo.InvariantCulture, out double off))
+                        result[name] = off;
+                    i++;
                 }
             }
             catch (Exception ex)
@@ -1908,82 +1903,6 @@ namespace AgOpenGPS
                 Log.EventWriter("Orchard LoadOffsets: " + ex);
             }
             return result;
-        }
-
-        /// <summary>
-        /// One manual breakpoint in a pass's offset profile: from "dist" (along-track metres from
-        /// the start of that pass) onward, "offset" extra clearance applies - + = further from the
-        /// row this pass hugs (away from the tree line), - = closer. F50 2026-08-16 (korisnik): a
-        /// plain step, not ramped - the steer loop's own response and the machine's inertia round
-        /// the transition off in practice, an artificial ramp just added a place for breakpoints
-        /// spaced closer than it to interact and distort the value (see prior EffectiveOffsetAt
-        /// fix, now moot - there is nothing left to overlap).
-        /// </summary>
-        public struct OrchOffsetPoint
-        {
-            public double dist;
-            public double offset;
-            public OrchOffsetPoint(double dist, double offset) { this.dist = dist; this.offset = offset; }
-        }
-
-        /// <summary>
-        /// Apply a manual offset profile to an already-built pass line, in place. Points are
-        /// pushed sideways along their own heading's normal by the effective offset at their
-        /// along-track distance from the start of the line - a step function, constant from each
-        /// breakpoint to the next (before the first one, 0). clearanceSign is signAB/signBA from
-        /// BuildRowPassTracks: "+clearance" in the profile always means "away from the row this
-        /// pass hugs", but which literal direction that is (Math.Sin(heading+PIBy2) positive or
-        /// negative) depends on which side the pass was built on, same as the original hug offset.
-        /// </summary>
-        private static void ApplyOffsetProfile(List<vec3> line, List<OrchOffsetPoint> pts, double clearanceSign)
-        {
-            if (pts == null || pts.Count == 0 || line.Count < 2) return;
-
-            var sorted = new List<OrchOffsetPoint>(pts);
-            sorted.Sort((a, b) => a.dist.CompareTo(b.dist));
-
-            double along = 0;
-            for (int i = 0; i < line.Count; i++)
-            {
-                if (i > 0)
-                {
-                    double de = line[i].easting - line[i - 1].easting;
-                    double dn = line[i].northing - line[i - 1].northing;
-                    along += Math.Sqrt(de * de + dn * dn);
-                }
-
-                double off = EffectiveOffsetAt(sorted, along) * clearanceSign;
-                if (Math.Abs(off) < 1e-6) continue;
-
-                double h = line[i].heading;
-                line[i] = new vec3(
-                    line[i].easting + Math.Sin(h + glm.PIBy2) * off,
-                    line[i].northing + Math.Cos(h + glm.PIBy2) * off,
-                    h);
-            }
-        }
-
-        /// <summary>Current clearance value of a profile at a given along-track distance (same
-        /// step rule ApplyOffsetProfile uses) - for the HUD to read "what is it now" before
-        /// adding a step.</summary>
-        public static double CurrentOffset(List<OrchOffsetPoint> profile, double alongTrackDist)
-        {
-            if (profile == null || profile.Count == 0) return 0;
-            var sorted = new List<OrchOffsetPoint>(profile);
-            sorted.Sort((a, b) => a.dist.CompareTo(b.dist));
-            return EffectiveOffsetAt(sorted, alongTrackDist);
-        }
-
-        /// <summary>Value of the last breakpoint at or before d - 0 before the first one.</summary>
-        private static double EffectiveOffsetAt(List<OrchOffsetPoint> sorted, double d)
-        {
-            double value = 0;
-            for (int k = 0; k < sorted.Count; k++)
-            {
-                if (d < sorted[k].dist) break;
-                value = sorted[k].offset;
-            }
-            return value;
         }
     }
 }
