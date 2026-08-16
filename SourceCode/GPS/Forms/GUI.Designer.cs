@@ -903,11 +903,12 @@ namespace AgOpenGPS
                 btnAutoTrack.Visible = tracksVisible > 1 && trk.idx > -1 && !ct.isContourBtnOn;
 
                 //F50 2026-08-16: these belong to the manual AB/track workflow orchard mode
-                //bypasses (track select flyout, build-tracks-from-AB, boundary point flag) -
-                //TestBench markup 2026-08-16. Smart AB ("1.0.0") stays: still used in orchard to
-                //add hand-made lines alongside the derived ones.
+                //bypasses (track select flyout, boundary point flag) - TestBench markup
+                //2026-08-16. btnBuildTracks (Smart AB / create+activate AB lines and curves) is
+                //deliberately NOT hidden - still needed in orchard to add hand-made lines
+                //alongside the derived ones (correction: an earlier version of this hid it by
+                //mistake, breaking AB line/curve activation entirely).
                 btnTrack.Visible = !tool.isToolOrchard && !ct.isContourBtnOn;
-                btnBuildTracks.Visible = !tool.isToolOrchard;
                 btnFlag.Visible = !tool.isToolOrchard;
 
                 if (trk.idx > -1 && trk.gArr.Count > 0 && !ct.isContourBtnOn)
