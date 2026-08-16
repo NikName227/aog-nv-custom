@@ -1579,16 +1579,80 @@ namespace AgOpenGPS
 
         private void btnSnapToPivot_Click(object sender, EventArgs e)
         {
+            //F50 2026-08-16: a long press (see MouseDown/MouseUp below) already handled this
+            //click as an orchard row-offset reset - skip the short-press action so it does not
+            //ALSO fire right after.
+            if (orchardResetHoldFired) { orchardResetHoldFired = false; return; }
+
+            if (tool.isToolOrchard)
+            {
+                //short press in orchard mode: force an immediate re-check of the nearest pass,
+                //bypassing OrchardSwitchHysteresis - the fixed orchard geometry sometimes does
+                //not trigger the expected line on its own (driver not far enough into the turn
+                //yet) and waiting for the hysteresis to give way is the complaint this answers.
+                OrchardPickNearestPass(true);
+                return;
+            }
             trk.SnapToPivot();
+        }
+
+        /// <summary>
+        /// NV custom F50 (2026-08-16): btnSnapToPivot repurposed in orchard mode - short press
+        /// forces the nearest-pass re-check above, long press (5s) resets the whole active row's
+        /// manual offset (TestBench markup 2026-08-16 05:55, marker 1). A plain Button.Click
+        /// cannot tell a tap from a hold, so this times the press with a one-shot Timer; both are
+        /// untouched outside orchard mode (stock SnapToPivot Click handler above).
+        /// </summary>
+        private System.Windows.Forms.Timer orchardResetHoldTimer;
+        private bool orchardResetHoldFired;
+
+        private void btnSnapToPivot_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (!tool.isToolOrchard) return;
+
+            orchardResetHoldFired = false;
+            if (orchardResetHoldTimer == null)
+            {
+                orchardResetHoldTimer = new System.Windows.Forms.Timer { Interval = 5000 };
+                orchardResetHoldTimer.Tick += (s, ev) =>
+                {
+                    orchardResetHoldTimer.Stop();
+                    orchardResetHoldFired = true;
+                    OrchardResetActiveRowOffset();
+                };
+            }
+            orchardResetHoldTimer.Start();
+        }
+
+        private void btnSnapToPivot_MouseUp(object sender, MouseEventArgs e)
+        {
+            orchardResetHoldTimer?.Stop();
         }
 
         private void btnAdjRight_Click(object sender, EventArgs e)
         {
+            //F50 2026-08-16: in orchard mode these two buttons are repurposed as the manual row
+            //offset HUD (TestBench markup 2026-08-16) instead of the stock track nudge (blocked
+            //for orchard tracks anyway, CTrack.IsFixedTrack). "+clearance" always means away from
+            //the tree line the active pass hugs - which PHYSICAL button that is depends on which
+            //side the tool is mounted: tool right -> left button moves away, tool left -> mirrored.
+            if (tool.isToolOrchard)
+            {
+                double inc = Properties.ToolSettings.Default.setAS_snapDistance * 0.01;
+                OrchardApplyOffsetStep(tool.offset < 0 ? inc : -inc);
+                return;
+            }
             trk.NudgeTrack(Properties.ToolSettings.Default.setAS_snapDistance * 0.01);
         }
 
         private void btnAdjLeft_Click(object sender, EventArgs e)
         {
+            if (tool.isToolOrchard)
+            {
+                double inc = Properties.ToolSettings.Default.setAS_snapDistance * 0.01;
+                OrchardApplyOffsetStep(tool.offset < 0 ? -inc : inc);
+                return;
+            }
             trk.NudgeTrack(-Properties.ToolSettings.Default.setAS_snapDistance * 0.01);
         }
 

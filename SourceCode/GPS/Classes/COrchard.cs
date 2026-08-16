@@ -616,7 +616,8 @@ namespace AgOpenGPS
         // get their pass too; without a boundary they are simply skipped.
         public static List<CTrk> BuildTracks(List<OrchRow> rows, int pathMode, double toolWidth,
             double treeWidth, bool centerFirst, int passCount,
-            out List<string> warnings, List<List<vec2>> bounds = null)
+            out List<string> warnings, List<List<vec2>> bounds = null,
+            Dictionary<string, double> offsets = null)
         {
             if (pathMode == PathOnRow)
                 return BuildOnRowTracks(rows, toolWidth, out warnings);
@@ -626,7 +627,7 @@ namespace AgOpenGPS
             if (pathMode == PathTwoPass || pathMode == PathMultiPass)
             {
                 var along = BuildRowPassTracks(rows, toolWidth, treeWidth,
-                    pathMode == PathMultiPass, centerFirst, passCount, out warnings);
+                    pathMode == PathMultiPass, centerFirst, passCount, out warnings, offsets);
                 //the outer rows get their one strip along the boundary side as well
                 AddOuterStripPasses(rows, bounds, toolWidth, treeWidth, true, along, warnings);
                 return along;
@@ -781,7 +782,7 @@ namespace AgOpenGPS
         // modes), so anything below 3 is treated as 0 here.
         public static List<CTrk> BuildRowPassTracks(List<OrchRow> rows, double toolWidth,
             double treeWidth, bool multiPass, bool middleFirst, int passCount,
-            out List<string> warnings)
+            out List<string> warnings, Dictionary<string, double> offsets = null)
         {
             warnings = new List<string>();
             var result = new List<CTrk>();
@@ -877,6 +878,26 @@ namespace AgOpenGPS
                         if (line == null) continue;
                     }
 
+                    string passName = DerivedPrefix + interName + " p" + passNo;
+
+                    //F50 2026-08-16: manual clearance offset only applies to a pass that hugs a
+                    //specific row (k = 0 or n-1) - a middle multi-pass track has no tree line of
+                    //its own to be "closer to" or "further from". clearanceSign is signAB/signBA,
+                    //the same sign the hug pass was originally offset by - "more offset in that
+                    //direction" is what moved it away from its own row in the first place, so a
+                    //manual "+clearance" value must be pushed the same way, not assumed positive.
+                    // Simplified 2026-08-16: one constant value for the whole pass, not a profile -
+                    // just another OffsetCurve on top of the hug offset, same as the -0.5*toolWidth
+                    // step already inside BuildHugPass.
+                    double clearanceSign = k == 0 ? signAB : k == n - 1 ? signBA : 0;
+                    if (clearanceSign != 0 && offsets != null
+                        && offsets.TryGetValue(passName, out double manualOffset)
+                        && Math.Abs(manualOffset) > 1e-6)
+                    {
+                        line = OffsetCurve(line, clearanceSign * manualOffset);
+                        CABCurve.CalculateHeadings(ref line);
+                    }
+
                     double head = line[line.Count / 2].heading;
                     if (head < 0) head += glm.twoPI;
 
@@ -894,7 +915,7 @@ namespace AgOpenGPS
 
                     t.ptA = new vec2(line[0].easting, line[0].northing);
                     t.ptB = new vec2(line[line.Count - 1].easting, line[line.Count - 1].northing);
-                    t.name = DerivedPrefix + interName + " p" + passNo;
+                    t.name = passName;
                     foreach (vec3 p in line) t.curvePts.Add(p);
                     result.Add(t);
                 }
@@ -1598,6 +1619,7 @@ namespace AgOpenGPS
             return list;
         }
 
+        /// <summary>Prepends/appends a straight guidance tail at each end.</summary>
         public static void ExtendEnds(List<vec3> des, double meters)
         {
             if (des.Count < 2) return;
@@ -1823,6 +1845,64 @@ namespace AgOpenGPS
                 Log.EventWriter("Orchard LoadRows: " + ex);
             }
             return rows;
+        }
+
+        // ── Manual row offset (F50 2026-08-16) ─────────────────────────────
+        // A dedicated file, not a tail section of Orchard.txt: independent of row geometry,
+        // written on every HUD button press (small file, cheap), and keeps SaveRows/LoadRows
+        // signatures - already called from several forms - untouched.
+        //
+        // Simplified 2026-08-16 (korisnik): one constant clearance value per pass, not a profile
+        // varying along the row - a per-point/breakpoint version existed briefly but was more
+        // trouble than the field wanted (needed an along-track position, a ramp, then a full
+        // rebuild on every click to apply correctly instead of a cheap runtime nudge). This is
+        // just "a bit more clearance on this whole pass if the recorded row needs it".
+        /// <summary>Manual clearance offset, kept beside the field.</summary>
+        public const string OffsetsFile = "RowOffsets.txt";
+
+        public static void SaveOffsets(string fieldDir, Dictionary<string, double> offsets)
+        {
+            if (string.IsNullOrEmpty(fieldDir) || offsets == null) return;
+            string path = Path.Combine(fieldDir, OffsetsFile);
+            using (var w = new StreamWriter(path, false))
+            {
+                w.WriteLine("$OrchOffsets");
+                var keys = new List<string>(offsets.Keys);
+                w.WriteLine(keys.Count.ToString(CultureInfo.InvariantCulture));
+                foreach (string name in keys)
+                {
+                    w.WriteLine(name);
+                    w.WriteLine(offsets[name].ToString(CultureInfo.InvariantCulture));
+                }
+            }
+        }
+
+        public static Dictionary<string, double> LoadOffsets(string fieldDir)
+        {
+            var result = new Dictionary<string, double>();
+            if (string.IsNullOrEmpty(fieldDir)) return result;
+            string path = Path.Combine(fieldDir, OffsetsFile);
+            if (!File.Exists(path)) return result;
+            try
+            {
+                string[] L = File.ReadAllLines(path);
+                int i = 0;
+                if (i < L.Length && L[i].StartsWith("$OrchOffsets")) i++;
+                if (i >= L.Length) return result;
+                int.TryParse(L[i++], out int trackCount);
+                for (int t = 0; t < trackCount && i + 1 < L.Length; t++)
+                {
+                    string name = L[i++];
+                    if (double.TryParse(L[i], NumberStyles.Float, CultureInfo.InvariantCulture, out double off))
+                        result[name] = off;
+                    i++;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.EventWriter("Orchard LoadOffsets: " + ex);
+            }
+            return result;
         }
     }
 }

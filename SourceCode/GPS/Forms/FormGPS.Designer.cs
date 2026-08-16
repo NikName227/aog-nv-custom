@@ -2269,6 +2269,8 @@ namespace AgOpenGPS
             this.btnSnapToPivot.TextAlign = System.Drawing.ContentAlignment.BottomCenter;
             this.btnSnapToPivot.UseVisualStyleBackColor = false;
             this.btnSnapToPivot.Click += new System.EventHandler(this.btnSnapToPivot_Click);
+            this.btnSnapToPivot.MouseDown += new System.Windows.Forms.MouseEventHandler(this.btnSnapToPivot_MouseDown);
+            this.btnSnapToPivot.MouseUp += new System.Windows.Forms.MouseEventHandler(this.btnSnapToPivot_MouseUp);
             // 
             // btnAdjRight
             // 

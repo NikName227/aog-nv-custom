@@ -29,6 +29,13 @@ namespace AgOpenGPS
             try { orchRows.AddRange(COrchard.LoadRows(fieldDir)); }
             catch (Exception ex) { Log.EventWriter("Orchard LoadRows: " + ex); }
 
+            orchOffsets.Clear();
+            try
+            {
+                foreach (var kv in COrchard.LoadOffsets(fieldDir)) orchOffsets[kv.Key] = kv.Value;
+            }
+            catch (Exception ex) { Log.EventWriter("Orchard LoadOffsets: " + ex); }
+
             //t10 G: a field with orchard rows opens in orchard mode - the driver should not have
             //to pick anything to get the passes that belong to this orchard
             trk.isOrchardAuto = orchRows.Count > 0;
@@ -477,6 +484,50 @@ namespace AgOpenGPS
         }
 
         /// <summary>
+        /// NV custom F50 (2026-08-16): HUD minus/plus for the row offset feature - one constant
+        /// clearance value per pass (simplified from an earlier along-track profile: too much
+        /// machinery for what the field actually wanted - "just something to nudge off with").
+        /// "step" is already signed in clearance terms (+ = further from the row this pass hugs) -
+        /// the HUD button handlers work out that sign from which physical button was pressed and
+        /// which side the tool is mounted on. No-op for passes with no row of their own
+        /// (TrackSide.None: on-row/planting mode, or a multi-pass middle track).
+        /// </summary>
+        public void OrchardApplyOffsetStep(double step)
+        {
+            if (!trk.IsActiveOrchardPass) return;
+            CTrk t = trk.gArr[trk.idx];
+            if (t.orchardRowSide == TrackSide.None) return;
+
+            orchOffsets.TryGetValue(t.name, out double current);
+            orchOffsets[t.name] = current + step;
+
+            OrchardRebuildTracks("orchard offset step");
+            PanelUpdateRightAndBottom();
+
+            if (currentFieldDirectory.Length > 0)
+                COrchard.SaveOffsets(Path.Combine(RegistrySettings.fieldsDirectory, currentFieldDirectory), orchOffsets);
+        }
+
+        /// <summary>
+        /// NV custom F50 (2026-08-16): long-press (5s) on btnSnapToPivot in orchard mode - clears
+        /// the active pass's manual offset back to 0.
+        /// </summary>
+        public void OrchardResetActiveRowOffset()
+        {
+            if (!trk.IsActiveOrchardPass) return;
+            CTrk t = trk.gArr[trk.idx];
+            if (t.orchardRowSide == TrackSide.None) return;
+
+            if (!orchOffsets.Remove(t.name)) return;
+
+            OrchardRebuildTracks("orchard offset reset");
+            PanelUpdateRightAndBottom();
+            Log.EventWriter("Orchard offset reset (long press): " + t.name);
+            if (currentFieldDirectory.Length > 0)
+                COrchard.SaveOffsets(Path.Combine(RegistrySettings.fieldsDirectory, currentFieldDirectory), orchOffsets);
+        }
+
+        /// <summary>
         /// Make the derived pass nearest to the vehicle the active one (t10 B). This is how the
         /// next inter-row is reached in orchard mode - the pass itself is a fixed single line,
         /// so driving sideways selects the next line instead of stepping this one over.
@@ -561,7 +612,7 @@ namespace AgOpenGPS
                     made = COrchard.BuildTracks(orchRows, pathMode, toolW,
                         ts.setTool_orchardTreeWidth, ts.setTool_orchardCenterFirst,
                         ts.setTool_orchardPassCount, out List<string> warns,
-                        OrchardFieldBounds());
+                        OrchardFieldBounds(), orchOffsets);
 
                     if (warns.Count > 0)
                         Log.EventWriter("Orchard path (" + why + "): " + warns.Count
