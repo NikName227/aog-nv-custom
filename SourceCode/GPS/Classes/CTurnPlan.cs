@@ -812,11 +812,15 @@ namespace AgOpenGPS
             for (int step = 1; step < m; step++)
             {
                 //candidates that leave room for a U, nearest first
+                //EARLIEST still-to-do pass that is far enough, not the nearest one: the point
+                //is to close the worked block up as soon as the spacing allows, instead of
+                //running to the far end and wandering back (user, 2026-08-16). For 10 rows at a
+                //3-row minimum that is 1,4,7,2,5,8,3,6,9,10 - after seven passes the field is
+                //covered in one piece up to row 5, where "nearest" was still at row 1.
                 var fits = new List<int>();
                 for (int k = 0; k < m; k++)
                     if (!used[k] && gap[cur, k] >= span) fits.Add(k);
-                fits.Sort((x, y) => gap[cur, x] != gap[cur, y]
-                    ? gap[cur, x].CompareTo(gap[cur, y]) : x.CompareTo(y));
+                fits.Sort();
 
                 int next = -1;
                 if (fits.Count == 0)
@@ -860,6 +864,10 @@ namespace AgOpenGPS
         public void GenerateOrchard(List<CTrk> passes, List<int> zones)
         {
             builtWidth = WorkWidth();
+            //no zones in an orchard - the entry's zone is the inter-row number and it only
+            //colours the passes. Left at the field default of 2 the count showed up in the
+            //texts as if the orchard had zones.
+            zoneCount = 1;
             entries.Clear();
             runEntry = null;
             runDistance = 0;
