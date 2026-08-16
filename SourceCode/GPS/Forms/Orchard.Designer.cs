@@ -29,6 +29,13 @@ namespace AgOpenGPS
             try { orchRows.AddRange(COrchard.LoadRows(fieldDir)); }
             catch (Exception ex) { Log.EventWriter("Orchard LoadRows: " + ex); }
 
+            orchOffsets.Clear();
+            try
+            {
+                foreach (var kv in COrchard.LoadOffsets(fieldDir)) orchOffsets[kv.Key] = kv.Value;
+            }
+            catch (Exception ex) { Log.EventWriter("Orchard LoadOffsets: " + ex); }
+
             //t10 G: a field with orchard rows opens in orchard mode - the driver should not have
             //to pick anything to get the passes that belong to this orchard
             trk.isOrchardAuto = orchRows.Count > 0;
@@ -477,6 +484,80 @@ namespace AgOpenGPS
         }
 
         /// <summary>
+        /// Cumulative along-track distance (m) from the REAL start of a hug pass - before
+        /// COrchard.ExtendEnds's straight guidance tail - to the point of t.curvePts nearest the
+        /// pivot. This is the same coordinate the manual offset profile's breakpoints are stored
+        /// in (COrchard.BuildRowPassTracks applies the profile before extending the ends).
+        /// </summary>
+        private double OrchardAlongTrackDistance(CTrk t)
+        {
+            var pts = t.curvePts;
+            if (pts.Count < 2) return 0;
+
+            int nearest = 0;
+            double best = double.MaxValue;
+            for (int i = 0; i < pts.Count; i++)
+            {
+                double de = pts[i].easting - pivotAxlePos.easting;
+                double dn = pts[i].northing - pivotAxlePos.northing;
+                double d = de * de + dn * dn;
+                if (d < best) { best = d; nearest = i; }
+            }
+
+            double along = 0;
+            for (int i = 1; i <= nearest; i++)
+            {
+                double de = pts[i].easting - pts[i - 1].easting;
+                double dn = pts[i].northing - pts[i - 1].northing;
+                along += Math.Sqrt(de * de + dn * dn);
+            }
+            return along - t.orchardFrontExtension;
+        }
+
+        /// <summary>
+        /// NV custom F50 (2026-08-16): HUD minus/plus for the row offset feature - add a signed
+        /// clearance step to the active orchard pass's manual offset profile at the vehicle's
+        /// current position, apply it immediately (temporary nudgeDistance, no rebuild wait) and
+        /// persist it so it survives the next rebuild. "step" is already signed in clearance terms
+        /// (+ = further from the row this pass hugs) - the HUD button handlers work out that sign
+        /// from which physical button was pressed and which side the tool is mounted on.
+        /// No-op for passes with no row of their own (TrackSide.None: on-row/planting mode, or a
+        /// multi-pass middle track) - "nemamo od cega odmaknuti".
+        /// </summary>
+        public void OrchardApplyOffsetStep(double step)
+        {
+            if (!trk.IsActiveOrchardPass) return;
+            CTrk t = trk.gArr[trk.idx];
+            if (t.orchardRowSide == TrackSide.None) return;
+
+            double along = Math.Max(0, OrchardAlongTrackDistance(t));
+
+            if (!orchOffsets.TryGetValue(t.name, out List<COrchard.OrchOffsetPoint> profile))
+            {
+                profile = new List<COrchard.OrchOffsetPoint>();
+                orchOffsets[t.name] = profile;
+            }
+
+            double newValue = COrchard.CurrentOffset(profile, along) + step;
+
+            //update the nearest existing breakpoint instead of piling up near-duplicates when
+            //the driver taps the button repeatedly at roughly the same spot
+            int existing = -1;
+            for (int i = 0; i < profile.Count; i++)
+                if (Math.Abs(profile[i].dist - along) < 0.5) { existing = i; break; }
+            if (existing >= 0) profile[existing] = new COrchard.OrchOffsetPoint(along, newValue);
+            else profile.Add(new COrchard.OrchOffsetPoint(along, newValue));
+
+            //immediate feedback for the rest of this pass, without waiting for a rebuild
+            curve.isCurveValid = false;
+            t.nudgeDistance = newValue * t.orchardClearanceSign;
+            yt.RebuildAfterNudge();
+
+            if (currentFieldDirectory.Length > 0)
+                COrchard.SaveOffsets(Path.Combine(RegistrySettings.fieldsDirectory, currentFieldDirectory), orchOffsets);
+        }
+
+        /// <summary>
         /// Make the derived pass nearest to the vehicle the active one (t10 B). This is how the
         /// next inter-row is reached in orchard mode - the pass itself is a fixed single line,
         /// so driving sideways selects the next line instead of stepping this one over.
@@ -561,7 +642,7 @@ namespace AgOpenGPS
                     made = COrchard.BuildTracks(orchRows, pathMode, toolW,
                         ts.setTool_orchardTreeWidth, ts.setTool_orchardCenterFirst,
                         ts.setTool_orchardPassCount, out List<string> warns,
-                        OrchardFieldBounds());
+                        OrchardFieldBounds(), orchOffsets);
 
                     if (warns.Count > 0)
                         Log.EventWriter("Orchard path (" + why + "): " + warns.Count

@@ -882,19 +882,25 @@ namespace AgOpenGPS
 
                     //F50 2026-08-16: manual clearance offset only applies to a pass that hugs a
                     //specific row (k = 0 or n-1) - a middle multi-pass track has no tree line of
-                    //its own to be "closer to" or "further from".
-                    if ((k == 0 || k == n - 1) && offsets != null
+                    //its own to be "closer to" or "further from". clearanceSign is signAB/signBA,
+                    //the same sign the hug pass was originally offset by - "more offset in that
+                    //direction" is what moved it away from its own row in the first place, so a
+                    //manual "+clearance" delta must be pushed the same way, not assumed positive.
+                    double clearanceSign = k == 0 ? signAB : k == n - 1 ? signBA : 0;
+                    if (clearanceSign != 0 && offsets != null
                         && offsets.TryGetValue(passName, out List<OrchOffsetPoint> profile))
-                        ApplyOffsetProfile(line, profile);
+                        ApplyOffsetProfile(line, profile, clearanceSign);
 
                     double head = line[line.Count / 2].heading;
                     if (head < 0) head += glm.twoPI;
 
-                    ExtendEnds(line, ExtendMeters);
+                    double frontExtension = ExtendEnds(line, ExtendMeters);
                     CABCurve.CalculateHeadings(ref line);
 
                     var t = new CTrk { mode = TrackMode.Curve, heading = head, isVisible = true };
                     t.isOrchardDerived = true;
+                    t.orchardClearanceSign = clearanceSign;
+                    t.orchardFrontExtension = frontExtension;
 
                     //which tree line this pass belongs to, as a side of ITS OWN heading:
                     //k = 0 hugs row a (row is on the -signAB side), k = n-1 hugs row b
@@ -1608,9 +1614,13 @@ namespace AgOpenGPS
             return list;
         }
 
-        public static void ExtendEnds(List<vec3> des, double meters)
+        /// <summary>Prepends/appends a straight guidance tail at each end. Returns the actual
+        /// length added at the front (n*step - "meters" rounds down to whole steps), so callers
+        /// that measure along-track distance from the finished curvePts can subtract it back out
+        /// to get distance from the real (pre-extension) start of the line.</summary>
+        public static double ExtendEnds(List<vec3> des, double meters)
         {
-            if (des.Count < 2) return;
+            if (des.Count < 2) return 0;
             const double step = 1.6;
             int n = Math.Max(1, (int)(meters / step));
 
@@ -1633,6 +1643,7 @@ namespace AgOpenGPS
 
             des.InsertRange(0, front);
             des.AddRange(back);
+            return n * step;
         }
 
         // ── KML import (reuse the FormFieldKML coordinate pipeline) ───────
@@ -1920,8 +1931,12 @@ namespace AgOpenGPS
         /// pushed sideways along their own heading's normal by the effective offset at their
         /// along-track distance from the start of the line - constant between breakpoints, ramped
         /// linearly over the OffsetRampMeters before each one (and into the first one, off 0).
+        /// clearanceSign is signAB/signBA from BuildRowPassTracks: "+clearance" in the profile
+        /// always means "away from the row this pass hugs", but which literal direction that is
+        /// (Math.Sin(heading+PIBy2) positive or negative) depends on which side the pass was
+        /// built on, same as the original hug offset.
         /// </summary>
-        private static void ApplyOffsetProfile(List<vec3> line, List<OrchOffsetPoint> pts)
+        private static void ApplyOffsetProfile(List<vec3> line, List<OrchOffsetPoint> pts, double clearanceSign)
         {
             if (pts == null || pts.Count == 0 || line.Count < 2) return;
 
@@ -1938,7 +1953,7 @@ namespace AgOpenGPS
                     along += Math.Sqrt(de * de + dn * dn);
                 }
 
-                double off = EffectiveOffsetAt(sorted, along);
+                double off = EffectiveOffsetAt(sorted, along) * clearanceSign;
                 if (Math.Abs(off) < 1e-6) continue;
 
                 double h = line[i].heading;
@@ -1947,6 +1962,17 @@ namespace AgOpenGPS
                     line[i].northing + Math.Cos(h + glm.PIBy2) * off,
                     h);
             }
+        }
+
+        /// <summary>Current clearance value of a profile at a given along-track distance (same
+        /// ramped piecewise rule ApplyOffsetProfile uses) - for the HUD to read "what is it now"
+        /// before adding a step.</summary>
+        public static double CurrentOffset(List<OrchOffsetPoint> profile, double alongTrackDist)
+        {
+            if (profile == null || profile.Count == 0) return 0;
+            var sorted = new List<OrchOffsetPoint>(profile);
+            sorted.Sort((a, b) => a.dist.CompareTo(b.dist));
+            return EffectiveOffsetAt(sorted, alongTrackDist);
         }
 
         private static double EffectiveOffsetAt(List<OrchOffsetPoint> sorted, double d)
