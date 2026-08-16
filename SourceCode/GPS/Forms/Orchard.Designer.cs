@@ -77,10 +77,12 @@ namespace AgOpenGPS
         /// (gap - treeWidth - toolWidth) / (n-1) - for a 4 m gap, 1 m tree band and a 1.5 m tool
         /// that is 0.75 m at three passes, well inside a metre, so the selection flipped between
         /// the middle and the side pass on the smallest movement. The passes are spaced by the
-        /// TOOL, so the hysteresis is too: half a tool width holds a pass on a narrow machine and
-        /// still lets a wide one change lines without a fight.
+        /// TOOL, so the hysteresis is too, at a fraction of the tool width.
+        /// F50 2026-08-16: 0.5 -> 0.35, field feedback that a pass held on too long swaying
+        /// inside a row; kept relative to tool width rather than a flat number for the same
+        /// reason as above.
         private double OrchardSwitchHysteresis
-            => (tool.width > 0.1 ? tool.width : 3.0) * 0.5;
+            => (tool.width > 0.1 ? tool.width : 3.0) * 0.35;
 
         /// <summary>
         /// NV custom F50 (2026-08-01): how long the steer angle is held after the RTK fix goes,
