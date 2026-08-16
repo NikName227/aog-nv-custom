@@ -83,6 +83,8 @@ namespace AgOpenGPS
             trackName = "";
             clipToHeadland = true;
             builtWidth = 0;
+            orchardStartZone = 1;
+            orchardSeqFallback = false;
             runEntry = null;
             runDistance = 0;
             isFlexPause = false;
@@ -100,6 +102,7 @@ namespace AgOpenGPS
             clipToHeadland = data.clipHeadland;
             //old files carry no width: the file was picked BY the current width, so that is it
             builtWidth = data.builtWidth > 0.01 ? data.builtWidth : WorkWidth();
+            orchardStartZone = data.startZone > 0 ? data.startZone : 1;
             entries.AddRange(data.entries);
         }
 
