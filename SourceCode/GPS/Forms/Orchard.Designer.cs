@@ -386,12 +386,14 @@ namespace AgOpenGPS
             //F50 fix 2026-08-01: the side is READ FROM THE TOOL OFFSET, it is not a setting of its
             //own any more. The orchard panel used to carry a second "working mode" combo saying the
             //same thing, and nothing kept the two in sync - offset +1.2 m with the combo on "left"
-            //drew the coverage right and allowed the passes left. A side implement always has its
-            //lateral offset set (otherwise AOG paints the coverage on the centreline), so an offset
-            //of 0 means centred - and a centred implement reaches both tree lines, no restriction.
-            //Same reading as the stock Tool Offset icons: > 0 right, < 0 left, 0 neither.
-            int side = tool.offset > 0 ? 2 : tool.offset < 0 ? 1 : 0;
-            if (side != 1 && side != 2) return true;
+            //drew the coverage right and allowed the passes left. Same reading as the stock Tool
+            //Offset icons: > 0 right, < 0 left.
+            //F50 2026-08-16: offset 0 used to mean "centred, no restriction" and let
+            //OrchardPickNearestPass choose either side of a 2-pass inter-row with no rule beyond
+            //"whichever is closer right now" - a free choice on every entry, field feedback that
+            //this was undesirable. Offset 0 now defaults to the right pass; driving the left one
+            //on a centred implement needs an explicit (even 1 cm) left offset.
+            int side = tool.offset < 0 ? 1 : 2;
 
             //driving with or against the pass heading
             var pts = t.curvePts;
