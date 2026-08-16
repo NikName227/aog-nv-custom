@@ -1913,8 +1913,11 @@ namespace AgOpenGPS
         /// <summary>
         /// One manual breakpoint in a pass's offset profile: from "dist" (along-track metres from
         /// the start of that pass) onward, "offset" extra clearance applies - + = further from the
-        /// row this pass hugs (away from the tree line), - = closer. Ramped in over the 2 m before
-        /// each breakpoint (ApplyOffsetProfile) so the transition is not a jerk in the wheel.
+        /// row this pass hugs (away from the tree line), - = closer. F50 2026-08-16 (korisnik): a
+        /// plain step, not ramped - the steer loop's own response and the machine's inertia round
+        /// the transition off in practice, an artificial ramp just added a place for breakpoints
+        /// spaced closer than it to interact and distort the value (see prior EffectiveOffsetAt
+        /// fix, now moot - there is nothing left to overlap).
         /// </summary>
         public struct OrchOffsetPoint
         {
@@ -1923,18 +1926,14 @@ namespace AgOpenGPS
             public OrchOffsetPoint(double dist, double offset) { this.dist = dist; this.offset = offset; }
         }
 
-        /// <summary>How far into a breakpoint's approach the offset ramps in, in metres.</summary>
-        public const double OffsetRampMeters = 2.0;
-
         /// <summary>
         /// Apply a manual offset profile to an already-built pass line, in place. Points are
         /// pushed sideways along their own heading's normal by the effective offset at their
-        /// along-track distance from the start of the line - constant between breakpoints, ramped
-        /// linearly over the OffsetRampMeters before each one (and into the first one, off 0).
-        /// clearanceSign is signAB/signBA from BuildRowPassTracks: "+clearance" in the profile
-        /// always means "away from the row this pass hugs", but which literal direction that is
-        /// (Math.Sin(heading+PIBy2) positive or negative) depends on which side the pass was
-        /// built on, same as the original hug offset.
+        /// along-track distance from the start of the line - a step function, constant from each
+        /// breakpoint to the next (before the first one, 0). clearanceSign is signAB/signBA from
+        /// BuildRowPassTracks: "+clearance" in the profile always means "away from the row this
+        /// pass hugs", but which literal direction that is (Math.Sin(heading+PIBy2) positive or
+        /// negative) depends on which side the pass was built on, same as the original hug offset.
         /// </summary>
         private static void ApplyOffsetProfile(List<vec3> line, List<OrchOffsetPoint> pts, double clearanceSign)
         {
@@ -1965,8 +1964,8 @@ namespace AgOpenGPS
         }
 
         /// <summary>Current clearance value of a profile at a given along-track distance (same
-        /// ramped piecewise rule ApplyOffsetProfile uses) - for the HUD to read "what is it now"
-        /// before adding a step.</summary>
+        /// step rule ApplyOffsetProfile uses) - for the HUD to read "what is it now" before
+        /// adding a step.</summary>
         public static double CurrentOffset(List<OrchOffsetPoint> profile, double alongTrackDist)
         {
             if (profile == null || profile.Count == 0) return 0;
@@ -1975,31 +1974,16 @@ namespace AgOpenGPS
             return EffectiveOffsetAt(sorted, alongTrackDist);
         }
 
+        /// <summary>Value of the last breakpoint at or before d - 0 before the first one.</summary>
         private static double EffectiveOffsetAt(List<OrchOffsetPoint> sorted, double d)
         {
-            double prevValue = 0;
-            //F50 2026-08-16 fix: the ramp into breakpoint k must never start before the PREVIOUS
-            //breakpoint's own position, or two breakpoints closer together than OffsetRampMeters
-            //(easy to get clicking the HUD buttons a few times while driving) make their ramp
-            //zones overlap backwards - the value at the earlier breakpoint gets pulled toward the
-            //later one's target before it is even reached, so a clean +5cm step reads back as some
-            //other, wrong number. Clamping rampStart to prevDist means a tight pair of breakpoints
-            //just gets a short ramp across whatever gap they actually have, never a jump.
-            double prevDist = double.NegativeInfinity;
+            double value = 0;
             for (int k = 0; k < sorted.Count; k++)
             {
-                double rampStart = Math.Max(sorted[k].dist - OffsetRampMeters, prevDist);
-                if (d < rampStart) return prevValue;
-                if (d < sorted[k].dist)
-                {
-                    double span = sorted[k].dist - rampStart;
-                    double t = span < 1e-6 ? 1.0 : (d - rampStart) / span;
-                    return prevValue + (sorted[k].offset - prevValue) * t;
-                }
-                prevValue = sorted[k].offset;
-                prevDist = sorted[k].dist;
+                if (d < sorted[k].dist) break;
+                value = sorted[k].offset;
             }
-            return prevValue;
+            return value;
         }
     }
 }
