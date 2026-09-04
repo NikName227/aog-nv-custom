@@ -27,6 +27,8 @@ namespace AgOpenGPS.IO
         public bool clipHeadland = true;
         // working width the plan was built for; 0 = the file did not say (old file)
         public double builtWidth;
+        // orchard: first inter-row the plan starts from (1 = from the beginning)
+        public int startZone = 1;
         public List<CPlanEntry> entries = new List<CPlanEntry>();
     }
 
@@ -128,6 +130,10 @@ namespace AgOpenGPS.IO
                             //working width the plan was built for. The file name carries it
                             //too, but not for the legacy single-file fallback below - and the
                             //width is what decides whether the plan still fits the machine.
+                            case "StartZone":
+                                if (int.TryParse(kv[1].Trim(), NumberStyles.Integer,
+                                    CultureInfo.InvariantCulture, out int sz)) data.startZone = sz;
+                                continue;
                             case "Width":
                                 if (double.TryParse(kv[1].Trim(), NumberStyles.Float,
                                     CultureInfo.InvariantCulture, out double bw)) data.builtWidth = bw;
@@ -197,6 +203,7 @@ namespace AgOpenGPS.IO
                 writer.WriteLine("Mode," + plan.mode.ToString(CultureInfo.InvariantCulture));
                 writer.WriteLine("ZoneCount," + plan.zoneCount.ToString(CultureInfo.InvariantCulture));
                 writer.WriteLine("Width," + workWidth.ToString("0.000", CultureInfo.InvariantCulture));
+                writer.WriteLine("StartZone," + plan.orchardStartZone.ToString(CultureInfo.InvariantCulture));
                 if (!string.IsNullOrEmpty(plan.zoneOrder))
                     writer.WriteLine("ZoneOrder," + plan.zoneOrder);
                 if (!string.IsNullOrEmpty(plan.trackName))

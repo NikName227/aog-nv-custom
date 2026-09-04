@@ -83,6 +83,8 @@ namespace AgOpenGPS
             trackName = "";
             clipToHeadland = true;
             builtWidth = 0;
+            orchardStartZone = 1;
+            orchardSeqFallback = false;
             runEntry = null;
             runDistance = 0;
             isFlexPause = false;
@@ -100,6 +102,7 @@ namespace AgOpenGPS
             clipToHeadland = data.clipHeadland;
             //old files carry no width: the file was picked BY the current width, so that is it
             builtWidth = data.builtWidth > 0.01 ? data.builtWidth : WorkWidth();
+            orchardStartZone = data.startZone > 0 ? data.startZone : 1;
             entries.AddRange(data.entries);
         }
 
@@ -708,10 +711,163 @@ namespace AgOpenGPS
         // of Follow plan - HUD, dashed next pass, skip/undo, worked >50 % + exit,
         // flex pause, resume - then works unchanged. One brain for both modes.
 
+        // ── orchard pass order: row by row, or skip for a minimum U-turn (F50) ──
+        // Row by row is what GenerateOrchard always did. Min U-turn skips passes so every
+        // turn has room for a clean U: the room a U needs comes from the turn builder itself
+        // (UTurnSpanNeeded) plus 20 % for the machine to straighten out and line up for the
+        // next pass. The unit is ONE PASS, not one inter-row - a multi-pass inter-row does
+        // not have to be finished in one go, jumping to another inter-row is allowed
+        // (decision 2026-08-14).
+        public const int ModeMinUTurn = 4;
+        public const double minTurnSafety = 1.20;
+
+        // first inter-row the plan starts from; earlier ones are left out of the plan entirely
+        public int orchardStartZone = 1;
+
+        // true when min U-turn was asked for but nothing in this orchard is far enough apart
+        public bool orchardSeqFallback;
+
+        /// <summary>
+        /// Lateral spacing between two passes, in meters: three points along one pass, each
+        /// matched to the nearest point of the other, averaged. Curved rows keep their real
+        /// spacing this way instead of an assumed constant.
+        /// </summary>
+        private static double PassSpacing(CTrk a, CTrk b)
+        {
+            if (a?.curvePts == null || b?.curvePts == null) return -1;
+            if (a.curvePts.Count < 4 || b.curvePts.Count < 2) return -1;
+
+            double sum = 0;
+            int taken = 0;
+            int[] at = { a.curvePts.Count / 4, a.curvePts.Count / 2, 3 * a.curvePts.Count / 4 };
+            foreach (int i in at)
+            {
+                double best = double.MaxValue;
+                for (int j = 0; j < b.curvePts.Count; j++)
+                {
+                    double de = b.curvePts[j].easting - a.curvePts[i].easting;
+                    double dn = b.curvePts[j].northing - a.curvePts[i].northing;
+                    double d = de * de + dn * dn;
+                    if (d < best) best = d;
+                }
+                if (best == double.MaxValue) continue;
+                sum += Math.Sqrt(best);
+                taken++;
+            }
+            return taken == 0 ? -1 : sum / taken;
+        }
+
+        /// <summary>
+        /// The order the orchard passes get driven in. Row by row = the derivation order,
+        /// untouched. Min U-turn = always the SMALLEST allowed jump onward, but never one
+        /// that strands the sequence: a candidate is only taken when something workable is
+        /// still reachable from it (that one look ahead is what produces the driver's
+        /// "sometimes it has to be min plus one row"). Passes of inter-rows before
+        /// orchardStartZone are dropped here and never enter the plan.
+        /// </summary>
+        public List<CTrk> OrderOrchardPasses(List<CTrk> derived)
+        {
+            orchardSeqFallback = false;
+
+            var pool = new List<CTrk>();
+            foreach (var t in derived)
+                if (COrchard.ZoneFromDerivedName(t.name) >= orchardStartZone) pool.Add(t);
+
+            if (mode != ModeMinUTurn || pool.Count < 3) return pool;
+
+            double span = mf.yt.UTurnSpanNeeded * minTurnSafety;
+            int m = pool.Count;
+
+            //spacing matrix, symmetric (each pair measured from both sides, closer wins)
+            var gap = new double[m, m];
+            bool anyFits = false;
+            for (int i = 0; i < m; i++)
+            {
+                for (int j = i + 1; j < m; j++)
+                {
+                    double a = PassSpacing(pool[i], pool[j]);
+                    double b = PassSpacing(pool[j], pool[i]);
+                    double d = a < 0 ? b : (b < 0 ? a : Math.Min(a, b));
+                    gap[i, j] = gap[j, i] = d;
+                    if (d >= span) anyFits = true;
+                }
+            }
+
+            //nothing in this orchard is far enough apart: row by row, and say so. The mode
+            //stays as the driver set it - the field is what does not allow it, not the choice.
+            if (!anyFits)
+            {
+                orchardSeqFallback = true;
+                Log.EventWriter("Orchard plan: no pass pair reaches " + span.ToString("N1")
+                    + " m - min U-turn falls back to row by row");
+                return pool;
+            }
+
+            var used = new bool[m];
+            var seq = new List<CTrk>(m);
+            int cur = 0;
+            used[0] = true;
+            seq.Add(pool[0]);
+
+            for (int step = 1; step < m; step++)
+            {
+                //candidates that leave room for a U, nearest first
+                //EARLIEST still-to-do pass that is far enough, not the nearest one: the point
+                //is to close the worked block up as soon as the spacing allows, instead of
+                //running to the far end and wandering back (user, 2026-08-16). For 10 rows at a
+                //3-row minimum that is 1,4,7,2,5,8,3,6,9,10 - after seven passes the field is
+                //covered in one piece up to row 5, where "nearest" was still at row 1.
+                var fits = new List<int>();
+                for (int k = 0; k < m; k++)
+                    if (!used[k] && gap[cur, k] >= span) fits.Add(k);
+                fits.Sort();
+
+                int next = -1;
+                if (fits.Count == 0)
+                {
+                    //end of the run: take the nearest one left and let the K-turn cover it
+                    double best = double.MaxValue;
+                    for (int k = 0; k < m; k++)
+                    {
+                        if (used[k] || gap[cur, k] >= best) continue;
+                        best = gap[cur, k];
+                        next = k;
+                    }
+                }
+                else
+                {
+                    //one look ahead: do not step onto a pass that leaves nothing workable
+                    foreach (int k in fits)
+                    {
+                        bool onward = step == m - 1;
+                        for (int y = 0; !onward && y < m; y++)
+                            if (!used[y] && y != k && gap[k, y] >= span) onward = true;
+                        if (!onward) continue;
+                        next = k;
+                        break;
+                    }
+                    if (next < 0) next = fits[0];
+                }
+
+                if (next < 0) break;
+                used[next] = true;
+                seq.Add(pool[next]);
+                cur = next;
+            }
+
+            //safety net: anything the walk missed keeps its derivation order at the end
+            for (int k = 0; k < m; k++) if (!used[k]) seq.Add(pool[k]);
+            return seq;
+        }
+
         /// <summary>Rebuild the plan as the ordered orchard pass sequence.</summary>
         public void GenerateOrchard(List<CTrk> passes, List<int> zones)
         {
             builtWidth = WorkWidth();
+            //no zones in an orchard - the entry's zone is the inter-row number and it only
+            //colours the passes. Left at the field default of 2 the count showed up in the
+            //texts as if the orchard had zones.
+            zoneCount = 1;
             entries.Clear();
             runEntry = null;
             runDistance = 0;

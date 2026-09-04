@@ -257,6 +257,7 @@ namespace AgOpenGPS
             if (mf.tool.isToolOrchard) SetupOrchardPathTab();
 
             BuildStartFromControls();
+            BuildOrchardStartControls();
             ResetStartFrom();
             BuildMinRadiusNote();
 
@@ -1582,8 +1583,21 @@ namespace AgOpenGPS
 
         private bool PlanPrereqsOk()
         {
-            if (mf.tool.isToolOrchard) return true;   // orchard plans from rows
+            if (mf.tool.isToolOrchard)
+                return HasOrchardRows() && HasOrchardPasses() && HasTurnBoundaries();
             return HasFieldBoundary() && HasReferenceLine() && HasTurnBoundaries();
+        }
+
+        // ── orchard prerequisites (field 2026-08-16) ─────────────────────────
+        // The orchard wizard used to answer "ready" to everything, so a field without turn
+        // limit lines still reported a finished plan while the whole turn feature was in fact
+        // asleep (tnl.IsFeatureOn needs drawn lines) - the driver had no way of telling.
+        private bool HasOrchardRows() => mf.orchRows != null && mf.orchRows.Count >= 2;
+
+        private bool HasOrchardPasses()
+        {
+            foreach (var t in mf.trk.gArr) if (t.isOrchardDerived) return true;
+            return false;
         }
 
         // three checklist rows shown under "Generiraj plan" when a prereq is missing.
@@ -1623,8 +1637,12 @@ namespace AgOpenGPS
 
         private void RenderPrereqChecklist()
         {
-            bool[] ok = { HasFieldBoundary(), HasReferenceLine(), HasTurnBoundaries() };
-            string[] names = { gStr.gsBoundary, gStr.gsTrack + " / " + gStr.gsCurve, gStr.gsTurnLimitLines };
+            bool[] ok = mf.tool.isToolOrchard
+                ? new[] { HasOrchardRows(), HasOrchardPasses(), HasTurnBoundaries() }
+                : new[] { HasFieldBoundary(), HasReferenceLine(), HasTurnBoundaries() };
+            string[] names = mf.tool.isToolOrchard
+                ? new[] { gStr.gsOrchard + " - " + gStr.gsRows, gStr.gsOrchardPasses, gStr.gsTurnLimitLines }
+                : new[] { gStr.gsBoundary, gStr.gsTrack + " / " + gStr.gsCurve, gStr.gsTurnLimitLines };
             for (int i = 0; i < 3; i++)
             {
                 var lbl = prereqLabels[i];
@@ -1730,7 +1748,9 @@ namespace AgOpenGPS
             if (wizStep != 3) { lstLines.Top = 64; lstLines.Height = 260; }
         }
 
-        //orchard (F50): no wizard - the plan comes from rows + implement settings
+        //orchard (F50 turn plan): a small wizard - two steps, no zones and no line picking.
+        //Every row already has its own line, so there is nothing to choose there; what is left
+        //is HOW the passes are ordered and WHERE to start.
         private void UpdateWizardOrchard()
         {
             lstLines.Visible = false;
@@ -1741,9 +1761,123 @@ namespace AgOpenGPS
             SetZoneOrderVisible(false);
             btnAddPath.Visible = btnDeletePath.Visible = false;
             btnWizBack.Visible = btnWizNext.Visible = btnWizCancel.Visible = false;
-            lblWizTitle.Text = gStr.gsOrchard;
-            lblPlanInfo.Visible = true;
-            btnGeneratePlan.Visible = true;
+            btnWizNext.Text = gStr.gsNext;
+            btnGeneratePlan.Visible = false;
+            btnResetPath.Visible = false;
+            lblPlanInfo.Visible = false;
+            if (lblStartFrom != null) foreach (Control c in StartFromControls()) c.Visible = false;
+            SetOrchardStartVisible(false);
+            HidePrereqChecklist();
+
+            //nothing to plan with? say what is missing instead of pretending a plan exists
+            if (!PlanPrereqsOk())
+            {
+                lblWizTitle.Text = gStr.gsGeneratePlan;
+                lblPlanStatus.Text = "";
+                RenderPrereqChecklist();
+                return;
+            }
+            HidePrereqChecklist();
+
+            switch (wizStep)
+            {
+                case 1:                                    // how the passes are ordered
+                    lblWizTitle.Text = gStr.gsRowByRow + " / " + gStr.gsMinUTurn;
+                    btnMode1.Visible = btnMode2.Visible = true;
+                    //showing the current choice must not read as making it
+                    syncingModeButtons = true;
+                    btnMode1.Checked = mf.plan.mode != CTurnPlan.ModeMinUTurn;
+                    btnMode2.Checked = mf.plan.mode == CTurnPlan.ModeMinUTurn;
+                    syncingModeButtons = false;
+                    btnWizBack.Visible = btnWizCancel.Visible = true;
+                    break;
+
+                case 2:                                    // where it starts + the map preview
+                    lblWizTitle.Text = gStr.gsStartInterRow;
+                    SetOrchardStartVisible(true);
+                    lblPlanInfo.Visible = true;
+                    btnWizBack.Visible = btnWizCancel.Visible = btnWizNext.Visible = true;
+                    btnWizNext.Text = gStr.gsFinish;
+                    UpdatePlanInfo();
+                    break;
+
+                default:                                   // 0: what is there now
+                    wizStep = 0;
+                    lblPlanInfo.Visible = true;
+                    if (mf.plan.HasPlan)
+                    {
+                        lblWizTitle.Text = gStr.gsPlanExists;
+                        btnWizNext.Visible = true;
+                        btnResetPath.Visible = true;
+                        foreach (Control c in StartFromControls()) c.Visible = true;
+                        UpdatePlanInfo();
+                    }
+                    else
+                    {
+                        lblWizTitle.Text = gStr.gsOrchard;
+                        btnGeneratePlan.Visible = true;
+                    }
+                    break;
+            }
+        }
+
+        // ── orchard: which inter-row the plan starts from (no keypad, arrows only) ──
+        private bool syncingModeButtons;
+        private Label lblOrchStart, lblOrchStartVal;
+        private Button btnOrchStartUp, btnOrchStartDown;
+
+        private void BuildOrchardStartControls()
+        {
+            var lblFont = new Font("Tahoma", 11.25F, FontStyle.Bold);
+            var valFont = new Font("Tahoma", 12F);
+
+            lblOrchStart = MkLabel(gStr.gsInterRow, 10, 70, 120, 30, lblFont);
+            lblOrchStartVal = MkLabel("1", 134, 70, 56, 30, valFont);
+            lblOrchStartVal.TextAlign = ContentAlignment.MiddleCenter;
+            lblOrchStartVal.BorderStyle = BorderStyle.FixedSingle;
+
+            btnOrchStartUp = MkStep("▲", 198, 68, () => StepOrchardStart(+1));
+            btnOrchStartDown = MkStep("▼", 244, 68, () => StepOrchardStart(-1));
+
+            pnlPath.Controls.AddRange(new Control[]
+                { lblOrchStart, lblOrchStartVal, btnOrchStartUp, btnOrchStartDown });
+            foreach (var c in OrchardStartControls()) { c.Visible = false; c.BringToFront(); }
+        }
+
+        private Control[] OrchardStartControls()
+        {
+            return new Control[] { lblOrchStart, lblOrchStartVal, btnOrchStartUp, btnOrchStartDown };
+        }
+
+        private void SetOrchardStartVisible(bool vis)
+        {
+            if (lblOrchStart == null) return;
+            foreach (var c in OrchardStartControls()) c.Visible = vis;
+            if (vis) lblOrchStartVal.Text = mf.plan.orchardStartZone.ToString();
+        }
+
+        /// <summary>Highest inter-row number among the derived passes (1 when there are none).</summary>
+        private int OrchardMaxZone()
+        {
+            int max = 1;
+            foreach (var t in mf.trk.gArr)
+            {
+                if (!t.isOrchardDerived) continue;
+                int z = COrchard.ZoneFromDerivedName(t.name);
+                if (z > max) max = z;
+            }
+            return max;
+        }
+
+        //every step regenerates: the driver sees the numbered plan on the map right away
+        private void StepOrchardStart(int delta)
+        {
+            int next = Clamp(mf.plan.orchardStartZone + delta, 1, OrchardMaxZone());
+            if (next == mf.plan.orchardStartZone) return;
+
+            mf.plan.orchardStartZone = next;
+            lblOrchStartVal.Text = next.ToString();
+            GenerateOrchardPlan();
         }
 
         // ── zone processing order (field feedback 2026-07-27 / 28) ──────────
@@ -1855,6 +1989,15 @@ namespace AgOpenGPS
 
         private void btnWizNext_Click(object sender, EventArgs e)
         {
+            //orchard: two steps only - order, then where to start (no line, no zones)
+            if (mf.tool.isToolOrchard)
+            {
+                if (wizStep == 2) { btnSave_Click(sender, e); return; }
+                wizStep = wizStep < 1 ? 1 : 2;
+                UpdateWizard();
+                return;
+            }
+
             if (wizStep == 0) { wizStep = 1; UpdateWizard(); return; }
             if (wizStep == 1)
             {
@@ -1947,6 +2090,20 @@ namespace AgOpenGPS
 
         private void ModePicked()
         {
+            if (syncingModeButtons) return;      // the wizard is only showing the state
+
+            //orchard step 1: the two pictograms ARE the choice - set the mode, rebuild the
+            //plan with it and move straight on to the start inter-row
+            if (mf.tool.isToolOrchard)
+            {
+                if (wizStep != 1) return;
+                mf.plan.mode = btnMode2.Checked ? CTurnPlan.ModeMinUTurn : CTurnPlan.ModeSequential;
+                GenerateOrchardPlan();
+                wizStep = 2;
+                UpdateWizard();
+                return;
+            }
+
             if (wizStep == 3) GenerateFromWizard();
         }
 
@@ -2096,6 +2253,12 @@ namespace AgOpenGPS
             btnAddPath.Visible = btnDeletePath.Visible = true;
             btnGeneratePlan.Text = gStr.gsOrchardPlan;
             lblPlanInfo.Text = gStr.gsOrchardModePlanInfo;
+
+            //F50 turn plan: two orders to pick from - row by row, or skipping so every turn
+            //has room for a U. Mode 3 (zones) has no meaning without zones.
+            btnMode1.Text = gStr.gsRowByRow;
+            btnMode2.Text = gStr.gsMinUTurn;
+            btnMode2.Image = TurnModeIcons.Make(CTurnPlan.ModeMinUTurn, 88, 82);
         }
 
         private void GenerateOrchardPlan()
@@ -2130,6 +2293,7 @@ namespace AgOpenGPS
             DrawPlanOverlay();
             UpdatePlanInfo();
             lblPlanStatus.Text = passes.Count + " orchard passes"
+                + (mf.plan.orchardSeqFallback ? "  ·  " + gStr.gsOrchardSeqFallback : "")
                 + (mf.orchardWarn.Length > 0 ? "  ·  " + mf.orchardWarn : "");
         }
 
@@ -2137,7 +2301,7 @@ namespace AgOpenGPS
         //generates and persists, so the plan is ready the moment the mode is picked
         private void btnGeneratePlan_Click(object sender, EventArgs e)
         {
-            if (mf.tool.isToolOrchard) { GenerateOrchardPlan(); return; }
+            if (mf.tool.isToolOrchard) { wizStep = 1; UpdateWizard(); return; }
 
             wizStep = 1;
             UpdateWizard();

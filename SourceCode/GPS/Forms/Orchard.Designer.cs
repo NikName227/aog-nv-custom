@@ -720,7 +720,15 @@ namespace AgOpenGPS
                 if (trk.gArr[i].isOrchardDerived) derived.Add(trk.gArr[i]);
 
             if (derived.Count == 0) return;
-            if (!force && OrchardPlanCovers(derived)) return;
+
+            //F50 turn plan: the pass ORDER is the plan's decision (row by row, or skipping for
+            //a minimum U-turn), and passes before the start inter-row are dropped. Everything
+            //below therefore works on the ordered list - including the "does the plan already
+            //cover this" test, which would otherwise regenerate on every rebuild and throw away
+            //what is done. The ordering is deterministic, so the same passes give the same list.
+            var ordered = plan.OrderOrchardPasses(derived);
+            if (ordered.Count == 0) return;
+            if (!force && OrchardPlanCovers(ordered)) return;
 
             //the driver's own passes stay in the plan
             var manual = new List<CPlanEntry>();
@@ -728,10 +736,10 @@ namespace AgOpenGPS
                 if (p.IsManual && !COrchard.IsDerivedName(p.trackName)) manual.Add(p);
 
             var zones = new List<int>();
-            for (int i = 0; i < derived.Count; i++)
-                zones.Add(COrchard.ZoneFromDerivedName(derived[i].name));
+            for (int i = 0; i < ordered.Count; i++)
+                zones.Add(COrchard.ZoneFromDerivedName(ordered[i].name));
 
-            plan.GenerateOrchard(derived, zones);
+            plan.GenerateOrchard(ordered, zones);
 
             int order = plan.entries.Count;
             foreach (var p in manual) { p.order = ++order; plan.entries.Add(p); }

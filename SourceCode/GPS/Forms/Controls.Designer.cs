@@ -289,9 +289,19 @@ namespace AgOpenGPS
 
                 //NV follow plan: engaging auto turn switches guidance to the track
                 //the plan was built on, so the turns target the plan's passes and
-                //not whatever line happened to be active (test f05-3.2-01)
-                if (plan.IsRuntimeOn && !string.IsNullOrEmpty(plan.trackName)
-                    && (trk.idx < 0 || trk.gArr[trk.idx].name != plan.trackName))
+                //not whatever line happened to be active (test f05-3.2-01).
+                //F50 (2026-08-16): an orchard plan has NO plan.trackName - every entry carries
+                //its own pass name - so this never ran there and the first pass was not fixed.
+                //The orchard answer is the track of the first pass still to do.
+                string wantTrack = plan.trackName;
+                if (plan.IsRuntimeOn && string.IsNullOrEmpty(wantTrack) && tool.isToolOrchard)
+                {
+                    CPlanEntry firstToDo = plan.NextEntry();
+                    if (firstToDo != null) wantTrack = firstToDo.trackName;
+                }
+
+                if (plan.IsRuntimeOn && !string.IsNullOrEmpty(wantTrack)
+                    && (trk.idx < 0 || trk.gArr[trk.idx].name != wantTrack))
                 {
                     //field 2026-07-28: the plan's track can be gone (deleted/renamed) -
                     //engaging would leave the plan matching nothing and every turn
@@ -299,14 +309,14 @@ namespace AgOpenGPS
                     int planTrackIdx = -1;
                     for (int i = 0; i < trk.gArr.Count; i++)
                     {
-                        if (trk.gArr[i].name == plan.trackName) { planTrackIdx = i; break; }
+                        if (trk.gArr[i].name == wantTrack) { planTrackIdx = i; break; }
                     }
 
                     if (planTrackIdx < 0)
                     {
                         TimedMessageBox(3000, "Turn Plan",
-                            "Plan track '" + plan.trackName + "' not found - auto turn stays off");
-                        Log.EventWriter("TurnPlan: plan track '" + plan.trackName
+                            "Plan track '" + wantTrack + "' not found - auto turn stays off");
+                        Log.EventWriter("TurnPlan: plan track '" + wantTrack
                             + "' missing, auto turn not engaged");
                         return;
                     }

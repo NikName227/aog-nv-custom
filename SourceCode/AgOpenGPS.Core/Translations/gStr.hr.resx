@@ -1871,6 +1871,24 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsOrchStateSaved" xml:space="preserve">
     <value>Spremljeno</value>
   </data>
+  <data name="gsMinUTurn" xml:space="preserve">
+    <value>Min U-okret</value>
+  </data>
+  <data name="gsStartInterRow" xml:space="preserve">
+    <value>Početni međured</value>
+  </data>
+  <data name="gsInterRow" xml:space="preserve">
+    <value>Međured</value>
+  </data>
+  <data name="gsOrchardSeqFallback" xml:space="preserve">
+    <value>Preusko za min U-okret - plan ide red po red</value>
+  </data>
+  <data name="gsRows" xml:space="preserve">
+    <value>Redovi</value>
+  </data>
+  <data name="gsOrchardPasses" xml:space="preserve">
+    <value>Izvedeni prolazi</value>
+  </data>
   <data name="gsStartFrom" xml:space="preserve">
     <value>Kreni od</value>
   </data>
