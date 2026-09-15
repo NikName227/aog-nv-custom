@@ -32,7 +32,6 @@ namespace AgOpenGPS
             this.btnFine = new System.Windows.Forms.Button();
             this.btnCoarse = new System.Windows.Forms.Button();
             this.btnMeasure = new System.Windows.Forms.Button();
-            this.lblMeasure = new System.Windows.Forms.Label();
             this.btnNavUp = new System.Windows.Forms.Button();
             this.btnNavDown = new System.Windows.Forms.Button();
             this.btnNavLeft = new System.Windows.Forms.Button();
@@ -272,18 +271,6 @@ namespace AgOpenGPS
             this.btnMeasure.Text = "Measure";
             this.btnMeasure.UseVisualStyleBackColor = true;
             this.btnMeasure.Click += new System.EventHandler(this.btnMeasure_Click);
-            //
-            // lblMeasure (result)
-            //
-            this.lblMeasure.AutoSize = false;
-            this.lblMeasure.Font = new System.Drawing.Font("Tahoma", 11F, System.Drawing.FontStyle.Bold);
-            this.lblMeasure.ForeColor = System.Drawing.Color.Firebrick;
-            this.lblMeasure.Location = new System.Drawing.Point(684, 260);
-            this.lblMeasure.Name = "lblMeasure";
-            this.lblMeasure.Size = new System.Drawing.Size(104, 22);
-            this.lblMeasure.TabIndex = 8;
-            this.lblMeasure.Text = "";
-            this.lblMeasure.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
             //
             // btnNavUp
             //
@@ -648,7 +635,6 @@ namespace AgOpenGPS
             this.Controls.Add(this.btnFine);
             this.Controls.Add(this.btnCoarse);
             this.Controls.Add(this.btnMeasure);
-            this.Controls.Add(this.lblMeasure);
             this.Controls.Add(this.btnNavUp);
             this.Controls.Add(this.btnNavLeft);
             this.Controls.Add(this.btnPoint);
@@ -710,7 +696,6 @@ namespace AgOpenGPS
         private System.Windows.Forms.Button btnFine;
         private System.Windows.Forms.Button btnCoarse;
         private System.Windows.Forms.Button btnMeasure;
-        private System.Windows.Forms.Label lblMeasure;
         private System.Windows.Forms.Button btnNavUp;
         private System.Windows.Forms.Button btnNavDown;
         private System.Windows.Forms.Button btnNavLeft;

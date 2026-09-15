@@ -95,11 +95,23 @@ namespace AgOpenGPS
         // class-level bilingual fallback (the ctor has a local L(); this one is reusable)
         private static string LS(string s, string def) => string.IsNullOrEmpty(s) ? def : s;
 
-        // Measure tool: a temporary ruler — two free RED points joined by a thin red line.
-        // Always draggable while on; shows the distance between them; never saved anywhere.
-        private bool measureOn;
-        private vec2 mp0, mp1;
-        private int measureDrag = -1; // 0 or 1 while dragging a measure endpoint
+        // Measure tool: every Measure click adds a ruler (two points + a line) in its own color.
+        // Rulers stay until the window closes (never saved); their distances are listed along the
+        // bottom-left of the map in the ruler's color. Right-tap on a ruler point removes it.
+        private class Ruler
+        {
+            public vec2 p0, p1;
+            public Color color;
+            public Label label;
+        }
+        private readonly List<Ruler> rulers = new List<Ruler>();
+        private static readonly Color[] RulerColors =
+        {
+            Color.Red, Color.Yellow, Color.Cyan, Color.Magenta,
+            Color.Orange, Color.Lime, Color.DodgerBlue, Color.White
+        };
+        private int rulerDrag = -1;   // index in rulers while dragging an endpoint
+        private int rulerDragEnd;     // 0 = p0, 1 = p1
 
         // Borderless-window drag + layout-on-resize (fullscreen).
         [DllImport("user32.dll")] private static extern bool ReleaseCapture();
@@ -183,6 +195,7 @@ namespace AgOpenGPS
             btnZoomRestore.Location = new Point(oglSelf.Right - 64, oglSelf.Bottom - 124);
             btnZoomOut.Location = new Point(oglSelf.Right - 64, oglSelf.Bottom - 62);
             lblActiveOp.Location = new Point(8, oglSelf.Bottom + 6);
+            LayoutRulerLabels();
             btnWinClose.Location = new Point(ClientSize.Width - 60, 6);
             btnWinFull.Location = new Point(ClientSize.Width - 118, 6);
 
@@ -406,9 +419,9 @@ namespace AgOpenGPS
             }
             if (e.Button != MouseButtons.Left) return;
 
-            // Measure endpoints are always grabbable while the ruler is on (any mode).
-            int mh = HitTestMeasure(e.X, e.Y);
-            if (mh >= 0) { measureDrag = mh; return; }
+            // Ruler endpoints are always grabbable (any mode).
+            int mh = HitTestRuler(e.X, e.Y, out int mEnd);
+            if (mh >= 0) { rulerDrag = mh; rulerDragEnd = mEnd; return; }
 
             int hit = HitTestPoint(e.X, e.Y);
             if (hit >= 0 && !AddActive && !btnDeletePoint.Checked)
@@ -423,12 +436,14 @@ namespace AgOpenGPS
 
         private void oglSelf_MouseMove(object sender, MouseEventArgs e)
         {
-            if (measureDrag >= 0)
+            if (rulerDrag >= 0)
             {
                 moved = true;
-                if (measureDrag == 0) mp0 = ScreenToWorld(e.X, e.Y);
-                else mp1 = ScreenToWorld(e.X, e.Y);
-                UpdateMeasureLabel();
+                vec2 w = ScreenToWorld(e.X, e.Y);
+                if (rulerDragEnd == 0) rulers[rulerDrag].p0 = w;
+                else rulers[rulerDrag].p1 = w;
+                UpdateRulerLabel(rulers[rulerDrag]);
+                LayoutRulerLabels();
                 oglSelf.Invalidate();
                 return;
             }
@@ -454,7 +469,7 @@ namespace AgOpenGPS
             if (e.Button == MouseButtons.Right) { panning = false; return; }
             if (e.Button != MouseButtons.Left) return;
 
-            if (measureDrag >= 0) { measureDrag = -1; moved = false; oglSelf.Invalidate(); return; }
+            if (rulerDrag >= 0) { rulerDrag = -1; moved = false; oglSelf.Invalidate(); return; }
 
             bool wasPointDrag = dragIndex >= 0 && moved;
 
@@ -725,73 +740,108 @@ namespace AgOpenGPS
             oglSelf.Invalidate();
         }
 
-        // ── Measure tool (temporary ruler; never saved) ───────────────────
+        // ── Measure tool (rulers live until the window closes; never saved) ──
         private void btnMeasure_Click(object sender, EventArgs e)
         {
-            measureOn = !measureOn;
-            if (measureOn)
+            // a new ruler near the view centre, a bit apart, ready to drag
+            double k = MetersPerPixel();
+            vec2 c = ScreenToWorld(oglSelf.Width / 2, oglSelf.Height / 2);
+            var r = new Ruler
             {
-                // place the two endpoints near the view centre, a bit apart, ready to drag
-                double k = MetersPerPixel();
-                vec2 c = ScreenToWorld(oglSelf.Width / 2, oglSelf.Height / 2);
-                mp0 = new vec2(c.easting - 40 * k, c.northing);
-                mp1 = new vec2(c.easting + 40 * k, c.northing);
-                btnMeasure.BackColor = Color.IndianRed;
-                btnMeasure.UseVisualStyleBackColor = false;
-                UpdateMeasureLabel();
-            }
-            else
+                p0 = new vec2(c.easting - 40 * k, c.northing),
+                p1 = new vec2(c.easting + 40 * k, c.northing),
+                color = RulerColors[rulers.Count % RulerColors.Length]
+            };
+            r.label = new Label
             {
-                measureDrag = -1;
-                btnMeasure.BackColor = SystemColors.Control;
-                btnMeasure.UseVisualStyleBackColor = true;
-                lblMeasure.Text = "";
-            }
+                AutoSize = true,
+                Font = new System.Drawing.Font("Tahoma", 11F, FontStyle.Bold),
+                ForeColor = r.color,
+                BackColor = Color.FromArgb(25, 25, 25),
+                Padding = new Padding(4, 2, 4, 2)
+            };
+            Controls.Add(r.label);
+            rulers.Add(r);
+            UpdateRulerLabel(r);
+            LayoutRulerLabels();
             oglSelf.Invalidate();
         }
 
-        private void UpdateMeasureLabel()
+        private static string FormatDistance(double d)
         {
-            double d = Math.Sqrt((mp1.easting - mp0.easting) * (mp1.easting - mp0.easting)
-                               + (mp1.northing - mp0.northing) * (mp1.northing - mp0.northing));
-            lblMeasure.Text = d < 1.0 ? (d * 100.0).ToString("0") + " cm"
-                                      : d.ToString("0.00") + " m";
+            return d < 1.0 ? (d * 100.0).ToString("0") + " cm" : d.ToString("0.00") + " m";
         }
 
-        private int HitTestMeasure(int px, int py)
+        private void UpdateRulerLabel(Ruler r)
         {
-            if (!measureOn) return -1;
-            Point s0 = WorldToScreen(mp0), s1 = WorldToScreen(mp1);
-            if (Math.Abs(s0.X - px) <= 16 && Math.Abs(s0.Y - py) <= 16) return 0;
-            if (Math.Abs(s1.X - px) <= 16 && Math.Abs(s1.Y - py) <= 16) return 1;
+            double dx = r.p1.easting - r.p0.easting, dy = r.p1.northing - r.p0.northing;
+            r.label.Text = FormatDistance(Math.Sqrt(dx * dx + dy * dy));
+        }
+
+        // Values side by side along the bottom-left edge of the map (on the map, not below it);
+        // a row that runs into the zoom buttons continues one row higher.
+        private void LayoutRulerLabels()
+        {
+            const int gap = 6;
+            int x = oglSelf.Left + gap, y = oglSelf.Bottom - gap;
+            int maxRight = oglSelf.Right - 72;
+            int rowH = 0;
+            foreach (var r in rulers)
+            {
+                Size sz = r.label.PreferredSize;
+                if (x > oglSelf.Left + gap && x + sz.Width > maxRight)
+                {
+                    x = oglSelf.Left + gap;
+                    y -= rowH + gap;
+                    rowH = 0;
+                }
+                rowH = Math.Max(rowH, sz.Height);
+                r.label.Location = new Point(x, y - sz.Height);
+                r.label.BringToFront();
+                x += sz.Width + gap;
+            }
+        }
+
+        private int HitTestRuler(int px, int py, out int end)
+        {
+            // last added on top
+            for (int i = rulers.Count - 1; i >= 0; i--)
+            {
+                Point s0 = WorldToScreen(rulers[i].p0), s1 = WorldToScreen(rulers[i].p1);
+                if (Math.Abs(s1.X - px) <= 16 && Math.Abs(s1.Y - py) <= 16) { end = 1; return i; }
+                if (Math.Abs(s0.X - px) <= 16 && Math.Abs(s0.Y - py) <= 16) { end = 0; return i; }
+            }
+            end = 0;
             return -1;
         }
 
         private void DrawMeasure()
         {
-            if (!measureOn) return;
             double h = 8.0 * MetersPerPixel();
-            // thin red connecting line
-            GL.LineWidth(1);
-            GL.Color3(1.0f, 0.1f, 0.1f);
-            GL.Begin(PrimitiveType.Lines);
-            GL.Vertex3(mp0.easting, mp0.northing, 0);
-            GL.Vertex3(mp1.easting, mp1.northing, 0);
-            GL.End();
-            // the two red endpoints (same square + centre-dot design as the other markers)
-            GL.LineWidth(2);
-            foreach (var p in new[] { mp0, mp1 })
+            foreach (var r in rulers)
             {
-                GL.Begin(PrimitiveType.LineLoop);
-                GL.Vertex3(p.easting - h, p.northing - h, 0);
-                GL.Vertex3(p.easting + h, p.northing - h, 0);
-                GL.Vertex3(p.easting + h, p.northing + h, 0);
-                GL.Vertex3(p.easting - h, p.northing + h, 0);
+                GL.Color3(r.color.R / 255f, r.color.G / 255f, r.color.B / 255f);
+                // thin connecting line
+                GL.LineWidth(1);
+                GL.Begin(PrimitiveType.Lines);
+                GL.Vertex3(r.p0.easting, r.p0.northing, 0);
+                GL.Vertex3(r.p1.easting, r.p1.northing, 0);
                 GL.End();
-                GL.PointSize(4f);
-                GL.Begin(PrimitiveType.Points);
-                GL.Vertex3(p.easting, p.northing, 0);
-                GL.End();
+                // the two endpoints (same square + centre-dot design as the other markers)
+                GL.LineWidth(2);
+                foreach (var p in new[] { r.p0, r.p1 })
+                {
+                    GL.Begin(PrimitiveType.LineLoop);
+                    GL.Vertex3(p.easting - h, p.northing - h, 0);
+                    GL.Vertex3(p.easting + h, p.northing - h, 0);
+                    GL.Vertex3(p.easting + h, p.northing + h, 0);
+                    GL.Vertex3(p.easting - h, p.northing + h, 0);
+                    GL.End();
+                    GL.PointSize(4f);
+                    GL.Begin(PrimitiveType.Points);
+                    GL.Vertex3(p.easting, p.northing, 0);
+                    GL.End();
+                }
             }
         }
 
