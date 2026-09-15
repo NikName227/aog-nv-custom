@@ -110,6 +110,7 @@ namespace AgOpenGPS
             Color.Red, Color.Yellow, Color.Cyan, Color.Magenta,
             Color.Orange, Color.Lime, Color.DodgerBlue, Color.White
         };
+        private int rulersAdded;      // color cycle keeps going after a removal (no repeat of a live color)
         private int rulerDrag = -1;   // index in rulers while dragging an endpoint
         private int rulerDragEnd;     // 0 = p0, 1 = p1
         // A dragged ruler point sticks to a line within RulerSnapPx and slides along it; it
@@ -470,7 +471,17 @@ namespace AgOpenGPS
 
         private void oglSelf_MouseUp(object sender, MouseEventArgs e)
         {
-            if (e.Button == MouseButtons.Right) { panning = false; return; }
+            if (e.Button == MouseButtons.Right)
+            {
+                // right TAP (no pan movement) on a ruler point removes that ruler
+                if (!moved && rulerDrag < 0)
+                {
+                    int hit = HitTestRuler(e.X, e.Y, out _);
+                    if (hit >= 0) RemoveRuler(hit);
+                }
+                panning = false; moved = false;
+                return;
+            }
             if (e.Button != MouseButtons.Left) return;
 
             if (rulerDrag >= 0) { rulerDrag = -1; moved = false; oglSelf.Invalidate(); return; }
@@ -754,7 +765,7 @@ namespace AgOpenGPS
             {
                 p0 = new vec2(c.easting - 40 * k, c.northing),
                 p1 = new vec2(c.easting + 40 * k, c.northing),
-                color = RulerColors[rulers.Count % RulerColors.Length]
+                color = RulerColors[rulersAdded++ % RulerColors.Length]
             };
             r.label = new Label
             {
@@ -767,6 +778,15 @@ namespace AgOpenGPS
             Controls.Add(r.label);
             rulers.Add(r);
             UpdateRulerLabel(r);
+            LayoutRulerLabels();
+            oglSelf.Invalidate();
+        }
+
+        private void RemoveRuler(int idx)
+        {
+            Controls.Remove(rulers[idx].label);
+            rulers[idx].label.Dispose();
+            rulers.RemoveAt(idx);
             LayoutRulerLabels();
             oglSelf.Invalidate();
         }
