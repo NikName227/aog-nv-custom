@@ -112,6 +112,10 @@ namespace AgOpenGPS
         };
         private int rulerDrag = -1;   // index in rulers while dragging an endpoint
         private int rulerDragEnd;     // 0 = p0, 1 = p1
+        // A dragged ruler point sticks to a line within RulerSnapPx and slides along it; it
+        // keeps that line (no jumping to a neighbour also in range) until the cursor leaves.
+        private const double RulerSnapPx = 12.0;
+        private int rulerSnapLine = -1; // id of the line the dragged point sticks to, -1 = free
 
         // Borderless-window drag + layout-on-resize (fullscreen).
         [DllImport("user32.dll")] private static extern bool ReleaseCapture();
@@ -421,7 +425,7 @@ namespace AgOpenGPS
 
             // Ruler endpoints are always grabbable (any mode).
             int mh = HitTestRuler(e.X, e.Y, out int mEnd);
-            if (mh >= 0) { rulerDrag = mh; rulerDragEnd = mEnd; return; }
+            if (mh >= 0) { rulerDrag = mh; rulerDragEnd = mEnd; rulerSnapLine = -1; return; }
 
             int hit = HitTestPoint(e.X, e.Y);
             if (hit >= 0 && !AddActive && !btnDeletePoint.Checked)
@@ -439,7 +443,7 @@ namespace AgOpenGPS
             if (rulerDrag >= 0)
             {
                 moved = true;
-                vec2 w = ScreenToWorld(e.X, e.Y);
+                vec2 w = SnapRulerPoint(ScreenToWorld(e.X, e.Y));
                 if (rulerDragEnd == 0) rulers[rulerDrag].p0 = w;
                 else rulers[rulerDrag].p1 = w;
                 UpdateRulerLabel(rulers[rulerDrag]);
@@ -800,6 +804,87 @@ namespace AgOpenGPS
                 r.label.BringToFront();
                 x += sz.Width + gap;
             }
+        }
+
+        // Line ids for snapping: boundary j = j, all parcels = SnapParcels, shown track =
+        // SnapTrack, smooth preview = SnapSmooth, orchard row i = SnapOrchard + i.
+        private const int SnapParcels = 10000, SnapTrack = 20000, SnapSmooth = 20001, SnapOrchard = 30000;
+
+        // Calls seg(lineId, ax, ay, bx, by) for every segment of every line visible on the map.
+        private void ForEachSnapSegment(Action<int, double, double, double, double> seg)
+        {
+            for (int j = 0; j < mf.bnd.bndList.Count; j++)
+            {
+                var f = mf.bnd.bndList[j].fenceLine;
+                for (int i = 0; i < f.Count; i++)
+                {
+                    int n = (i + 1) % f.Count; // closed ring
+                    seg(j, f[i].easting, f[i].northing, f[n].easting, f[n].northing);
+                }
+            }
+
+            // parcels are drawn only with the satellite on
+            if (satVisual != null)
+            {
+                var s = mf.parcels.Segments;
+                for (int i = 0; i + 1 < s.Length; i += 2)
+                    seg(SnapParcels, s[i].Easting, s[i].Northing, s[i + 1].Easting, s[i + 1].Northing);
+            }
+
+            // the track shown by DrawBuiltLines (AB drawn extended by abLength)
+            int show = (mode == LineMode.Browse) ? activeIdx : workIdx;
+            if (show >= 0 && show < gTemp.Count)
+            {
+                var t = gTemp[show];
+                if (t.mode == TrackMode.AB)
+                {
+                    double len = mf.ABLine.abLength, sn = Math.Sin(t.heading), cs = Math.Cos(t.heading);
+                    seg(SnapTrack, t.ptA.easting - sn * len, t.ptA.northing - cs * len,
+                                   t.ptB.easting + sn * len, t.ptB.northing + cs * len);
+                }
+                else
+                {
+                    for (int i = 0; i + 1 < t.curvePts.Count; i++)
+                        seg(SnapTrack, t.curvePts[i].easting, t.curvePts[i].northing,
+                                       t.curvePts[i + 1].easting, t.curvePts[i + 1].northing);
+                }
+            }
+
+            if (smoothLine != null)
+            {
+                for (int i = 0; i + 1 < smoothLine.Count; i++)
+                    seg(SnapSmooth, smoothLine[i].easting, smoothLine[i].northing,
+                                    smoothLine[i + 1].easting, smoothLine[i + 1].northing);
+            }
+
+            for (int r = 0; r < mf.orchRows.Count; r++)
+            {
+                var c = mf.orchRows[r].curve;
+                for (int i = 0; i + 1 < c.Count; i++)
+                    seg(SnapOrchard + r, c[i].easting, c[i].northing, c[i + 1].easting, c[i + 1].northing);
+            }
+        }
+
+        // Cursor within RulerSnapPx of a line -> closest point on that line, else the cursor.
+        private vec2 SnapRulerPoint(vec2 w)
+        {
+            double maxDist = RulerSnapPx * MetersPerPixel();
+
+            // closest point per line: the line held so far, and the nearest of all lines
+            double heldBest = double.MaxValue, heldX = 0, heldY = 0;
+            double best = double.MaxValue, bestX = 0, bestY = 0;
+            int bestLine = -1;
+            ForEachSnapSegment((id, ax, ay, bx, by) =>
+            {
+                double d = ClosestOnSeg(w.easting, w.northing, ax, ay, bx, by, out double cx, out double cy);
+                if (id == rulerSnapLine && d < heldBest) { heldBest = d; heldX = cx; heldY = cy; }
+                if (d < best) { best = d; bestX = cx; bestY = cy; bestLine = id; }
+            });
+
+            if (rulerSnapLine >= 0 && heldBest <= maxDist) return new vec2(heldX, heldY);
+            if (best <= maxDist) { rulerSnapLine = bestLine; return new vec2(bestX, bestY); }
+            rulerSnapLine = -1;
+            return w;
         }
 
         private int HitTestRuler(int px, int py, out int end)
