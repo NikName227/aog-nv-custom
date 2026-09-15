@@ -130,7 +130,15 @@ namespace AgOpenGPS
             // tapping the Name field pops up the AOG on-screen keyboard.
             // ShowKeyboard saves+restores BackColor, which overwrites the save-state
             // color RecolorNameBox set while typing -> re-apply it after it closes.
-            tboxName.Click += (s, e) => { tboxName.ShowKeyboard(this); RecolorNameBox(); };
+            // A changed name is committed right away (same as the Accept tick), so closing
+            // the window afterwards does not lose it.
+            tboxName.Click += (s, e) =>
+            {
+                string before = tboxName.Text;
+                tboxName.ShowKeyboard(this);
+                if (tboxName.Text != before && tboxName.Text.Trim().Length > 0) CommitTracks();
+                RecolorNameBox();
+            };
             tboxName.TextChanged += (s, e) => RecolorNameBox();
         }
 
@@ -1573,7 +1581,9 @@ namespace AgOpenGPS
             Close();
         }
 
-        private void btnAccept_Click(object sender, EventArgs e)
+        private void btnAccept_Click(object sender, EventArgs e) => CommitTracks();
+
+        private void CommitTracks()
         {
             // Apply the typed name to the relevant line (active one in Browse, the built one in Build).
             int target = (mode == LineMode.Browse) ? activeIdx : workIdx;
