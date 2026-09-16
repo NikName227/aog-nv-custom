@@ -158,6 +158,9 @@ namespace AgOpenGPS
             //Initialization counter
             startCounter++;
 
+            //F10: fix interval + raw antenna position, before any correction
+            SensorFusionNewFix();
+
             if (!isGPSPositionInitialized)
             {
                 InitializeFirstFewGPSPositions();
@@ -353,12 +356,15 @@ namespace AgOpenGPS
                         if (ahrs.imuRoll != 88888)
                         {
                             //change for roll to the right is positive times -1
-                            rollCorrectionDistance = Math.Sin(glm.toRadians((ahrs.imuRoll))) * -vehicle.VehicleConfig.AntennaHeight;
+                            rollCorrectionDistance = SensorFusionRollCorrection(ahrs.imuRoll);   //F10: split roll (old formula when off)
                             correctionDistanceGraph = rollCorrectionDistance;
 
                             pn.fix.easting = (Math.Cos(-gpsHeading) * rollCorrectionDistance) + pn.fix.easting;
                             pn.fix.northing = (Math.Sin(-gpsHeading) * rollCorrectionDistance) + pn.fix.northing;
                         }
+
+                        //F10: lateral-only filter (along track untouched); no effect when off
+                        SensorFusionFilterFix(gpsHeading);
 
                         #endregion
 
@@ -614,6 +620,9 @@ namespace AgOpenGPS
 
                         camHeading = glm.toDegrees(smoothCamHeading);
 
+                        //F10: heading observer (model from WAS + PI correction); no-op when off
+                        fixHeading = SensorFusionHeading(gpsHeading, avgSpeed > startSpeed && isFirstHeadingSet, fixHeading);
+
                         TheRest();
                         break;
                     }
@@ -696,13 +705,17 @@ namespace AgOpenGPS
                         if (ahrs.imuRoll != 88888)
                         {
                             //change for roll to the right is positive times -1
-                            rollCorrectionDistance = Math.Sin(glm.toRadians((ahrs.imuRoll))) * -vehicle.VehicleConfig.AntennaHeight;
+                            rollCorrectionDistance = SensorFusionRollCorrection(ahrs.imuRoll);   //F10: split roll (old formula when off)
                             correctionDistanceGraph = rollCorrectionDistance;
 
                             // roll to right is positive  **** important!!
                             pn.fix.easting = (Math.Cos(-fixHeading) * rollCorrectionDistance) + pn.fix.easting;
                             pn.fix.northing = (Math.Sin(-fixHeading) * rollCorrectionDistance) + pn.fix.northing;
                         }
+
+                        //F10: lateral filter + heading observer (both no-ops when off)
+                        SensorFusionFilterFix(fixHeading);
+                        fixHeading = SensorFusionHeading(gpsHeading, avgSpeed > startSpeed, fixHeading);
 
                         #endregion Roll
 
@@ -737,12 +750,16 @@ namespace AgOpenGPS
                         {
 
                             //change for roll to the right is positive times -1
-                            rollCorrectionDistance = Math.Sin(glm.toRadians((ahrs.imuRoll))) * -vehicle.VehicleConfig.AntennaHeight;
+                            rollCorrectionDistance = SensorFusionRollCorrection(ahrs.imuRoll);   //F10: split roll (old formula when off)
                             correctionDistanceGraph = rollCorrectionDistance;
 
                             pn.fix.easting = (Math.Cos(-gpsHeading) * rollCorrectionDistance) + pn.fix.easting;
                             pn.fix.northing = (Math.Sin(-gpsHeading) * rollCorrectionDistance) + pn.fix.northing;
                         }
+
+                        //F10: lateral filter; dual heading is already clean so the observer only logs here
+                        SensorFusionFilterFix(fixHeading);
+                        SensorFusionHeading(fixHeading, false, fixHeading);
 
                         //grab the most current fix and save the distance from the last fix
                         distanceCurrentStepFix = glm.Distance(pn.fix, prevDistFix);

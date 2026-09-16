@@ -1,4 +1,4 @@
-//Please, if you use this, share the improvements
+﻿//Please, if you use this, share the improvements
 
 using System;
 using System.Drawing;
@@ -167,6 +167,19 @@ namespace AgOpenGPS
             AddRow(right, "Fusion Weight", vsDefault.setIMU_fusionWeight2, vs.setIMU_fusionWeight2);
             AddRow(right, "Invert Roll", vsDefault.setIMU_invertRoll, vs.setIMU_invertRoll);
             AddRow(right, "Dual As IMU", vsDefault.setIMU_isDualAsIMU, vs.setIMU_isDualAsIMU);
+
+            AddHeader(right, "── F10 Sensor Fusion");
+            AddRow(right, "Cabin comp On", vsDefault.setSF_cabinOn, vs.setSF_cabinOn);
+            AddRow(right, "k_fast [m]", vsDefault.setSF_kFast, vs.setSF_kFast);
+            AddRow(right, "Lat filter fc [Hz]", vsDefault.setSF_fc, vs.setSF_fc);
+            AddRow(right, "Lat filter lead", vsDefault.setSF_lead, vs.setSF_lead);
+            AddRow(right, "tau slow [s]", vsDefault.setSF_tauSlow, vs.setSF_tauSlow);
+            AddRow(right, "Observer On", vsDefault.setSF_obsOn, vs.setSF_obsOn);
+            AddRow(right, "Observer Kp", vsDefault.setSF_obsKp, vs.setSF_obsKp);
+            AddRow(right, "Observer Ki", vsDefault.setSF_obsKi, vs.setSF_obsKi);
+            AddRow(right, "Observer IMU share", vsDefault.setSF_obsImuWeight, vs.setSF_obsImuWeight);
+            AddRow(right, "L_eff [m]", vsDefault.setSF_obsLeff, vs.setSF_obsLeff);
+            AddRow(right, "WAS bias [deg]", vsDefault.setSF_obsWasBias, vs.setSF_obsWasBias);
 
             AddHeader(right, "── Brand");
             AddRow(right, "Tractor Brand", vsDefault.setBrand_TBrand, vs.setBrand_TBrand);
