@@ -23,9 +23,9 @@ namespace AgOpenGPS
         // ---- settings ------------------------------------------------------
         public bool isOn;
         public double kFast = 1.4;      // [m] lever of the fast (cabin) roll component
-        public double fc = 1.0;         // [Hz] lateral filter cutoff, 0 = filter off
+        public double fc = 0.0;         // [Hz] lateral filter cutoff, 0 = filter off
         public double lead = 0.7;       // [0..1] how much of the filter delay is given back
-        public double tauSlow = 1.5;    // [s] terrain / cabin split
+        public double tauSlow = 1.0;    // [s] terrain / cabin split
 
         public const double MinSpeedMs = 0.3;   // below this the lateral filter passes through
 

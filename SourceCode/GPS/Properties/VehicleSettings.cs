@@ -48,9 +48,9 @@ namespace AgOpenGPS.Properties
         // F10 Advanced Sensor Fusion — cabin compensation (independent of the observer)
         public bool setSF_cabinOn = false;
         public double setSF_kFast = 1.4;        // [m] lever of the fast (cabin) roll part
-        public double setSF_fc = 1.0;           // [Hz] lateral filter cutoff
+        public double setSF_fc = 0.0;           // [Hz] lateral filter cutoff (0 = off)
         public double setSF_lead = 0.7;         // [0..1] how much filter delay is given back
-        public double setSF_tauSlow = 1.5;      // [s] terrain / cabin split
+        public double setSF_tauSlow = 1.0;      // [s] terrain / cabin split
 
         // F10 Advanced Sensor Fusion — heading observer (independent of the cabin part)
         public bool setSF_obsOn = false;
@@ -59,6 +59,9 @@ namespace AgOpenGPS.Properties
         public double setSF_obsImuWeight = 0.25;
         public double setSF_obsLeff = 4.2;      // [m] effective wheelbase (incl. slip), learned
         public double setSF_obsWasBias = 0.0;   // [deg] WAS zero, learned / kept between runs
+        public double setSF_obsKpTurn = 1.0;    // correction strength while the IMU is the measurement
+        public double setSF_obsWasLo = 5.0;     // [deg] below: measurement = course
+        public double setSF_obsWasHi = 15.0;    // [deg] above: measurement = IMU
         public bool setSF_autoLog = false;      // start the raw logger with AOG
 
         // GPS settings

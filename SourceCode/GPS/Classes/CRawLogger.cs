@@ -48,7 +48,7 @@ namespace AgOpenGPS
                     "pitch_deg,yaw_rate,was_deg,label,switch,pwm,was_set_deg,xte_cm,steer_status,aog_speed_kmh," +
                     "raw_east,raw_north,fix_east,fix_north,roll_slow_deg,roll_fast_deg,corr_slow_m,corr_fast_m," +
                     "lat_before_m,lat_after_m,gps_heading_deg,imu_corrected_deg,obs_heading_deg,obs_bias_deg," +
-                    "obs_model_yaw,obs_imu_yaw,cab_on,obs_on");
+                    "obs_model_yaw,obs_imu_yaw,obs_imu_w,cab_on,obs_on");
                 rows = 0; bytes = 0;
                 isLogging = true;
                 return true;
@@ -126,7 +126,7 @@ namespace AgOpenGPS
                 N(glm.toDegrees(mf.imuCorrected), 3);
                 N(glm.toDegrees(mf.headObs.psiRad), 3);
                 N(mf.headObs.biasDeg, 3);
-                N(mf.headObs.modelYaw, 3); N(mf.headObs.imuYaw, 3);
+                N(mf.headObs.modelYaw, 3); N(mf.headObs.imuYaw, 3); N(mf.headObs.imuWeight, 2);
                 sb.Append(mf.cabinComp.isOn ? 1 : 0).Append(',');
                 sb.Append(mf.headObs.isOn ? 1 : 0);
 

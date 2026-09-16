@@ -28,6 +28,9 @@ namespace AgOpenGPS
             headObs.wImu = s.setSF_obsImuWeight;
             headObs.Leff = s.setSF_obsLeff;
             headObs.biasDeg = s.setSF_obsWasBias;
+            headObs.KpTurn = s.setSF_obsKpTurn;
+            headObs.wasLo = s.setSF_obsWasLo;
+            headObs.wasHi = s.setSF_obsWasHi;
 
             cabinComp.Reset();
             headObs.Reset();
@@ -51,6 +54,9 @@ namespace AgOpenGPS
             s.setSF_obsImuWeight = headObs.wImu;
             s.setSF_obsLeff = headObs.Leff;
             s.setSF_obsWasBias = headObs.biasDeg;
+            s.setSF_obsKpTurn = headObs.KpTurn;
+            s.setSF_obsWasLo = headObs.wasLo;
+            s.setSF_obsWasHi = headObs.wasHi;
             s.Save();
         }
 
@@ -92,13 +98,13 @@ namespace AgOpenGPS
             if (cabinComp.learn.running)
                 cabinComp.learn.Sample(sfRawEast, sfRawNorth, ahrs.imuRoll, courseRad, speedMs, sfDt);
             if (headObs.learn.running && courseValid)
-                headObs.learn.Sample(mc.actualSteerAngleDegrees, headObs.biasDeg, speedMs, courseRad, sfDt);
+                headObs.learn.Sample(mc.actualSteerAngleDegrees, speedMs, courseRad, isReverse, sfDt);
 
             double outHeading = fallbackHeadingRad;
             if (headObs.isOn)
             {
                 double psi = headObs.Update(mc.actualSteerAngleDegrees, speedMs, courseRad, courseValid,
-                                            ahrs.imuHeading, sfDt);
+                                            ahrs.imuHeading, isReverse, sfDt);
                 if (headObs.isInitialized) outHeading = psi;
             }
             else

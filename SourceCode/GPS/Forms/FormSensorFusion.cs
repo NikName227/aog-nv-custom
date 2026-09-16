@@ -20,7 +20,10 @@ namespace AgOpenGPS
         private CheckBox cbCabin, cbObs, cbAdvanced, cbAutoLog;
         private NumericUpDown nKFast, nFc, nLead, nTau, nKp, nKi, nImuW;
         private Label lblLearned, lblLearnStatus, lblLogInfo, lblLive, lblStatusTop;
-        private Button btnLearn, btnLog, btnFolder, btnClose;
+        private Button btnLearn, btnLog, btnFolder, btnClose, btnInfo;
+        private Panel panInfo;
+        private bool infoOpen;
+        private const int WNarrow = 440, WWide = 800;
         private bool learning;
         private DateTime learnStart;
 
@@ -86,6 +89,37 @@ namespace AgOpenGPS
             Controls.Add(lblLive); y += 156;
 
             btnClose = Btn(hr ? "Zatvori" : "Close", 340, y, 84, 30, Color.FromArgb(60, 71, 64));
+
+            // ---------------- info (blue circle -> panel on the right) ----------------
+            btnInfo = new Button
+            {
+                Text = "i", Location = new Point(14, y + 2), Size = new Size(26, 26),
+                BackColor = Color.FromArgb(30, 110, 200), ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat, Font = new Font("Tahoma", 11f, FontStyle.Bold)
+            };
+            btnInfo.FlatAppearance.BorderSize = 0;
+            btnInfo.Region = new Region(new System.Drawing.Drawing2D.GraphicsPath());
+            using (var gp = new System.Drawing.Drawing2D.GraphicsPath())
+            {
+                gp.AddEllipse(0, 0, 26, 26);
+                btnInfo.Region = new Region(gp);
+            }
+            Controls.Add(btnInfo);
+            Lbl(hr ? "Info o parametrima" : "Parameter info", 46, y + 8, 160, 16, 8.5f, Color.FromArgb(120, 170, 220));
+
+            panInfo = new Panel
+            {
+                Location = new Point(WNarrow, 0), Size = new Size(WWide - WNarrow, ClientSize.Height),
+                BackColor = Color.FromArgb(20, 28, 25), AutoScroll = true, Visible = false
+            };
+            var lblInfo = new Label
+            {
+                Text = InfoText(), Location = new Point(10, 8), Size = new Size(WWide - WNarrow - 34, 2100),
+                AutoSize = false, Font = new Font("Tahoma", 8.5f), ForeColor = Color.FromArgb(205, 218, 210)
+            };
+            panInfo.Controls.Add(lblInfo);
+            Controls.Add(panInfo);
+            btnInfo.Click += (s, e) => ToggleInfo();
 
             // ---------------- wire up ----------------
             LoadToControls();
@@ -193,6 +227,78 @@ namespace AgOpenGPS
 
         private void Store() { mf.SaveSensorFusionSettings(); }
 
+        // ---------------------------------------------------------------- info panel
+        private void ToggleInfo()
+        {
+            infoOpen = !infoOpen;
+            int wide = Math.Min(WWide, Screen.FromControl(this).WorkingArea.Width - 20);
+            ClientSize = new Size(infoOpen ? wide : WNarrow, ClientSize.Height);
+            panInfo.Size = new Size(ClientSize.Width - WNarrow, ClientSize.Height);
+            panInfo.Visible = infoOpen;
+            btnInfo.BackColor = infoOpen ? Color.FromArgb(20, 80, 150) : Color.FromArgb(30, 110, 200);
+        }
+
+        private string InfoText()
+        {
+            if (!hr)
+                return "Antenna height (Config > Vehicle) and invert roll (Config > Data) come from the existing "
+                     + "AOG settings and are NOT entered here. The antenna height is also the lever used for terrain roll.\n\n"
+                     + "Each item: what it does - typical range - how to get the value - what if it is wrong.";
+
+            return
+"Visina antene (Config → Vozilo) i invert roll (Config → Data) uzimaju se iz postojećih postavki\n" +
+"AOG-a i ovdje se NE unose ponovno. Visina antene je ujedno poluga za nagib terena.\n\n" +
+"── KOMPENZACIJA KABINE ──────────────────────────────\n\n" +
+"k_fast [m]   tipično 0.5–2.5\n" +
+"Poluga njihanja kabine: visina antene minus visina osi oko koje se kabina njiše. Govori koliko\n" +
+"se antena stvarno pomakne kod brze promjene rolla.\n" +
+"Kako: gumb Učenje (2–4 min vožnje po neravnom). Ručno: izmjeri visinu nosača ovjesa kabine i\n" +
+"oduzmi je od visine antene.\n" +
+"Krivo: premalo → njihanje ostaje nekompenzirano; previše (npr. puna visina antene) → lažni\n" +
+"skokovi pozicije i trzaji volana.\n\n" +
+"fc [Hz]   0 = filtar isključen, inače 0.5–1.5\n" +
+"Granica bočnog filtra. Niže = mirnija linija, ali sporiji odziv na stvarni bočni pomak.\n" +
+"Kako: podešava se na terenu. Kreni od 0 (isključen); ako je linija nemirna stavi 1.5, pa 1.0.\n" +
+"Krivo: prenisko → trom odziv; previsoko → filtar ne radi ništa.\n\n" +
+"lead [0–1]   tipično 0.3–0.7\n" +
+"Koliko se kašnjenja filtra vraća natrag. 0 = najmirnije i najsporije, 1 = bez kašnjenja uz\n" +
+"slabije glađenje. Nema učinka dok je fc = 0.\n" +
+"Kako: podešava se zajedno s fc.\n\n" +
+"τ_slow [s]   (napredno)   tipično 1–2\n" +
+"Granica između nagiba terena i njihanja kabine. Spori dio rolla množi se punom visinom antene,\n" +
+"brzi s k_fast.\n" +
+"Kako: ostaviti zadano; kraće τ bolje hvata brz ulazak na nagib, dulje bolje razdvaja kabinu.\n\n" +
+"── OBSERVER SMJERA ──────────────────────────────────\n\n" +
+"Kp   tipično 0.2–0.5\n" +
+"Koliko heading prati GPS smjer; vremenska konstanta je približno 1/Kp (0.3 → oko 3 s).\n" +
+"Kako: podešavanje. Niže = mirnije, više = brže poravnanje uz više šuma.\n\n" +
+"Ki   tipično 0.002–0.01\n" +
+"Brzina kojom observer sam nalazi nulu WAS-a; radi na skali minute.\n" +
+"Kako: ostaviti zadano; provjeriti da prikazana nula ne bježi.\n\n" +
+"udio IMU-a [0–1]   tipično 0–0.5\n" +
+"Koliko IMU brzine zakretanja ulazi u model. Pomaže na ravnom, odmaže u okretu jer se kabina\n" +
+"zakreće i sama.\n" +
+"Kako: podešavanje; povisiti na ravnom terenu s dobrim IMU-om.\n\n" +
+"L_eff [m]   (naučeno)\n" +
+"Efektivni međuosovinski razmak; uključuje klizanje kotača pa je veći od mehaničkog.\n" +
+"Kako: gumb Učenje, uz okrete u obje strane i barem 30 s ravne vožnje.\n" +
+"Bez učenja: mehanički razmak × 1.3–1.5.\n\n" +
+"Nula WAS-a [°]   (naučeno)\n" +
+"Odstupanje senzora kuta kako ga vidi model; dijelom upija i bočno klizanje na nagibu.\n" +
+"Kako: uči se sama tijekom vožnje; provjera: pri ravnoj vožnji WAS treba biti blizu nule.\n\n" +
+"U okretu i pri maloj brzini observer sam prelazi s GPS smjera na IMU heading (offset IMU-a uči\n" +
+"dok se vozi ravno). Vožnja unatrag se prepoznaje i predznak se okreće.\n\n" +
+"── RAW LOG ──────────────────────────────────────────\n\n" +
+"Snima svaki fix (10 Hz) u Documents\\AgOpenGPS\\Logs kao AOG_AdvSensorFusion_<datum>_<vrijeme>.csv:\n" +
+"sirovi ulazi i svi unutarnji signali lanca. Služi za analizu i ponovno učenje parametara.\n\n" +
+"── ŽIVI PRIKAZ ──────────────────────────────────────\n\n" +
+"roll sirovi / spori / brzi — sirovi roll i njegova dva dijela (teren i kabina)\n" +
+"korekcija — koliko se pozicija pomiče, ukupno i po dijelovima\n" +
+"bočno prije/poslije filtra — koliko filtar zapravo skida\n" +
+"heading f2f / IMU / observer — tri izvora smjera i trenutni omjer\n" +
+"dt — razmak između fixeva, normalno oko 100 ms\n";
+        }
+
         // ---------------------------------------------------------------- learning
         private void ToggleLearn()
         {
@@ -211,9 +317,10 @@ namespace AgOpenGPS
             btnLearn.Text = hr ? "Učenje (k_fast + model)" : "Learning (k_fast + model)";
             btnLearn.BackColor = Color.FromArgb(15, 131, 149);
 
-            double k, r2, leff, q;
+            double k, r2, leff, lbias, q;
             bool okK = mf.cabinComp.learn.Result(out k, out r2);
-            bool okL = mf.headObs.learn.Result(out leff, out q) && mf.headObs.learn.HasBothTurns;
+            bool okL = mf.headObs.learn.Result(out leff, out lbias, out q)
+                       && mf.headObs.learn.HasBothTurns && mf.headObs.learn.HasStraight;
 
             string msg = "";
             msg += okK
@@ -223,12 +330,12 @@ namespace AgOpenGPS
                 : (hr ? "k_fast: premalo podataka (treba vožnja po neravnom, 2-4 min)\n"
                       : "k_fast: not enough data (2-4 min on uneven ground)\n");
             msg += okL
-                ? string.Format(hr ? "L_eff = {0:F2} m   (sada {1:F2} m, n={2}, okreti L/D {3}/{4})"
-                                   : "L_eff = {0:F2} m   (now {1:F2} m, n={2}, turns L/R {3}/{4})",
-                                leff, mf.headObs.Leff, mf.headObs.learn.n,
+                ? string.Format(hr ? "L_eff = {0:F2} m, nula WAS {1:+0.00;-0.00}°   (sada {2:F2} m / {3:+0.00;-0.00}°, n={4}, okreti L/D {5}/{6})"
+                                   : "L_eff = {0:F2} m, WAS zero {1:+0.00;-0.00}°   (now {2:F2} m / {3:+0.00;-0.00}°, n={4}, turns L/R {5}/{6})",
+                                leff, lbias, mf.headObs.Leff, mf.headObs.biasDeg, mf.headObs.learn.n,
                                 mf.headObs.learn.turnsLeft, mf.headObs.learn.turnsRight)
-                : (hr ? "L_eff: treba barem jedan okret lijevo i jedan desno"
-                      : "L_eff: needs at least one left and one right turn");
+                : (hr ? "L_eff: treba ravna vožnja (≥30 s) i okret lijevo i desno"
+                      : "L_eff: needs straight driving (>=30 s) and a left and a right turn");
 
             if (!okK && !okL)
             {
@@ -242,7 +349,7 @@ namespace AgOpenGPS
             if (res != DialogResult.Yes) return;
 
             if (okK) { mf.cabinComp.kFast = Math.Min(6, Math.Abs(k)); nKFast.Value = Clamp(mf.cabinComp.kFast, nKFast); }
-            if (okL) mf.headObs.Leff = leff;
+            if (okL) { mf.headObs.Leff = leff; mf.headObs.biasDeg = lbias; }
             Store();
         }
 
@@ -294,7 +401,7 @@ namespace AgOpenGPS
                     + "heading f2f {8,7:F2}°   IMU {9,7:F2}°\n"
                     + "observer    {10,7:F2}°   model {11,6:F2} °/s  IMU {12,6:F2} °/s\n"
                     + "\n"
-                    + "kabina {13}    observer {14}    dt {15:F0} ms"
+                    + "kabina {13}    observer {14}    IMU udio {16:P0}    dt {15:F0} ms"
                     : "roll raw {0,7:F2}°   slow {1,7:F2}°   fast {2,7:F2}°\n"
                     + "correction {3,7:F1} cm  (slow {4,5:F1} / fast {5,5:F1})\n"
                     + "lateral before/after {6,6:F1} / {7,6:F1} cm\n"
@@ -302,14 +409,14 @@ namespace AgOpenGPS
                     + "heading f2f {8,7:F2}°   IMU {9,7:F2}°\n"
                     + "observer    {10,7:F2}°   model {11,6:F2} °/s  IMU {12,6:F2} °/s\n"
                     + "\n"
-                    + "cabin {13}    observer {14}    dt {15:F0} ms"),
+                    + "cabin {13}    observer {14}    IMU share {16:P0}    dt {15:F0} ms"),
                 mf.ahrs.imuRoll, cc.rollSlowDeg, cc.rollFastDeg,
                 cc.corrTotal * 100, cc.corrSlow * 100, cc.corrFast * 100,
                 cc.latBefore * 100, cc.latAfter * 100,
                 glm.toDegrees(mf.gpsHeading), mf.ahrs.imuHeading,
                 glm.toDegrees(ob.psiRad), ob.modelYaw, ob.imuYaw,
                 cc.isOn ? "ON " : "off", ob.isOn ? (ob.isInitialized ? "ON " : "init") : "off",
-                mf.sfDt * 1000);
+                mf.sfDt * 1000, ob.imuWeight);
         }
     }
 }

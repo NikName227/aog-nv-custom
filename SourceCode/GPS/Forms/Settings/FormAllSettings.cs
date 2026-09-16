@@ -180,6 +180,9 @@ namespace AgOpenGPS
             AddRow(right, "Observer IMU share", vsDefault.setSF_obsImuWeight, vs.setSF_obsImuWeight);
             AddRow(right, "L_eff [m]", vsDefault.setSF_obsLeff, vs.setSF_obsLeff);
             AddRow(right, "WAS bias [deg]", vsDefault.setSF_obsWasBias, vs.setSF_obsWasBias);
+            AddRow(right, "Observer Kp turn", vsDefault.setSF_obsKpTurn, vs.setSF_obsKpTurn);
+            AddRow(right, "Observer WAS lo", vsDefault.setSF_obsWasLo, vs.setSF_obsWasLo);
+            AddRow(right, "Observer WAS hi", vsDefault.setSF_obsWasHi, vs.setSF_obsWasHi);
 
             AddHeader(right, "── Brand");
             AddRow(right, "Tractor Brand", vsDefault.setBrand_TBrand, vs.setBrand_TBrand);
