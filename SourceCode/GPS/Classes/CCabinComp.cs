@@ -88,7 +88,9 @@ namespace AgOpenGPS
         /// </summary>
         public void FilterFix(ref double east, ref double north, double headingRad, double speedMs, double dt)
         {
-            latBefore = latAfter = 0;
+            //NaN, not 0: with the filter inactive there is no before/after to report, and a
+            //logged 0.0 reads like "the filter ran and changed nothing". N() writes NaN as blank.
+            latBefore = latAfter = double.NaN;
 
             if (!isOn || fc <= 0.01 || Math.Abs(speedMs) < MinSpeedMs)
             {

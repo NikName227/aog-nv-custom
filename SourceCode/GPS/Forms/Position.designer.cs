@@ -1093,6 +1093,10 @@ namespace AgOpenGPS
 
             #endregion
 
+            //F10: one raw log row, here at the end - the guidance line, XTE and pivot for THIS
+            //fix are all final by now, so a row is one consistent snapshot
+            SensorFusionLog();
+
             //NV follow plan: track how much of the current pass is driven
             plan.UpdateProgress();
 

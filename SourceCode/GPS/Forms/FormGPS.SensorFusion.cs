@@ -112,8 +112,18 @@ namespace AgOpenGPS
                 headObs.psiRad = fallbackHeadingRad;
             }
 
-            if (rawLog.isLogging) rawLog.Sample(sfRawEast, sfRawNorth);
             return outHeading;
+        }
+
+        /// <summary>
+        /// One log row per fix. Called at the very end of the autosteer block in UpdateFixPosition,
+        /// not from SensorFusionHeading: the heading is known long before pivotAxlePos is rebuilt
+        /// and the guidance line is evaluated, so logging there put pivot_east/north and the XTE
+        /// one fix (100 ms) behind everything else in the same row.
+        /// </summary>
+        public void SensorFusionLog()
+        {
+            if (rawLog.isLogging) rawLog.Sample(sfRawEast, sfRawNorth);
         }
     }
 }

@@ -1,4 +1,4 @@
-// F10 Advanced Sensor Fusion (NV custom) — Wizards dialog.
+﻿// F10 Advanced Sensor Fusion (NV custom) — Wizards dialog.
 // Two independent functions (cabin compensation, heading observer), one learning run for
 // both parameters, a raw logger and a live view of every signal in the chain.
 // Code-built UI (no designer), same style/size as the F07 Integration Test window.
@@ -406,7 +406,7 @@ namespace AgOpenGPS
             lblLive.Text = string.Format(CultureInfo.InvariantCulture,
                 (hr ? "roll sirovi {0,7:F2}°   spori {1,7:F2}°   brzi {2,7:F2}°\n"
                     + "korekcija   {3,7:F1} cm  (spori {4,5:F1} / brzi {5,5:F1})\n"
-                    + "bočno prije/poslije filtra {6,6:F1} / {7,6:F1} cm\n"
+                    + "bočno prije/poslije filtra {6,6} / {7,6} cm\n"
                     + "\n"
                     + "heading f2f {8,7:F2}°   IMU {9,7:F2}°\n"
                     + "observer    {10,7:F2}°   model {11,6:F2} °/s  IMU {12,6:F2} °/s\n"
@@ -414,7 +414,7 @@ namespace AgOpenGPS
                     + "kabina {13}    observer {14}    IMU udio {16:P0}    dt {15:F0} ms"
                     : "roll raw {0,7:F2}°   slow {1,7:F2}°   fast {2,7:F2}°\n"
                     + "correction {3,7:F1} cm  (slow {4,5:F1} / fast {5,5:F1})\n"
-                    + "lateral before/after {6,6:F1} / {7,6:F1} cm\n"
+                    + "lateral before/after {6,6} / {7,6} cm\n"
                     + "\n"
                     + "heading f2f {8,7:F2}°   IMU {9,7:F2}°\n"
                     + "observer    {10,7:F2}°   model {11,6:F2} °/s  IMU {12,6:F2} °/s\n"
@@ -422,11 +422,17 @@ namespace AgOpenGPS
                     + "cabin {13}    observer {14}    IMU share {16:P0}    dt {15:F0} ms"),
                 mf.ahrs.imuRoll, cc.rollSlowDeg, cc.rollFastDeg,
                 cc.corrTotal * 100, cc.corrSlow * 100, cc.corrFast * 100,
-                cc.latBefore * 100, cc.latAfter * 100,
+                LatTxt(cc.latBefore), LatTxt(cc.latAfter),
                 glm.toDegrees(mf.gpsHeading), mf.ahrs.imuHeading,
                 glm.toDegrees(ob.psiRad), ob.modelYaw, ob.imuYaw,
                 cc.isOn ? "ON " : "off", ob.isOn ? (ob.isInitialized ? "ON " : "init") : "off",
                 mf.sfDt * 1000, ob.imuWeight);
+        }
+
+        /// <summary>Lateral offset in cm, or a dash while the lateral filter is not running.</summary>
+        private static string LatTxt(double m)
+        {
+            return double.IsNaN(m) ? "—" : (m * 100).ToString("F1", CultureInfo.InvariantCulture);
         }
     }
 }
