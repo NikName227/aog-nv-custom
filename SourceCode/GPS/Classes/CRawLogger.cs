@@ -48,7 +48,8 @@ namespace AgOpenGPS
                     "pitch_deg,yaw_rate,was_deg,label,switch,pwm,was_set_deg,xte_cm,steer_status,aog_speed_kmh," +
                     "raw_east,raw_north,fix_east,fix_north,roll_slow_deg,roll_fast_deg,corr_slow_m,corr_fast_m," +
                     "lat_before_m,lat_after_m,gps_heading_deg,imu_corrected_deg,obs_heading_deg,obs_bias_deg," +
-                    "obs_model_yaw,obs_imu_yaw,obs_imu_w,cab_on,obs_on");
+                    "obs_model_yaw,obs_imu_yaw,obs_imu_w,cab_on,obs_on," +
+                    "roll_raw_deg,fix_heading_deg,avg_speed_kmh,pivot_east,pivot_north");
                 rows = 0; bytes = 0;
                 isLogging = true;
                 return true;
@@ -77,7 +78,7 @@ namespace AgOpenGPS
             try
             {
                 sw.WriteLine(string.Format(CultureInfo.InvariantCulture,
-                    "{0},{1:F3},MARK,,,,,,,,,,,,,,,{2},,,,,,,,,,,,,,,,,,,,,,",
+                    "{0},{1:F3},MARK,,,,,,,,,,,,,,,{2},,,,,,,,,,,,,,,,,,,,,,,,,,,",
                     DateTime.Now.ToString("HH:mm:ss.fff"), Elapsed.TotalSeconds, label));
             }
             catch { }
@@ -128,7 +129,12 @@ namespace AgOpenGPS
                 N(mf.headObs.biasDeg, 3);
                 N(mf.headObs.modelYaw, 3); N(mf.headObs.imuYaw, 3); N(mf.headObs.imuWeight, 2);
                 sb.Append(mf.cabinComp.isOn ? 1 : 0).Append(',');
-                sb.Append(mf.headObs.isOn ? 1 : 0);
+                sb.Append(mf.headObs.isOn ? 1 : 0).Append(',');
+                N(mf.ahrs.imuRollRaw, 2);
+                N(glm.toDegrees(mf.fixHeading), 3);
+                N(mf.avgSpeed, 2);
+                N(mf.pivotAxlePos.easting, 4);
+                sb.Append(mf.pivotAxlePos.northing.ToString("F4", CultureInfo.InvariantCulture));
 
                 string line = sb.ToString();
                 sw.WriteLine(line);

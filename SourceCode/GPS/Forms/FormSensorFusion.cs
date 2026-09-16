@@ -225,7 +225,17 @@ namespace AgOpenGPS
             cbAutoLog.Checked = Properties.VehicleSettings.Default.setSF_autoLog;
         }
 
-        private void Store() { mf.SaveSensorFusionSettings(); }
+        private void Store()
+        {
+            mf.SaveSensorFusionSettings();
+            // a mark in the raw log, so a parameter change is visible in the replay/analysis
+            if (mf.rawLog.isLogging)
+                mf.rawLog.Mark(string.Format(CultureInfo.InvariantCulture,
+                    "SET cab={0} k_fast={1:F2} fc={2:F2} lead={3:F2} tau={4:F1} obs={5} Kp={6:F2} Ki={7:F3} wImu={8:F2} Leff={9:F2}",
+                    mf.cabinComp.isOn ? 1 : 0, mf.cabinComp.kFast, mf.cabinComp.fc, mf.cabinComp.lead,
+                    mf.cabinComp.tauSlow, mf.headObs.isOn ? 1 : 0, mf.headObs.Kp, mf.headObs.Ki,
+                    mf.headObs.wImu, mf.headObs.Leff));
+        }
 
         // ---------------------------------------------------------------- info panel
         private void ToggleInfo()
