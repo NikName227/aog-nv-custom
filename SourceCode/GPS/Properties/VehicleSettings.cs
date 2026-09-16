@@ -1,4 +1,4 @@
-using AgLibrary.Settings;
+﻿using AgLibrary.Settings;
 using AgOpenGPS.Core.Models;
 using System.IO;
 
@@ -44,6 +44,22 @@ namespace AgOpenGPS.Properties
         public bool setIMU_invertRoll = false;
         public bool setIMU_isDualAsIMU = false;
         public double setIMU_fusionWeight2 = 0.06;
+
+        // F10 Advanced Sensor Fusion — cabin compensation (independent of the observer)
+        public bool setSF_cabinOn = false;
+        public double setSF_kFast = 1.4;        // [m] lever of the fast (cabin) roll part
+        public double setSF_fc = 1.0;           // [Hz] lateral filter cutoff
+        public double setSF_lead = 0.7;         // [0..1] how much filter delay is given back
+        public double setSF_tauSlow = 1.5;      // [s] terrain / cabin split
+
+        // F10 Advanced Sensor Fusion — heading observer (independent of the cabin part)
+        public bool setSF_obsOn = false;
+        public double setSF_obsKp = 0.3;
+        public double setSF_obsKi = 0.004;
+        public double setSF_obsImuWeight = 0.25;
+        public double setSF_obsLeff = 4.2;      // [m] effective wheelbase (incl. slip), learned
+        public double setSF_obsWasBias = 0.0;   // [deg] WAS zero, learned / kept between runs
+        public bool setSF_autoLog = false;      // start the raw logger with AOG
 
         // GPS settings
         public string setGPS_headingFromWhichSource = "Fix";

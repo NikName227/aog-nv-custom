@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Xml;
@@ -201,6 +201,7 @@ namespace AgOpenGPS
             dest.setGPS_dualReverseDetectionDistance = source.setGPS_dualReverseDetectionDistance;
             dest.setGPS_minimumStepLimit = source.setGPS_minimumStepLimit;
 
+            // F10 Advanced Sensor Fusion: new settings, nothing to migrate from the legacy file
             // Arduino Steer
             dest.setArdSteer_setting0 = source.setArdSteer_setting0;
             dest.setArdSteer_setting1 = source.setArdSteer_setting1;

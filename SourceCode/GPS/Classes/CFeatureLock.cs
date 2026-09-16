@@ -1,4 +1,4 @@
-using AgLibrary.Logging;
+﻿using AgLibrary.Logging;
 using Newtonsoft.Json.Linq;
 using System;
 using System.IO;
@@ -20,6 +20,7 @@ namespace AgOpenGPS
         public const string FeatureTurnApp = "turnapp";      // Turn lines + pass plan (F05)
         public const string FeatureOrchard = "orchard";      // Orchard planner (F50)
         public const string FeatureIntegrationTest = "integrationtest"; // Integration Test wizard (F07)
+        public const string FeatureSensorFusion = "sensorfusion";       // Advanced Sensor Fusion (F10)
 
         // unremarkable file name on purpose (not "license"/"premium")
         private static readonly string configPath = Path.Combine(
