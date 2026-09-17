@@ -26,6 +26,9 @@ namespace AgOpenGPS
 
             kinModel.isOn = s.setSF_modelOn;
             kinModel.imuShare = s.setSF_modelImuW;
+            kinModel.posFloor = s.setSF_modelFloor;
+            kinModel.posTau = s.setSF_modelTau;
+            kinModel.leff = s.setSF_obsLeff;
             kinModel.Reset();
 
             //the observer stays instantiated only for the L_eff learning; it no longer drives
@@ -58,11 +61,13 @@ namespace AgOpenGPS
 
             s.setSF_modelOn = kinModel.isOn;
             s.setSF_modelImuW = kinModel.imuShare;
+            s.setSF_modelFloor = kinModel.posFloor;
+            s.setSF_modelTau = kinModel.posTau;
+            s.setSF_obsLeff = kinModel.leff;
             s.setSF_obsOn = false;
             s.setSF_obsKp = headObs.Kp;
             s.setSF_obsKi = headObs.Ki;
             s.setSF_obsImuWeight = headObs.wImu;
-            s.setSF_obsLeff = headObs.Leff;
             s.setSF_obsWasBias = headObs.biasDeg;
             s.setSF_obsKpTurn = headObs.KpTurn;
             s.setSF_obsWasLo = headObs.wasLo;
@@ -140,7 +145,6 @@ namespace AgOpenGPS
             double aogE = pn.fix.easting - Math.Sin(headingRad) * vehicle.VehicleConfig.AntennaPivot;
             double aogN = pn.fix.northing - Math.Cos(headingRad) * vehicle.VehicleConfig.AntennaPivot;
 
-            kinModel.mfLeff = headObs.Leff;
             kinModel.Update(aogE, aogN, headingRad, mc.actualSteerAngleDegrees,
                             Math.Abs(pn.vtgSpeed < 9999 ? pn.vtgSpeed : pn.speed) / 3.6,
                             sfImuUnwrapped, gpsHeading,

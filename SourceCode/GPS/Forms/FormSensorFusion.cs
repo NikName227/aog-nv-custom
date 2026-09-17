@@ -18,7 +18,7 @@ namespace AgOpenGPS
         private readonly Timer poll = new Timer();
 
         private CheckBox cbCabin, cbModel, cbForce, cbAutoLog;
-        private NumericUpDown nKFast, nFc, nLead, nImuW;
+        private NumericUpDown nKFast, nFc, nLead, nImuW, nFloor, nTau, nLeff;
         private Label lblLearned, lblLearnStatus, lblLogInfo, lblLive, lblLiveModel, lblStatusTop;
         private Button btnLearn, btnLog, btnFolder, btnClose, btnInfo;
         private Panel panInfo;
@@ -66,8 +66,16 @@ namespace AgOpenGPS
             cbForce.Width = 130; y += 24;
             Lbl(hr ? "WAS ◀──────▶ IMU" : "WAS ◀──────▶ IMU", 20, y + 3, 130, 16);
             nImuW = Num(156, y, 0, 0.6m, 0.05m, 2);
-            Lbl(hr ? "sve ostalo iz geometrije i fizike" : "everything else from geometry", 226, y + 3, 200, 16,
-                8.5f, Color.FromArgb(140, 160, 150)); y += 28;
+            y += 28;
+            Lbl("floor", 20, y + 3, 40, 16);
+            nFloor = Num(62, y, 0.05m, 0.90m, 0.05m, 2);
+            Lbl("τ [s]", 152, y + 3, 36, 16);
+            nTau = Num(190, y, 0.1m, 2.0m, 0.1m, 1);
+            Lbl("L_eff [m]", 286, y + 3, 58, 16);
+            nLeff = Num(348, y, 2.0m, 8.0m, 0.1m, 2); y += 26;
+            Lbl(hr ? "za ugađanje na terenu — τ/floor je efektivna konstanta korekcije"
+                   : "field tuning — tau/floor is the effective correction time constant",
+                20, y, 406, 14, 8f, Color.FromArgb(140, 160, 150)); y += 20;
             lblLearned = Lbl("", 20, y, 400, 16, 8.5f, Color.FromArgb(160, 180, 170)); y += 24;
 
             // ---------------- raw log ----------------
@@ -146,6 +154,9 @@ namespace AgOpenGPS
             nFc.ValueChanged += (s, e) => { mf.cabinComp.fc = (double)nFc.Value; mf.cabinComp.Reset(); Store(); };
             nLead.ValueChanged += (s, e) => { mf.cabinComp.lead = (double)nLead.Value; Store(); };
             nImuW.ValueChanged += (s, e) => { mf.kinModel.imuShare = (double)nImuW.Value; Store(); };
+            nFloor.ValueChanged += (s, e) => { mf.kinModel.posFloor = (double)nFloor.Value; Store(); };
+            nTau.ValueChanged += (s, e) => { mf.kinModel.posTau = (double)nTau.Value; Store(); };
+            nLeff.ValueChanged += (s, e) => { mf.kinModel.leff = (double)nLeff.Value; Store(); };
 
             btnLearn.Click += (s, e) => ToggleLearn();
             btnLog.Click += (s, e) => ToggleLog();
@@ -226,6 +237,9 @@ namespace AgOpenGPS
             cbModel.Checked = mf.kinModel.isOn;
             cbForce.Checked = mf.kinModel.forceOn;
             nImuW.Value = Clamp(mf.kinModel.imuShare, nImuW);
+            nFloor.Value = Clamp(mf.kinModel.posFloor, nFloor);
+            nTau.Value = Clamp(mf.kinModel.posTau, nTau);
+            nLeff.Value = Clamp(mf.kinModel.leff, nLeff);
             cbAutoLog.Checked = Properties.VehicleSettings.Default.setSF_autoLog;
         }
 
@@ -235,10 +249,11 @@ namespace AgOpenGPS
             // a mark in the raw log, so a parameter change is visible in the replay/analysis
             if (mf.rawLog.isLogging)
                 mf.rawLog.Mark(string.Format(CultureInfo.InvariantCulture,
-                    "SET cab={0} k_fast={1:F2} fc={2:F2} lead={3:F2} model={4} force={5} imuW={6:F2} Leff={7:F2}",
+                    "SET cab={0} k_fast={1:F2} fc={2:F2} lead={3:F2} model={4} force={5} imuW={6:F2} " +
+                    "floor={7:F2} tau={8:F1} Leff={9:F2}",
                     mf.cabinComp.isOn ? 1 : 0, mf.cabinComp.kFast, mf.cabinComp.fc, mf.cabinComp.lead,
-                    mf.kinModel.isOn ? 1 : 0, mf.kinModel.forceOn ? 1 : 0,
-                    mf.kinModel.imuShare, mf.headObs.Leff));
+                    mf.kinModel.isOn ? 1 : 0, mf.kinModel.forceOn ? 1 : 0, mf.kinModel.imuShare,
+                    mf.kinModel.posFloor, mf.kinModel.posTau, mf.kinModel.leff));
         }
 
         // ---------------------------------------------------------------- info panel
@@ -468,9 +483,8 @@ namespace AgOpenGPS
             lblStatusTop.ForeColor = mf.kinModel.forceOn
                 ? Color.FromArgb(230, 150, 60) : Color.FromArgb(150, 200, 180);
 
-            lblLearned.Text = string.Format(CultureInfo.InvariantCulture,
-                hr ? "L_eff {0:F2} m  (gumb Učenje gore; nije kritičan)  ·  nulu WAS-a model uči sam"
-                   : "L_eff {0:F2} m  (Learning button above; not critical)  ·  WAS zero is self-learned", ob.Leff);
+            lblLearned.Text = hr ? "nula WAS-a se više ne uči — trovala ju je buka sidra (REQ 2026-09-17-2)"
+                                 : "WAS zero learning removed — it was poisoned by anchor noise";
 
             if (learning)
             {
@@ -513,17 +527,17 @@ namespace AgOpenGPS
             lblLiveModel.Text = string.Format(CultureInfo.InvariantCulture,
                 (hr ? "stanje      {0}\n"
                     + "razlika     {1,6:F1} cm      odbačeno {2,3:F0} %\n"
-                    + "nula WAS-a  {3,6:+0.00;-0.00}°       {4}\n"
+                    + "sidro       {3,6:+0.00;-0.00}°       τ_ef {4}\n"
                     + "zakretanje  {5,6:F2} °/s     kinematika {6:F2} → {7:F2}×\n"
                     + "brzina      {8,6:F1} km/h    {9}   dt {10:F0} ms"
                     : "state       {0}\n"
                     + "innovation  {1,6:F1} cm      rejected {2,3:F0} %\n"
-                    + "WAS zero    {3,6:+0.00;-0.00}°       {4}\n"
+                    + "anchor      {3,6:+0.00;-0.00}°       tau_ef {4}\n"
                     + "yaw rate    {5,6:F2} °/s     kinematic {6:F2} → {7:F2}×\n"
                     + "speed       {8,6:F1} km/h    {9}   dt {10:F0} ms"),
-                state, km.innovCm, km.rejectPct, km.biasDeg,
-                km.biasSettled ? (hr ? "ustaljena" : "settled")
-                               : string.Format(hr ? "uči {0:F0} s" : "learning {0:F0} s", km.biasSeconds),
+                state, km.innovCm, km.rejectPct, km.anchorDeg,
+                string.Format(CultureInfo.InvariantCulture, "{0:F1} s",
+                    km.posTau / Math.Max(0.02, km.rejectPct < 99.9 ? 1.0 - km.rejectPct / 100.0 : 0.02)),
                 km.usedYaw, km.kinLimit, ratio, km.speedUsed * 3.6,
                 km.vtgShare > 0.99 ? "VTG" : (km.vtgShare < 0.01 ? (hr ? "pozicija" : "position")
                     : string.Format(hr ? "VTG {0:F0} %" : "VTG {0:F0} %", km.vtgShare * 100)),

@@ -26,6 +26,7 @@ namespace AgOpenGPS
         // ---- the one user setting -------------------------------------------------------
         public bool isOn;
         public double imuShare = 0.25;      // [0..0.6] how much of the yaw rate comes from the IMU
+        public double leff = 4.20;          // [m] effective wheelbase, includes slip
 
         // Test aid only: keeps the model active with autosteer off, in a turn, and before the
         // WAS zero has settled - so a data replay can drive it. NOT saved between sessions, so
@@ -38,16 +39,18 @@ namespace AgOpenGPS
         public const double SwayP99 = 0.066;
         public const double Margin = 1.20;
         private const double PosE0 = SwayP99 * Margin;      // 0.079 m
-        private const double PosTau = 1.0;                  // [s]
-        private const double PosFloor = 0.10;               // gain never fully closes
+
+        // Field-tunable (REQ 2026-09-17-2). The effective time constant of the correction is
+        // posTau/gain, and the gain sits near posFloor most of the time because the innovation
+        // is usually 2-6 cm. With 1.0/0.10 that is ~10 s of open-loop running - measured in the
+        // field as a slow weave with a ~20 s period. Raise the floor and shorten the tau to fix it.
+        public double posFloor = 0.10;
+        public double posTau = 1.0;                         // [s]
         private const double HdgTau = 2.0;                  // [s]
         private const double HdgFloor0 = 1.5;               // [deg] floor at IMU quantisation
         private const double HdgFloor = 0.10;
         private const double HdgAvgTau = 1.5;               // [s] smoothing of the f2f course
 
-        private const double BiasKi = 0.15;                 // WAS zero, ~12 s to settle
-        private const double BiasYawGate = 1.0;             // [deg/s] only while driving straight
-        private const double BiasMax = 6.0;                 // [deg]
 
         private const double WasOut = 10.0;                 // [deg] above this: passive
         private const double WasIn = 8.0;                   // [deg] return below this
@@ -70,7 +73,7 @@ namespace AgOpenGPS
         private readonly double[] tBuf = new double[RateN];
         private int nBuf;
         private double act;                                 // 0 = passive, 1 = model drives
-        private double belowSec, divergeSec, learnSec;
+        private double belowSec, divergeSec;
         private double prevE, prevN;
         private bool prevPosOk;
 
@@ -82,14 +85,14 @@ namespace AgOpenGPS
         public double kinLimit;                             // [deg/s] what geometry allows
         public double vtgShare;                             // 1 = VTG only, 0 = position only
         public double speedUsed;                            // [m/s]
-        public bool biasSettled;
-        public double biasSeconds { get { return learnSec; } }
+        public double anchorDeg;            // model heading - AOG heading [deg]; poisons nothing
+                                            // now, but tells us how clean the anchor is
         public string passiveReason = "";
 
         public void Reset()
         {
             init = false; nBuf = 0; act = 0; belowSec = 0; divergeSec = 0;
-            biasDeg = 0; learnSec = 0; biasSettled = false; prevPosOk = false;
+            biasDeg = 0; anchorDeg = 0; prevPosOk = false;
             innovCm = 0; rejectPct = 0; passiveReason = "";
         }
 
@@ -185,15 +188,14 @@ namespace AgOpenGPS
             }
             else want = act > 0.5 ? 1 : 0;      // dead band between WasIn and WasOut
 
-            if (want > 0.5 && !biasSettled && !forceOn) { want = 0; passiveReason = "uči nulu WAS-a"; }
 
             double step = dt / Math.Max(RampSec, 1e-3);
             act = want > 0.5 ? Math.Min(1.0, act + step) : Math.Max(0.0, act - step);
             if (act >= 0.999) passiveReason = "";
 
             // ---- prediction: WAS and IMU lead the fast changes, up to about 1 s ------------
-            double leff = Math.Max(0.5, mfLeff);
-            modelYaw = glm.toDegrees(v * Math.Tan(glm.toRadians(wasDeg - biasDeg)) / leff);
+            double leff_ = Math.Max(0.5, leff);
+            modelYaw = glm.toDegrees(v * Math.Tan(glm.toRadians(wasDeg - biasDeg)) / leff_);
             imuYaw = rate;
             double w = Math.Max(0, Math.Min(0.6, imuShare));
             usedYaw = (1.0 - w) * modelYaw + w * imuYaw;
@@ -214,18 +216,16 @@ namespace AgOpenGPS
             }
             if (psi < 0) psi += glm.twoPI; else if (psi >= glm.twoPI) psi -= glm.twoPI;
 
-            // ---- WAS zero: anchored to AOG's heading, NOT to the model's own ---------------
-            // The model's own heading would be circular: the zero moves the model, the model
-            // moves the error, the error moves the zero. AOG's fusion is independent, the IMU
-            // smooths it and f2f takes its drift out.
-            if (v > 0.5 && Math.Abs(wasDeg - biasDeg) < 5.0 && Math.Abs(imuYaw) < BiasYawGate)
-            {
-                biasDeg -= BiasKi * glm.toDegrees(Wrap(aogPsi - psi)) * dt;
-                if (biasDeg > BiasMax) biasDeg = BiasMax; else if (biasDeg < -BiasMax) biasDeg = -BiasMax;
-                learnSec += dt;
-                if (learnSec > 12.0) biasSettled = true;
-            }
-            else if (v > 0.5) learnSec += dt * 0.25;    // creeps on, so a curvy field still settles
+            // ---- WAS zero: REMOVED (REQ 2026-09-17-2) ---------------------------------------
+            // It was learned from the difference against AOG's heading. Measured in the field:
+            // that anchor is not biased (mean -0.21..+0.08 deg) but it is NOISY (std 0.54..1.63,
+            // peaks to 8.8). The integrator chased that noise and invented a zero that ranged
+            // -1.48..+0.88 deg across passes of the SAME tractor on the SAME day - it should have
+            // been one value. A false zero of 1.5 deg makes 0.5 deg/s of false yaw, which is
+            // several cm/s of lateral drift the position correction then has to fight.
+            // Closed-loop simulation with a contaminated anchor: max XTE 27.6 cm with the
+            // learning, 5.2 cm without. The zero stays at 0.
+            anchorDeg = glm.toDegrees(Wrap(aogPsi - psi));
 
             // ---- position correction: gain GROWS with the error ---------------------------
             double ce = Math.Sin(psi), cn = Math.Cos(psi);
@@ -234,9 +234,9 @@ namespace AgOpenGPS
             double lat = ie * cn - inn * ce;
             innovCm = lat * 100.0;
 
-            double g = Progressive(lat, PosE0, PosFloor);
+            double g = Progressive(lat, PosE0, posFloor);
             rejectPct = (1.0 - g) * 100.0;
-            double k = dt / (PosTau + dt);
+            double k = dt / (Math.Max(posTau, 0.05) + dt);
             E += k * (along * ce + g * lat * cn);
             N += k * (along * cn - g * lat * ce);
 
@@ -258,9 +258,6 @@ namespace AgOpenGPS
                 if (psi < 0) psi += glm.twoPI; else if (psi >= glm.twoPI) psi -= glm.twoPI;
             }
         }
-
-        /// <summary>Effective wheelbase, set by the caller from the settings each fix.</summary>
-        public double mfLeff = 4.2;
 
         /// <summary>Blend of model and AOG by the ramp - what guidance should use.</summary>
         public void Output(double aogE, double aogN, double aogPsi,

@@ -55,6 +55,8 @@ namespace AgOpenGPS.Properties
         // F10 Advanced Sensor Fusion — kinematic model (replaces the heading observer)
         public bool setSF_modelOn = false;
         public double setSF_modelImuW = 0.25;   // [0..0.6] slider WAS <-> IMU
+        public double setSF_modelFloor = 0.10;  // gain floor; tau/floor is the effective time const
+        public double setSF_modelTau = 1.0;     // [s] correction time constant
 
         // F10 — heading observer: retired from the window, kept only for L_eff learning
         public bool setSF_obsOn = false;
