@@ -26,7 +26,15 @@ namespace AgOpenGPS
         // ---- the one user setting -------------------------------------------------------
         public bool isOn;
         public double imuShare = 0.25;      // [0..0.6] how much of the yaw rate comes from the IMU
-        public double leff = 4.20;          // [m] effective wheelbase, includes slip
+        public double leff = 3.70;          // [m] effective wheelbase; measured r=0.87 on line
+                                            // following (WAS +-9 deg). 4.20 came from headland
+                                            // turns where the bicycle model does not hold.
+
+        // How much of the model reaches guidance. 0 = today's AOG untouched, 1 = full model.
+        // Tuning floor/tau/h_floor/h_tau only ever traded one behaviour for another, because all
+        // of them set how far the model trusts GPS. This sets the SHARE instead, so the result is
+        // guaranteed to sit between two known end points and moves monotonically.
+        public double mix = 1.0;
 
         // Test aid only: keeps the model active with autosteer off, in a turn, and before the
         // WAS zero has settled - so a data replay can drive it. NOT saved between sessions, so
@@ -194,9 +202,10 @@ namespace AgOpenGPS
             else want = act > 0.5 ? 1 : 0;      // dead band between WasIn and WasOut
 
 
+            double ceil = Math.Max(0.0, Math.Min(1.0, mix));
             double step = dt / Math.Max(RampSec, 1e-3);
-            act = want > 0.5 ? Math.Min(1.0, act + step) : Math.Max(0.0, act - step);
-            if (act >= 0.999) passiveReason = "";
+            act = want > 0.5 ? Math.Min(ceil, act + step) : Math.Max(0.0, act - step);
+            if (act >= ceil - 1e-6 && ceil > 0.999) passiveReason = "";
 
             // ---- prediction: WAS and IMU lead the fast changes, up to about 1 s ------------
             double leff_ = Math.Max(0.5, leff);

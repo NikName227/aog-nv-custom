@@ -59,6 +59,8 @@ namespace AgOpenGPS.Properties
         public double setSF_modelTau = 0.4;     // [s] correction time constant
         public double setSF_modelHFloor = 0.35; // same, for the heading correction
         public double setSF_modelHTau = 0.8;    // [s]
+        public double setSF_modelMix = 1.0;     // how much of the model reaches guidance, 0..1
+        public double setSF_modelLeff = 3.70;   // [m]
 
         // F10 — heading observer: retired from the window, kept only for L_eff learning
         public bool setSF_obsOn = false;

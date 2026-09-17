@@ -18,7 +18,7 @@ namespace AgOpenGPS
         private readonly Timer poll = new Timer();
 
         private CheckBox cbCabin, cbModel, cbForce, cbAutoLog;
-        private NumericUpDown nKFast, nFc, nLead, nImuW, nFloor, nTau, nLeff, nHFloor, nHTau;
+        private NumericUpDown nKFast, nFc, nLead, nImuW, nFloor, nTau, nLeff, nHFloor, nHTau, nMix;
         private Label lblLearned, lblLearnStatus, lblLogInfo, lblLive, lblLiveModel, lblStatusTop;
         private Button btnLearn, btnLog, btnFolder, btnClose, btnInfo;
         private Panel panInfo;
@@ -66,6 +66,8 @@ namespace AgOpenGPS
             cbForce.Width = 130; y += 24;
             Lbl(hr ? "WAS ◀──────▶ IMU" : "WAS ◀──────▶ IMU", 20, y + 3, 130, 16);
             nImuW = Num(156, y, 0, 0.6m, 0.05m, 2);
+            Lbl(hr ? "udio modela" : "model share", 236, y + 3, 80, 16);
+            nMix = Num(320, y, 0, 1.0m, 0.05m, 2);
             y += 28;
             Lbl("floor", 20, y + 3, 40, 16);
             nFloor = Num(62, y, 0.05m, 0.90m, 0.05m, 2);
@@ -158,6 +160,7 @@ namespace AgOpenGPS
             nFc.ValueChanged += (s, e) => { mf.cabinComp.fc = (double)nFc.Value; mf.cabinComp.Reset(); Store(); };
             nLead.ValueChanged += (s, e) => { mf.cabinComp.lead = (double)nLead.Value; Store(); };
             nImuW.ValueChanged += (s, e) => { mf.kinModel.imuShare = (double)nImuW.Value; Store(); };
+            nMix.ValueChanged += (s, e) => { mf.kinModel.mix = (double)nMix.Value; Store(); };
             nFloor.ValueChanged += (s, e) => { mf.kinModel.posFloor = (double)nFloor.Value; Store(); };
             nTau.ValueChanged += (s, e) => { mf.kinModel.posTau = (double)nTau.Value; Store(); };
             nLeff.ValueChanged += (s, e) => { mf.kinModel.leff = (double)nLeff.Value; Store(); };
@@ -243,6 +246,7 @@ namespace AgOpenGPS
             cbModel.Checked = mf.kinModel.isOn;
             cbForce.Checked = mf.kinModel.forceOn;
             nImuW.Value = Clamp(mf.kinModel.imuShare, nImuW);
+            nMix.Value = Clamp(mf.kinModel.mix, nMix);
             nFloor.Value = Clamp(mf.kinModel.posFloor, nFloor);
             nTau.Value = Clamp(mf.kinModel.posTau, nTau);
             nLeff.Value = Clamp(mf.kinModel.leff, nLeff);
@@ -258,11 +262,11 @@ namespace AgOpenGPS
             if (mf.rawLog.isLogging)
                 mf.rawLog.Mark(string.Format(CultureInfo.InvariantCulture,
                     "SET cab={0} k_fast={1:F2} fc={2:F2} lead={3:F2} model={4} force={5} imuW={6:F2} " +
-                    "floor={7:F2} tau={8:F1} Leff={9:F2} hfloor={10:F2} htau={11:F1}",
+                    "floor={7:F2} tau={8:F1} Leff={9:F2} hfloor={10:F2} htau={11:F1} mix={12:F2}",
                     mf.cabinComp.isOn ? 1 : 0, mf.cabinComp.kFast, mf.cabinComp.fc, mf.cabinComp.lead,
                     mf.kinModel.isOn ? 1 : 0, mf.kinModel.forceOn ? 1 : 0, mf.kinModel.imuShare,
                     mf.kinModel.posFloor, mf.kinModel.posTau, mf.kinModel.leff,
-                    mf.kinModel.hdgFloor, mf.kinModel.hdgTau));
+                    mf.kinModel.hdgFloor, mf.kinModel.hdgTau, mf.kinModel.mix));
         }
 
         // ---------------------------------------------------------------- info panel

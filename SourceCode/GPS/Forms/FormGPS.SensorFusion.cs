@@ -30,7 +30,8 @@ namespace AgOpenGPS
             kinModel.posTau = s.setSF_modelTau;
             kinModel.hdgFloor = s.setSF_modelHFloor;
             kinModel.hdgTau = s.setSF_modelHTau;
-            kinModel.leff = s.setSF_obsLeff;
+            kinModel.leff = s.setSF_modelLeff;
+            kinModel.mix = s.setSF_modelMix;
             kinModel.Reset();
 
             //the observer stays instantiated only for the L_eff learning; it no longer drives
@@ -67,7 +68,8 @@ namespace AgOpenGPS
             s.setSF_modelTau = kinModel.posTau;
             s.setSF_modelHFloor = kinModel.hdgFloor;
             s.setSF_modelHTau = kinModel.hdgTau;
-            s.setSF_obsLeff = kinModel.leff;
+            s.setSF_modelLeff = kinModel.leff;
+            s.setSF_modelMix = kinModel.mix;
             s.setSF_obsOn = false;
             s.setSF_obsKp = headObs.Kp;
             s.setSF_obsKi = headObs.Ki;
