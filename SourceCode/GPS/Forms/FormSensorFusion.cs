@@ -329,9 +329,14 @@ namespace AgOpenGPS
 "  odnos WAS → zakretanje nije siguran (proklizavanje, Ackermann). Sidro je AOG-ov heading,\n" +
 "  ne modelov vlastiti (inače bi procjena bila kružna). NE sprema se jer se Keya\n" +
 "  inicijalizira pri svakom paljenju. Traje ~12 s vožnje naprijed.\n" +
-"L_eff\n" +
-"  Iz gumba Učenje, kao i dosad. Ne uči se zajedno s nulom WAS-a jer su njih dvoje u jednoj\n" +
-"  regresiji degenerirani (isti traktor je na dva prolaza ispao 4.35 m/+2.6° i 4.11 m/−3.0°).\n" +
+"L_eff   NIJE kritičan za model\n" +
+"  Iz gumba Učenje (u odjeljku kompenzacije kabine, uči k_fast i L_eff zajedno).\n" +
+"  Izmjereno: greška od −30 % do +60 % mijenja XTE za 0.1–1.5 cm, jer L_eff samo SKALIRA\n" +
+"  predviđeno zakretanje, a korekcija smjera tu skalu ispravi. Zadanih 4.20 m radi na\n" +
+"  praktički svakom traktoru i bez učenja.\n" +
+"  (Nula WAS-a je druga priča — ona je konstantni pomak i mora se procjenjivati.)\n" +
+"  Vrata od 1 °/s usput razbijaju degeneraciju L_eff/nula: nula se uči samo u ravnoj\n" +
+"  vožnji, gdje zakretanje je ~0 pa skala L_eff množi gotovo ništa.\n" +
 "\n" +
 "── KAD JE MODEL PASIVAN ─────────────────────────────\n" +
 "\n" +
@@ -464,8 +469,8 @@ namespace AgOpenGPS
                 ? Color.FromArgb(230, 150, 60) : Color.FromArgb(150, 200, 180);
 
             lblLearned.Text = string.Format(CultureInfo.InvariantCulture,
-                hr ? "naučeno:  L_eff {0:F2} m   ·   model uči nulu WAS-a sam, svaku sesiju"
-                   : "learned:  L_eff {0:F2} m   ·   the model learns the WAS zero itself", ob.Leff);
+                hr ? "L_eff {0:F2} m  (gumb Učenje gore; nije kritičan)  ·  nulu WAS-a model uči sam"
+                   : "L_eff {0:F2} m  (Learning button above; not critical)  ·  WAS zero is self-learned", ob.Leff);
 
             if (learning)
             {
