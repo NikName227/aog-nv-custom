@@ -59,7 +59,7 @@ namespace AgOpenGPS
                     "roll_raw_deg,fix_heading_deg,avg_speed_kmh,pivot_east,pivot_north," +
                     "dt_s,xte_valid,xte_pgn_cm,head_err_deg,kin_yaw_rate,fusion_w,roll_filter," +
                     "wheelbase_m,ant_pivot_m,ant_height_m,obs_leff_m,is_sim," +
-                    "mdl_on,mdl_act,mdl_innov_cm,mdl_reject,mdl_bias,mdl_yaw,mdl_kin,mdl_vtg");
+                    "mdl_on,mdl_force,mdl_act,mdl_innov_cm,mdl_reject,mdl_bias,mdl_yaw,mdl_kin,mdl_vtg");
                 rows = 0; bytes = 0;
                 isLogging = true;
                 return true;
@@ -88,8 +88,8 @@ namespace AgOpenGPS
             try
             {
                 sw.WriteLine(string.Format(CultureInfo.InvariantCulture,
-                    //68 fields, label in the 18th - keep in sync with the header in Start()
-                    "{0},{1:F3},MARK,,,,,,,,,,,,,,,{2},,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,",
+                    //69 fields, label in the 18th - keep in sync with the header in Start()
+                    "{0},{1:F3},MARK,,,,,,,,,,,,,,,{2},,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,",
                     DateTime.Now.ToString("HH:mm:ss.fff"), Elapsed.TotalSeconds, label));
             }
             catch { }
@@ -183,6 +183,7 @@ namespace AgOpenGPS
 
                 //F10: kinematic model state - what the window shows, so the log tells the same story
                 sb.Append(mf.kinModel.isOn ? 1 : 0).Append(',');
+                sb.Append(mf.kinModel.forceOn ? 1 : 0).Append(',');
                 N(mf.kinModel.activeFrac, 3);
                 N(mf.kinModel.innovCm, 2);
                 N(mf.kinModel.rejectPct, 1);

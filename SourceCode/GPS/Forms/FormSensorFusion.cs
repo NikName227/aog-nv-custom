@@ -17,7 +17,7 @@ namespace AgOpenGPS
         private readonly bool hr;
         private readonly Timer poll = new Timer();
 
-        private CheckBox cbCabin, cbModel, cbAutoLog;
+        private CheckBox cbCabin, cbModel, cbForce, cbAutoLog;
         private NumericUpDown nKFast, nFc, nLead, nImuW;
         private Label lblLearned, lblLearnStatus, lblLogInfo, lblLive, lblLiveModel, lblStatusTop;
         private Button btnLearn, btnLog, btnFolder, btnClose, btnInfo;
@@ -59,7 +59,11 @@ namespace AgOpenGPS
 
             // ---------------- kinematic model ----------------
             Sep(y - 4);
-            cbModel = Chk(hr ? "KINEMATIČKI MODEL" : "KINEMATIC MODEL", 12, y); y += 24;
+            cbModel = Chk(hr ? "KINEMATIČKI MODEL" : "KINEMATIC MODEL", 12, y);
+            cbForce = Chk(hr ? "force on (test)" : "force on (test)", 300, y + 1);
+            cbForce.Font = new Font("Tahoma", 8f);
+            cbForce.ForeColor = Color.FromArgb(220, 150, 70);
+            cbForce.Width = 130; y += 24;
             Lbl(hr ? "WAS ◀──────▶ IMU" : "WAS ◀──────▶ IMU", 20, y + 3, 130, 16);
             nImuW = Num(156, y, 0, 0.6m, 0.05m, 2);
             Lbl(hr ? "sve ostalo iz geometrije i fizike" : "everything else from geometry", 226, y + 3, 200, 16,
@@ -131,6 +135,8 @@ namespace AgOpenGPS
 
             cbCabin.CheckedChanged += (s, e) => { mf.cabinComp.isOn = cbCabin.Checked; mf.cabinComp.Reset(); Store(); };
             cbModel.CheckedChanged += (s, e) => { mf.kinModel.isOn = cbModel.Checked; mf.kinModel.Reset(); Store(); };
+            //force is a test aid: never stored, so it cannot be left on at a customer
+            cbForce.CheckedChanged += (s, e) => { mf.kinModel.forceOn = cbForce.Checked; Store(); };
             cbAutoLog.CheckedChanged += (s, e) =>
             {
                 Properties.VehicleSettings.Default.setSF_autoLog = cbAutoLog.Checked;
@@ -218,6 +224,7 @@ namespace AgOpenGPS
             nFc.Value = Clamp(mf.cabinComp.fc, nFc);
             nLead.Value = Clamp(mf.cabinComp.lead, nLead);
             cbModel.Checked = mf.kinModel.isOn;
+            cbForce.Checked = mf.kinModel.forceOn;
             nImuW.Value = Clamp(mf.kinModel.imuShare, nImuW);
             cbAutoLog.Checked = Properties.VehicleSettings.Default.setSF_autoLog;
         }
@@ -228,9 +235,10 @@ namespace AgOpenGPS
             // a mark in the raw log, so a parameter change is visible in the replay/analysis
             if (mf.rawLog.isLogging)
                 mf.rawLog.Mark(string.Format(CultureInfo.InvariantCulture,
-                    "SET cab={0} k_fast={1:F2} fc={2:F2} lead={3:F2} model={4} imuW={5:F2} Leff={6:F2}",
+                    "SET cab={0} k_fast={1:F2} fc={2:F2} lead={3:F2} model={4} force={5} imuW={6:F2} Leff={7:F2}",
                     mf.cabinComp.isOn ? 1 : 0, mf.cabinComp.kFast, mf.cabinComp.fc, mf.cabinComp.lead,
-                    mf.kinModel.isOn ? 1 : 0, mf.kinModel.imuShare, mf.headObs.Leff));
+                    mf.kinModel.isOn ? 1 : 0, mf.kinModel.forceOn ? 1 : 0,
+                    mf.kinModel.imuShare, mf.headObs.Leff));
         }
 
         // ---------------------------------------------------------------- info panel
@@ -338,6 +346,14 @@ namespace AgOpenGPS
 "  • reset (razilaženje) — razlika veća od 25 cm dulje od 2 s znači da je MODEL kriv,\n" +
 "    pa se odbacuje i postavlja nanovo iz GPS-a\n" +
 "\n" +
+"force on (test)\n" +
+"  Drži model aktivnim bez obzira na sve gore — i s isključenim autosteerom, i u okretu,\n" +
+"  i prije nego je nula WAS-a ustaljena. Služi za testiranje s data replayom, gdje\n" +
+"  autosteer nije uključen pa model inače ne bi ni krenuo.\n" +
+"  NE sprema se — pri svakom pokretanju AOG-a je isključena, da ne ostane slučajno.\n" +
+"  Nadzor razilaženja radi i pod force: bez njega bi model koji luta izgledao kao da radi.\n" +
+"  Dok je uključena, gore piše ⚠ FORCE ON i u živom prikazu stanje je AKTIVNO (FORCE).\n" +
+"\n" +
 "── RAW LOG ──────────────────────────────────────────\n" +
 "\n" +
 "Snima svaki fix (10 Hz) u Documents\\AgOpenGPS\\Logs kao\n" +
@@ -441,8 +457,11 @@ namespace AgOpenGPS
             var ob = mf.headObs;
 
             lblStatusTop.Text = string.Format(CultureInfo.InvariantCulture,
-                "fix {0} · {1:F1} km/h · roll {2:F2}° · WAS {3:F2}°",
-                mf.pn.fixQuality, mf.pn.speed, mf.ahrs.imuRoll, mf.mc.actualSteerAngleDegrees);
+                "fix {0} · {1:F1} km/h · roll {2:F2}° · WAS {3:F2}°{4}",
+                mf.pn.fixQuality, mf.pn.speed, mf.ahrs.imuRoll, mf.mc.actualSteerAngleDegrees,
+                mf.kinModel.forceOn ? "        ⚠ FORCE ON" : "");
+            lblStatusTop.ForeColor = mf.kinModel.forceOn
+                ? Color.FromArgb(230, 150, 60) : Color.FromArgb(150, 200, 180);
 
             lblLearned.Text = string.Format(CultureInfo.InvariantCulture,
                 hr ? "naučeno:  L_eff {0:F2} m   ·   model uči nulu WAS-a sam, svaku sesiju"
@@ -477,7 +496,9 @@ namespace AgOpenGPS
             var km = mf.kinModel;
             string state;
             if (!km.isOn) state = hr ? "ISKLJUČEN" : "OFF";
-            else if (km.activeFrac >= 0.999) state = hr ? "AKTIVNO  (rampa 100 %)" : "ACTIVE  (ramp 100 %)";
+            else if (km.activeFrac >= 0.999)
+                state = km.forceOn ? (hr ? "AKTIVNO  (FORCE)" : "ACTIVE  (FORCE)")
+                                   : (hr ? "AKTIVNO  (rampa 100 %)" : "ACTIVE  (ramp 100 %)");
             else if (km.activeFrac <= 0.001)
                 state = (hr ? "PASIVNO" : "PASSIVE") + (km.passiveReason.Length > 0 ? "  — " + km.passiveReason : "");
             else state = string.Format(hr ? "PRIJELAZ  (rampa {0:F0} %)" : "HANDOVER  (ramp {0:F0} %)",

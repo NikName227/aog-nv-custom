@@ -1,4 +1,4 @@
-// F10 Advanced Sensor Fusion (NV custom) — kinematic model of position and heading.
+﻿// F10 Advanced Sensor Fusion (NV custom) — kinematic model of position and heading.
 //
 // Instead of filtering the GPS, the model predicts where the tractor CAN be from the steer
 // angle and the speed, and then trusts the measurement only as far as it is physically
@@ -26,6 +26,12 @@ namespace AgOpenGPS
         // ---- the one user setting -------------------------------------------------------
         public bool isOn;
         public double imuShare = 0.25;      // [0..0.6] how much of the yaw rate comes from the IMU
+
+        // Test aid only: keeps the model active with autosteer off, in a turn, and before the
+        // WAS zero has settled - so a data replay can drive it. NOT saved between sessions, so
+        // it cannot be left on at a customer. The divergence watchdog stays live even here:
+        // without it a drifting model would look like a working one.
+        public bool forceOn;
 
         // ---- derived, not tuned ---------------------------------------------------------
         // position threshold = measured cabin sway (p99 +-6.6 cm) + 20 % margin
@@ -164,7 +170,8 @@ namespace AgOpenGPS
             // WAS is reliable within +-10 deg; above that Ackermann geometry and the sensor
             // mounting bring errors, and the bicycle model stands or falls on WAS.
             double want;
-            if (!steerOn) { belowSec = 0; want = 0; passiveReason = "autosteer isključen"; }
+            if (forceOn) { belowSec = HoldIn; want = 1; passiveReason = ""; }
+            else if (!steerOn) { belowSec = 0; want = 0; passiveReason = "autosteer isključen"; }
             else if (Math.Abs(wasDeg) >= WasOut)
             {
                 belowSec = 0; want = 0;
@@ -178,7 +185,7 @@ namespace AgOpenGPS
             }
             else want = act > 0.5 ? 1 : 0;      // dead band between WasIn and WasOut
 
-            if (want > 0.5 && !biasSettled) { want = 0; passiveReason = "uči nulu WAS-a"; }
+            if (want > 0.5 && !biasSettled && !forceOn) { want = 0; passiveReason = "uči nulu WAS-a"; }
 
             double step = dt / Math.Max(RampSec, 1e-3);
             act = want > 0.5 ? Math.Min(1.0, act + step) : Math.Max(0.0, act - step);
