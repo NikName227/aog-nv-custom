@@ -44,11 +44,16 @@ namespace AgOpenGPS
         // posTau/gain, and the gain sits near posFloor most of the time because the innovation
         // is usually 2-6 cm. With 1.0/0.10 that is ~10 s of open-loop running - measured in the
         // field as a slow weave with a ~20 s period. Raise the floor and shorten the tau to fix it.
-        public double posFloor = 0.10;
-        public double posTau = 1.0;                         // [s]
-        private const double HdgTau = 2.0;                  // [s]
+        public double posFloor = 0.30;
+        public double posTau = 0.4;                         // [s]
         private const double HdgFloor0 = 1.5;               // [deg] floor at IMU quantisation
-        private const double HdgFloor = 0.10;
+
+        // Heading correction had the same trap as the position one: floor 0.10 with tau 2.0 s
+        // gives an effective time constant of 6.4 s at a 1 deg error. Measured in the field
+        // (Logs_2): the model heading sat 1.04 deg away from AOG's permanently, which at
+        // 1.91 m/s is 3.47 cm/s of lateral drift - and that is the weave.
+        public double hdgFloor = 0.35;
+        public double hdgTau = 0.8;                         // [s]
         private const double HdgAvgTau = 1.5;               // [s] smoothing of the f2f course
 
 
@@ -210,9 +215,9 @@ namespace AgOpenGPS
             {
                 f2fSmooth += (dt / (HdgAvgTau + dt)) * Wrap(courseRad - f2fSmooth);
                 double errH = Wrap(f2fSmooth - psi);
-                double e0 = Math.Max(Math.Abs(modelYaw) * HdgTau, HdgFloor0) * Margin;
-                double gH = Progressive(glm.toDegrees(errH), e0, HdgFloor);
-                psi += (dt / (HdgTau + dt)) * gH * errH;
+                double e0 = Math.Max(Math.Abs(modelYaw) * hdgTau, HdgFloor0) * Margin;
+                double gH = Progressive(glm.toDegrees(errH), e0, hdgFloor);
+                psi += (dt / (Math.Max(hdgTau, 0.05) + dt)) * gH * errH;
             }
             if (psi < 0) psi += glm.twoPI; else if (psi >= glm.twoPI) psi -= glm.twoPI;
 

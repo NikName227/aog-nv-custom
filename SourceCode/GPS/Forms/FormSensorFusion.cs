@@ -18,7 +18,7 @@ namespace AgOpenGPS
         private readonly Timer poll = new Timer();
 
         private CheckBox cbCabin, cbModel, cbForce, cbAutoLog;
-        private NumericUpDown nKFast, nFc, nLead, nImuW, nFloor, nTau, nLeff;
+        private NumericUpDown nKFast, nFc, nLead, nImuW, nFloor, nTau, nLeff, nHFloor, nHTau;
         private Label lblLearned, lblLearnStatus, lblLogInfo, lblLive, lblLiveModel, lblStatusTop;
         private Button btnLearn, btnLog, btnFolder, btnClose, btnInfo;
         private Panel panInfo;
@@ -73,8 +73,12 @@ namespace AgOpenGPS
             nTau = Num(190, y, 0.1m, 2.0m, 0.1m, 1);
             Lbl("L_eff [m]", 286, y + 3, 58, 16);
             nLeff = Num(348, y, 2.0m, 8.0m, 0.1m, 2); y += 26;
-            Lbl(hr ? "za ugađanje na terenu — τ/floor je efektivna konstanta korekcije"
-                   : "field tuning — tau/floor is the effective correction time constant",
+            Lbl("h_floor", 20, y + 3, 50, 16);
+            nHFloor = Num(72, y, 0.05m, 0.90m, 0.05m, 2);
+            Lbl("h_τ [s]", 152, y + 3, 44, 16);
+            nHTau = Num(198, y, 0.1m, 3.0m, 0.1m, 1); y += 26;
+            Lbl(hr ? "ugađanje na terenu — τ/floor = efektivna konstanta (gore pozicija, dolje smjer)"
+                   : "field tuning — tau/floor = effective time constant (position above, heading below)",
                 20, y, 406, 14, 8f, Color.FromArgb(140, 160, 150)); y += 20;
             lblLearned = Lbl("", 20, y, 400, 16, 8.5f, Color.FromArgb(160, 180, 170)); y += 24;
 
@@ -157,6 +161,8 @@ namespace AgOpenGPS
             nFloor.ValueChanged += (s, e) => { mf.kinModel.posFloor = (double)nFloor.Value; Store(); };
             nTau.ValueChanged += (s, e) => { mf.kinModel.posTau = (double)nTau.Value; Store(); };
             nLeff.ValueChanged += (s, e) => { mf.kinModel.leff = (double)nLeff.Value; Store(); };
+            nHFloor.ValueChanged += (s, e) => { mf.kinModel.hdgFloor = (double)nHFloor.Value; Store(); };
+            nHTau.ValueChanged += (s, e) => { mf.kinModel.hdgTau = (double)nHTau.Value; Store(); };
 
             btnLearn.Click += (s, e) => ToggleLearn();
             btnLog.Click += (s, e) => ToggleLog();
@@ -240,6 +246,8 @@ namespace AgOpenGPS
             nFloor.Value = Clamp(mf.kinModel.posFloor, nFloor);
             nTau.Value = Clamp(mf.kinModel.posTau, nTau);
             nLeff.Value = Clamp(mf.kinModel.leff, nLeff);
+            nHFloor.Value = Clamp(mf.kinModel.hdgFloor, nHFloor);
+            nHTau.Value = Clamp(mf.kinModel.hdgTau, nHTau);
             cbAutoLog.Checked = Properties.VehicleSettings.Default.setSF_autoLog;
         }
 
@@ -250,10 +258,11 @@ namespace AgOpenGPS
             if (mf.rawLog.isLogging)
                 mf.rawLog.Mark(string.Format(CultureInfo.InvariantCulture,
                     "SET cab={0} k_fast={1:F2} fc={2:F2} lead={3:F2} model={4} force={5} imuW={6:F2} " +
-                    "floor={7:F2} tau={8:F1} Leff={9:F2}",
+                    "floor={7:F2} tau={8:F1} Leff={9:F2} hfloor={10:F2} htau={11:F1}",
                     mf.cabinComp.isOn ? 1 : 0, mf.cabinComp.kFast, mf.cabinComp.fc, mf.cabinComp.lead,
                     mf.kinModel.isOn ? 1 : 0, mf.kinModel.forceOn ? 1 : 0, mf.kinModel.imuShare,
-                    mf.kinModel.posFloor, mf.kinModel.posTau, mf.kinModel.leff));
+                    mf.kinModel.posFloor, mf.kinModel.posTau, mf.kinModel.leff,
+                    mf.kinModel.hdgFloor, mf.kinModel.hdgTau));
         }
 
         // ---------------------------------------------------------------- info panel

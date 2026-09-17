@@ -28,6 +28,8 @@ namespace AgOpenGPS
             kinModel.imuShare = s.setSF_modelImuW;
             kinModel.posFloor = s.setSF_modelFloor;
             kinModel.posTau = s.setSF_modelTau;
+            kinModel.hdgFloor = s.setSF_modelHFloor;
+            kinModel.hdgTau = s.setSF_modelHTau;
             kinModel.leff = s.setSF_obsLeff;
             kinModel.Reset();
 
@@ -63,6 +65,8 @@ namespace AgOpenGPS
             s.setSF_modelImuW = kinModel.imuShare;
             s.setSF_modelFloor = kinModel.posFloor;
             s.setSF_modelTau = kinModel.posTau;
+            s.setSF_modelHFloor = kinModel.hdgFloor;
+            s.setSF_modelHTau = kinModel.hdgTau;
             s.setSF_obsLeff = kinModel.leff;
             s.setSF_obsOn = false;
             s.setSF_obsKp = headObs.Kp;
