@@ -52,7 +52,11 @@ namespace AgOpenGPS.Properties
         public double setSF_lead = 0.7;         // [0..1] how much filter delay is given back
         public double setSF_tauSlow = 1.0;      // [s] terrain / cabin split
 
-        // F10 Advanced Sensor Fusion — heading observer (independent of the cabin part)
+        // F10 Advanced Sensor Fusion — kinematic model (replaces the heading observer)
+        public bool setSF_modelOn = false;
+        public double setSF_modelImuW = 0.25;   // [0..0.6] slider WAS <-> IMU
+
+        // F10 — heading observer: retired from the window, kept only for L_eff learning
         public bool setSF_obsOn = false;
         public double setSF_obsKp = 0.3;
         public double setSF_obsKi = 0.004;

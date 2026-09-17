@@ -329,6 +329,7 @@ namespace AgOpenGPS
         //F10 Advanced Sensor Fusion: cabin compensation + heading observer + raw logger
         public CCabinComp cabinComp;
         public CHeadingObserver headObs;
+        public CKinematicModel kinModel;
         public CRawLogger rawLog;
 
         /// <summary>
@@ -543,6 +544,7 @@ namespace AgOpenGPS
             //F10
             cabinComp = new CCabinComp();
             headObs = new CHeadingObserver();
+            kinModel = new CKinematicModel();
             rawLog = new CRawLogger(this);
             LoadSensorFusionSettings();
 

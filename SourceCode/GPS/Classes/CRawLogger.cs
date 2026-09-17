@@ -1,4 +1,4 @@
-// F10 Advanced Sensor Fusion (NV custom) — raw logger.
+﻿// F10 Advanced Sensor Fusion (NV custom) — raw logger.
 //
 // One row per fix (10 Hz) into <Documents>\AgOpenGPS\Logs\AOG_AdvSensorFusion_<date>_<time>.csv:
 // raw inputs (position, roll, heading, WAS, XTE...) plus every internal signal of the new
@@ -58,7 +58,8 @@ namespace AgOpenGPS
                     "obs_model_yaw,obs_imu_yaw,obs_imu_w,cab_on,obs_on," +
                     "roll_raw_deg,fix_heading_deg,avg_speed_kmh,pivot_east,pivot_north," +
                     "dt_s,xte_valid,xte_pgn_cm,head_err_deg,kin_yaw_rate,fusion_w,roll_filter," +
-                    "wheelbase_m,ant_pivot_m,ant_height_m,obs_leff_m,is_sim");
+                    "wheelbase_m,ant_pivot_m,ant_height_m,obs_leff_m,is_sim," +
+                    "mdl_on,mdl_act,mdl_innov_cm,mdl_reject,mdl_bias,mdl_yaw,mdl_kin,mdl_vtg");
                 rows = 0; bytes = 0;
                 isLogging = true;
                 return true;
@@ -87,8 +88,8 @@ namespace AgOpenGPS
             try
             {
                 sw.WriteLine(string.Format(CultureInfo.InvariantCulture,
-                    //60 fields, label in the 18th - keep in sync with the header in Start()
-                    "{0},{1:F3},MARK,,,,,,,,,,,,,,,{2},,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,",
+                    //68 fields, label in the 18th - keep in sync with the header in Start()
+                    "{0},{1:F3},MARK,,,,,,,,,,,,,,,{2},,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,",
                     DateTime.Now.ToString("HH:mm:ss.fff"), Elapsed.TotalSeconds, label));
             }
             catch { }
@@ -178,7 +179,17 @@ namespace AgOpenGPS
                 N(mf.vehicle.VehicleConfig.AntennaPivot, 3);
                 N(mf.vehicle.VehicleConfig.AntennaHeight, 3);
                 N(mf.headObs.Leff, 3);
-                sb.Append(mf.timerSim.Enabled ? 1 : 0);
+                sb.Append(mf.timerSim.Enabled ? 1 : 0).Append(',');
+
+                //F10: kinematic model state - what the window shows, so the log tells the same story
+                sb.Append(mf.kinModel.isOn ? 1 : 0).Append(',');
+                N(mf.kinModel.activeFrac, 3);
+                N(mf.kinModel.innovCm, 2);
+                N(mf.kinModel.rejectPct, 1);
+                N(mf.kinModel.biasDeg, 3);
+                N(mf.kinModel.usedYaw, 3);
+                N(mf.kinModel.kinLimit, 3);
+                sb.Append(mf.kinModel.vtgShare.ToString("F2", CultureInfo.InvariantCulture));
 
                 string line = sb.ToString();
                 sw.WriteLine(line);

@@ -622,6 +622,7 @@ namespace AgOpenGPS
 
                         //F10: heading observer (model from WAS + PI correction); no-op when off
                         fixHeading = SensorFusionHeading(gpsHeading, avgSpeed > startSpeed && isFirstHeadingSet, fixHeading);
+                        fixHeading = SensorFusionModel(fixHeading);   //F10: kinematic model (no-op when off)
 
                         TheRest();
                         break;
@@ -716,6 +717,7 @@ namespace AgOpenGPS
                         //F10: lateral filter + heading observer (both no-ops when off)
                         SensorFusionFilterFix(fixHeading);
                         fixHeading = SensorFusionHeading(gpsHeading, avgSpeed > startSpeed, fixHeading);
+                        fixHeading = SensorFusionModel(fixHeading);   //F10: kinematic model (no-op when off)
 
                         #endregion Roll
 
@@ -760,6 +762,7 @@ namespace AgOpenGPS
                         //F10: lateral filter; dual heading is already clean so the observer only logs here
                         SensorFusionFilterFix(fixHeading);
                         SensorFusionHeading(fixHeading, false, fixHeading);
+                        fixHeading = SensorFusionModel(fixHeading);   //F10: kinematic model (no-op when off)
 
                         //grab the most current fix and save the distance from the last fix
                         distanceCurrentStepFix = glm.Distance(pn.fix, prevDistFix);

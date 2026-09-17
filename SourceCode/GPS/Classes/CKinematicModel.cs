@@ -1,0 +1,269 @@
+// F10 Advanced Sensor Fusion (NV custom) — kinematic model of position and heading.
+//
+// Instead of filtering the GPS, the model predicts where the tractor CAN be from the steer
+// angle and the speed, and then trusts the measurement only as far as it is physically
+// possible. A jump the vehicle cannot make gets almost no weight; real movement passes with
+// no delay at all, because it comes out of the prediction rather than the correction.
+//
+// Two things make this work, and both were found the hard way (features/10_.../faza2):
+//
+//  1. The gain GROWS with the error, it does not shrink. A gain that goes to zero for a large
+//     error opens the loop and the model drifts away - measured 44 m in 50 s. With a growing
+//     gain the loop is always closed and GPS always wins in the end.
+//  2. Disturbance and real movement are separated by AMPLITUDE, not by time. Cabin sway is
+//     physically bounded by the suspension (measured p99 +-6.6 cm) while drift grows without
+//     limit. Time constants cannot separate them: the disturbances last a median of 1.9 s,
+//     which is the same scale as any correction slow enough to be safe.
+//
+// Everything except the WAS/IMU slider is derived from vehicle geometry and from measurement,
+// so there is nothing to tune in the field.
+using System;
+
+namespace AgOpenGPS
+{
+    public class CKinematicModel
+    {
+        // ---- the one user setting -------------------------------------------------------
+        public bool isOn;
+        public double imuShare = 0.25;      // [0..0.6] how much of the yaw rate comes from the IMU
+
+        // ---- derived, not tuned ---------------------------------------------------------
+        // position threshold = measured cabin sway (p99 +-6.6 cm) + 20 % margin
+        public const double SwayP99 = 0.066;
+        public const double Margin = 1.20;
+        private const double PosE0 = SwayP99 * Margin;      // 0.079 m
+        private const double PosTau = 1.0;                  // [s]
+        private const double PosFloor = 0.10;               // gain never fully closes
+        private const double HdgTau = 2.0;                  // [s]
+        private const double HdgFloor0 = 1.5;               // [deg] floor at IMU quantisation
+        private const double HdgFloor = 0.10;
+        private const double HdgAvgTau = 1.5;               // [s] smoothing of the f2f course
+
+        private const double BiasKi = 0.15;                 // WAS zero, ~12 s to settle
+        private const double BiasYawGate = 1.0;             // [deg/s] only while driving straight
+        private const double BiasMax = 6.0;                 // [deg]
+
+        private const double WasOut = 10.0;                 // [deg] above this: passive
+        private const double WasIn = 8.0;                   // [deg] return below this
+        private const double HoldIn = 1.0;                  // [s] and only after this long
+        private const double RampSec = 3.0;                 // [s] handover ramp
+
+        private const double VtgFull = 2.0 / 3.6;           // [m/s] above: VTG only
+        private const double VtgNone = 0.5 / 3.6;           // [m/s] below: position only
+        private const int RateN = 5;                        // IMU yaw rate: 5-point least squares
+
+        private const double DivergeM = 0.25;               // [m] watchdog
+        private const double DivergeSec = 2.0;
+
+        // ---- state ----------------------------------------------------------------------
+        private bool init;
+        private double E, N, psi;                           // pivot axle position + heading
+        public double biasDeg;                              // WAS zero, learned per session
+        private double f2fSmooth;
+        private readonly double[] hBuf = new double[RateN];
+        private readonly double[] tBuf = new double[RateN];
+        private int nBuf;
+        private double act;                                 // 0 = passive, 1 = model drives
+        private double belowSec, divergeSec, learnSec;
+        private double prevE, prevN;
+        private bool prevPosOk;
+
+        // ---- for the window and the log -------------------------------------------------
+        public double activeFrac { get { return act; } }
+        public double innovCm;                              // model - GPS, lateral [cm]
+        public double rejectPct;                            // how much the gain rejected [%]
+        public double modelYaw, imuYaw, usedYaw;            // [deg/s]
+        public double kinLimit;                             // [deg/s] what geometry allows
+        public double vtgShare;                             // 1 = VTG only, 0 = position only
+        public double speedUsed;                            // [m/s]
+        public bool biasSettled;
+        public double biasSeconds { get { return learnSec; } }
+        public string passiveReason = "";
+
+        public void Reset()
+        {
+            init = false; nBuf = 0; act = 0; belowSec = 0; divergeSec = 0;
+            biasDeg = 0; learnSec = 0; biasSettled = false; prevPosOk = false;
+            innovCm = 0; rejectPct = 0; passiveReason = "";
+        }
+
+        /// <summary>Yaw rate from the IMU heading: slope of a line through the last 5 samples.
+        /// Two points would give 0.408 deg/s of quantisation noise on a 0.56 deg/s signal - the
+        /// IMU heading has 0.1 deg resolution. Five points: 0.091 deg/s, 0.2 s of lag.</summary>
+        private double ImuRate(double headDeg, double t)
+        {
+            if (nBuf < RateN) nBuf++;
+            for (int i = RateN - 1; i > 0; i--) { hBuf[i] = hBuf[i - 1]; tBuf[i] = tBuf[i - 1]; }
+            hBuf[0] = headDeg; tBuf[0] = t;
+            if (nBuf < 2) return 0;
+
+            double mt = 0, mh = 0;
+            for (int i = 0; i < nBuf; i++) { mt += tBuf[i]; mh += hBuf[i]; }
+            mt /= nBuf; mh /= nBuf;
+            double sxx = 0, sxy = 0;
+            for (int i = 0; i < nBuf; i++)
+            {
+                double dt = tBuf[i] - mt;
+                sxx += dt * dt; sxy += dt * (hBuf[i] - mh);
+            }
+            return sxx > 1e-9 ? sxy / sxx : 0;
+        }
+
+        /// <summary>0 for small errors, rises to 1 for large ones. e0 is the boundary between
+        /// what the suspension can produce and what it cannot.</summary>
+        private static double Progressive(double err, double e0, double floor)
+        {
+            double x = Math.Abs(err) / Math.Max(e0, 1e-6);
+            double g = (x * x) / (1.0 + x * x);
+            return floor + (1.0 - floor) * g;
+        }
+
+        private static double Wrap(double a)
+        {
+            while (a > Math.PI) a -= glm.twoPI;
+            while (a < -Math.PI) a += glm.twoPI;
+            return a;
+        }
+
+        /// <summary>
+        /// One step, once per fix. Takes AOG's own chain as the passive solution and as the
+        /// (independent) anchor for the WAS zero, and returns the model's position and heading.
+        /// </summary>
+        /// <param name="aogE">AOG pivot easting</param><param name="aogN">AOG pivot northing</param>
+        /// <param name="aogPsi">AOG heading [rad] - the IMU/f2f fusion</param>
+        /// <param name="wasDeg">actual steer angle</param>
+        /// <param name="vtgMs">speed from VTG (Doppler) [m/s]</param>
+        /// <param name="imuHeadDeg">raw IMU heading [deg], unwrapped by the caller</param>
+        /// <param name="courseRad">f2f course [rad]</param>
+        public void Update(double aogE, double aogN, double aogPsi, double wasDeg,
+                           double vtgMs, double imuHeadDeg, double courseRad, bool courseOk,
+                           bool steerOn, double t, double dt)
+        {
+            double rate = ImuRate(imuHeadDeg, t);
+
+            if (!init)
+            {
+                E = aogE; N = aogN; psi = aogPsi; f2fSmooth = aogPsi;
+                init = true; act = 0; prevE = aogE; prevN = aogN; prevPosOk = true;
+                return;
+            }
+
+            // ---- speed: VTG leads above 2 km/h, position below (VTG shows up to 0.73 m/s of
+            //      phantom speed on a standing tractor with a rocking cabin)
+            double vPos = 0;
+            if (prevPosOk && dt > 1e-3)
+                vPos = Math.Sqrt((aogE - prevE) * (aogE - prevE) + (aogN - prevN) * (aogN - prevN)) / dt;
+            prevE = aogE; prevN = aogN; prevPosOk = true;
+
+            double vAbs = Math.Abs(vtgMs);
+            vtgShare = vAbs >= VtgFull ? 1.0 : (vAbs <= VtgNone ? 0.0 : (vAbs - VtgNone) / (VtgFull - VtgNone));
+            double v = vtgShare * vAbs + (1.0 - vtgShare) * vPos;
+            speedUsed = v;
+
+            // ---- passive when the model must not be trusted --------------------------------
+            // WAS is reliable within +-10 deg; above that Ackermann geometry and the sensor
+            // mounting bring errors, and the bicycle model stands or falls on WAS.
+            double want;
+            if (!steerOn) { belowSec = 0; want = 0; passiveReason = "autosteer isključen"; }
+            else if (Math.Abs(wasDeg) >= WasOut)
+            {
+                belowSec = 0; want = 0;
+                passiveReason = "okret (WAS " + Math.Abs(wasDeg).ToString("N0") + "°)";
+            }
+            else if (Math.Abs(wasDeg) < WasIn)
+            {
+                belowSec += dt;
+                want = belowSec >= HoldIn ? 1 : 0;
+                if (want < 0.5) passiveReason = "čeka izlaz iz okreta";
+            }
+            else want = act > 0.5 ? 1 : 0;      // dead band between WasIn and WasOut
+
+            if (want > 0.5 && !biasSettled) { want = 0; passiveReason = "uči nulu WAS-a"; }
+
+            double step = dt / Math.Max(RampSec, 1e-3);
+            act = want > 0.5 ? Math.Min(1.0, act + step) : Math.Max(0.0, act - step);
+            if (act >= 0.999) passiveReason = "";
+
+            // ---- prediction: WAS and IMU lead the fast changes, up to about 1 s ------------
+            double leff = Math.Max(0.5, mfLeff);
+            modelYaw = glm.toDegrees(v * Math.Tan(glm.toRadians(wasDeg - biasDeg)) / leff);
+            imuYaw = rate;
+            double w = Math.Max(0, Math.Min(0.6, imuShare));
+            usedYaw = (1.0 - w) * modelYaw + w * imuYaw;
+            kinLimit = Math.Abs(modelYaw);
+
+            psi += glm.toRadians(usedYaw) * dt;
+            E += v * Math.Sin(psi) * dt;
+            N += v * Math.Cos(psi) * dt;
+
+            // ---- heading correction: f2f is absolutely referenced over the long run --------
+            if (courseOk && v > 0.3)
+            {
+                f2fSmooth += (dt / (HdgAvgTau + dt)) * Wrap(courseRad - f2fSmooth);
+                double errH = Wrap(f2fSmooth - psi);
+                double e0 = Math.Max(Math.Abs(modelYaw) * HdgTau, HdgFloor0) * Margin;
+                double gH = Progressive(glm.toDegrees(errH), e0, HdgFloor);
+                psi += (dt / (HdgTau + dt)) * gH * errH;
+            }
+            if (psi < 0) psi += glm.twoPI; else if (psi >= glm.twoPI) psi -= glm.twoPI;
+
+            // ---- WAS zero: anchored to AOG's heading, NOT to the model's own ---------------
+            // The model's own heading would be circular: the zero moves the model, the model
+            // moves the error, the error moves the zero. AOG's fusion is independent, the IMU
+            // smooths it and f2f takes its drift out.
+            if (v > 0.5 && Math.Abs(wasDeg - biasDeg) < 5.0 && Math.Abs(imuYaw) < BiasYawGate)
+            {
+                biasDeg -= BiasKi * glm.toDegrees(Wrap(aogPsi - psi)) * dt;
+                if (biasDeg > BiasMax) biasDeg = BiasMax; else if (biasDeg < -BiasMax) biasDeg = -BiasMax;
+                learnSec += dt;
+                if (learnSec > 12.0) biasSettled = true;
+            }
+            else if (v > 0.5) learnSec += dt * 0.25;    // creeps on, so a curvy field still settles
+
+            // ---- position correction: gain GROWS with the error ---------------------------
+            double ce = Math.Sin(psi), cn = Math.Cos(psi);
+            double ie = aogE - E, inn = aogN - N;
+            double along = ie * ce + inn * cn;
+            double lat = ie * cn - inn * ce;
+            innovCm = lat * 100.0;
+
+            double g = Progressive(lat, PosE0, PosFloor);
+            rejectPct = (1.0 - g) * 100.0;
+            double k = dt / (PosTau + dt);
+            E += k * (along * ce + g * lat * cn);
+            N += k * (along * cn - g * lat * ce);
+
+            // ---- watchdog: a lasting disagreement means the MODEL is wrong, not the GPS ----
+            if (Math.Abs(lat) > DivergeM) divergeSec += dt; else divergeSec = 0;
+            if (divergeSec > DivergeSec)
+            {
+                E = aogE; N = aogN; psi = aogPsi; divergeSec = 0; act = 0;
+                passiveReason = "reset (razilaženje)";
+            }
+
+            // ---- passive: the model is not the source, but it is kept fed so that taking
+            //      over is bumpless
+            if (act < 1.0)
+            {
+                double b = 1.0 - act;
+                E += b * (aogE - E); N += b * (aogN - N);
+                psi += b * Wrap(aogPsi - psi);
+                if (psi < 0) psi += glm.twoPI; else if (psi >= glm.twoPI) psi -= glm.twoPI;
+            }
+        }
+
+        /// <summary>Effective wheelbase, set by the caller from the settings each fix.</summary>
+        public double mfLeff = 4.2;
+
+        /// <summary>Blend of model and AOG by the ramp - what guidance should use.</summary>
+        public void Output(double aogE, double aogN, double aogPsi,
+                           out double outE, out double outN, out double outPsi)
+        {
+            if (!init || act <= 0.0) { outE = aogE; outN = aogN; outPsi = aogPsi; return; }
+            outE = act * E + (1 - act) * aogE;
+            outN = act * N + (1 - act) * aogN;
+            outPsi = aogPsi + act * Wrap(psi - aogPsi);
+            if (outPsi < 0) outPsi += glm.twoPI; else if (outPsi >= glm.twoPI) outPsi -= glm.twoPI;
+        }
+    }
+}

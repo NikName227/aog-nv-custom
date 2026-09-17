@@ -17,9 +17,9 @@ namespace AgOpenGPS
         private readonly bool hr;
         private readonly Timer poll = new Timer();
 
-        private CheckBox cbCabin, cbObs, cbAdvanced, cbAutoLog;
-        private NumericUpDown nKFast, nFc, nLead, nTau, nKp, nKi, nImuW;
-        private Label lblLearned, lblLearnStatus, lblLogInfo, lblLive, lblStatusTop;
+        private CheckBox cbCabin, cbModel, cbAutoLog;
+        private NumericUpDown nKFast, nFc, nLead, nImuW;
+        private Label lblLearned, lblLearnStatus, lblLogInfo, lblLive, lblLiveModel, lblStatusTop;
         private Button btnLearn, btnLog, btnFolder, btnClose, btnInfo;
         private Panel panInfo;
         private bool infoOpen;
@@ -54,20 +54,16 @@ namespace AgOpenGPS
             nFc = Num(244, y, 0, 3, 0.1m, 2);
             Lbl("lead", 330, y + 3, 34, 16);
             nLead = Num(366, y, 0, 1, 0.05m, 2); y += 28;
-            cbAdvanced = Chk(hr ? "napredno: τ_slow [s]" : "advanced: tau_slow [s]", 20, y);
-            nTau = Num(180, y - 2, 0.2m, 5, 0.1m, 1); y += 28;
-            btnLearn = Btn(hr ? "Učenje (k_fast + model)" : "Learning (k_fast + model)", 20, y, 250, 30, Color.FromArgb(15, 131, 149));
+            btnLearn = Btn(hr ? "Učenje (k_fast + L_eff)" : "Learning (k_fast + L_eff)", 20, y, 250, 30, Color.FromArgb(15, 131, 149));
             lblLearnStatus = Lbl("—", 278, y + 8, 150, 16, 8.5f, Color.FromArgb(160, 180, 170)); y += 36;
 
-            // ---------------- heading observer ----------------
+            // ---------------- kinematic model ----------------
             Sep(y - 4);
-            cbObs = Chk(hr ? "OBSERVER SMJERA" : "HEADING OBSERVER", 12, y); y += 24;
-            Lbl("Kp", 20, y + 3, 24, 16);
-            nKp = Num(46, y, 0.05m, 2, 0.05m, 2);
-            Lbl("Ki", 140, y + 3, 20, 16);
-            nKi = Num(162, y, 0, 0.05m, 0.001m, 3);
-            Lbl(hr ? "udio IMU" : "IMU share", 268, y + 3, 62, 16);
-            nImuW = Num(336, y, 0, 1, 0.05m, 2); y += 28;
+            cbModel = Chk(hr ? "KINEMATIČKI MODEL" : "KINEMATIC MODEL", 12, y); y += 24;
+            Lbl(hr ? "WAS ◀──────▶ IMU" : "WAS ◀──────▶ IMU", 20, y + 3, 130, 16);
+            nImuW = Num(156, y, 0, 0.6m, 0.05m, 2);
+            Lbl(hr ? "sve ostalo iz geometrije i fizike" : "everything else from geometry", 226, y + 3, 200, 16,
+                8.5f, Color.FromArgb(140, 160, 150)); y += 28;
             lblLearned = Lbl("", 20, y, 400, 16, 8.5f, Color.FromArgb(160, 180, 170)); y += 24;
 
             // ---------------- raw log ----------------
@@ -81,12 +77,21 @@ namespace AgOpenGPS
             // ---------------- live ----------------
             Sep(y - 4);
             Lbl(hr ? "ŽIVI PRIKAZ" : "LIVE", 12, y, 120, 18, 9.5f, Color.White); y += 20;
+            Lbl(hr ? "kompenzacija kabine" : "cabin compensation", 18, y, 200, 14, 8f,
+                Color.FromArgb(130, 155, 142)); y += 16;
             lblLive = new Label
             {
-                Location = new Point(16, y), Size = new Size(408, 150), AutoSize = false,
+                Location = new Point(16, y), Size = new Size(408, 54), AutoSize = false,
                 Font = new Font("Consolas", 8.5f), ForeColor = Color.FromArgb(200, 214, 206)
             };
-            Controls.Add(lblLive); y += 156;
+            Controls.Add(lblLive); y += 58;
+            Lbl(hr ? "model" : "model", 18, y, 200, 14, 8f, Color.FromArgb(130, 155, 142)); y += 16;
+            lblLiveModel = new Label
+            {
+                Location = new Point(16, y), Size = new Size(408, 86), AutoSize = false,
+                Font = new Font("Consolas", 8.5f), ForeColor = Color.FromArgb(200, 214, 206)
+            };
+            Controls.Add(lblLiveModel); y += 90;
 
             btnClose = Btn(hr ? "Zatvori" : "Close", 340, y, 84, 30, Color.FromArgb(60, 71, 64));
 
@@ -125,9 +130,7 @@ namespace AgOpenGPS
             LoadToControls();
 
             cbCabin.CheckedChanged += (s, e) => { mf.cabinComp.isOn = cbCabin.Checked; mf.cabinComp.Reset(); Store(); };
-            cbObs.CheckedChanged += (s, e) => { mf.headObs.isOn = cbObs.Checked; mf.headObs.Reset(); Store(); };
-            cbAdvanced.CheckedChanged += (s, e) => nTau.Visible = cbAdvanced.Checked;
-            nTau.Visible = false;
+            cbModel.CheckedChanged += (s, e) => { mf.kinModel.isOn = cbModel.Checked; mf.kinModel.Reset(); Store(); };
             cbAutoLog.CheckedChanged += (s, e) =>
             {
                 Properties.VehicleSettings.Default.setSF_autoLog = cbAutoLog.Checked;
@@ -136,10 +139,7 @@ namespace AgOpenGPS
             nKFast.ValueChanged += (s, e) => { mf.cabinComp.kFast = (double)nKFast.Value; Store(); };
             nFc.ValueChanged += (s, e) => { mf.cabinComp.fc = (double)nFc.Value; mf.cabinComp.Reset(); Store(); };
             nLead.ValueChanged += (s, e) => { mf.cabinComp.lead = (double)nLead.Value; Store(); };
-            nTau.ValueChanged += (s, e) => { mf.cabinComp.tauSlow = (double)nTau.Value; mf.cabinComp.Reset(); Store(); };
-            nKp.ValueChanged += (s, e) => { mf.headObs.Kp = (double)nKp.Value; Store(); };
-            nKi.ValueChanged += (s, e) => { mf.headObs.Ki = (double)nKi.Value; Store(); };
-            nImuW.ValueChanged += (s, e) => { mf.headObs.wImu = (double)nImuW.Value; Store(); };
+            nImuW.ValueChanged += (s, e) => { mf.kinModel.imuShare = (double)nImuW.Value; Store(); };
 
             btnLearn.Click += (s, e) => ToggleLearn();
             btnLog.Click += (s, e) => ToggleLog();
@@ -217,11 +217,8 @@ namespace AgOpenGPS
             nKFast.Value = Clamp(mf.cabinComp.kFast, nKFast);
             nFc.Value = Clamp(mf.cabinComp.fc, nFc);
             nLead.Value = Clamp(mf.cabinComp.lead, nLead);
-            nTau.Value = Clamp(mf.cabinComp.tauSlow, nTau);
-            cbObs.Checked = mf.headObs.isOn;
-            nKp.Value = Clamp(mf.headObs.Kp, nKp);
-            nKi.Value = Clamp(mf.headObs.Ki, nKi);
-            nImuW.Value = Clamp(mf.headObs.wImu, nImuW);
+            cbModel.Checked = mf.kinModel.isOn;
+            nImuW.Value = Clamp(mf.kinModel.imuShare, nImuW);
             cbAutoLog.Checked = Properties.VehicleSettings.Default.setSF_autoLog;
         }
 
@@ -231,10 +228,9 @@ namespace AgOpenGPS
             // a mark in the raw log, so a parameter change is visible in the replay/analysis
             if (mf.rawLog.isLogging)
                 mf.rawLog.Mark(string.Format(CultureInfo.InvariantCulture,
-                    "SET cab={0} k_fast={1:F2} fc={2:F2} lead={3:F2} tau={4:F1} obs={5} Kp={6:F2} Ki={7:F3} wImu={8:F2} Leff={9:F2}",
+                    "SET cab={0} k_fast={1:F2} fc={2:F2} lead={3:F2} model={4} imuW={5:F2} Leff={6:F2}",
                     mf.cabinComp.isOn ? 1 : 0, mf.cabinComp.kFast, mf.cabinComp.fc, mf.cabinComp.lead,
-                    mf.cabinComp.tauSlow, mf.headObs.isOn ? 1 : 0, mf.headObs.Kp, mf.headObs.Ki,
-                    mf.headObs.wImu, mf.headObs.Leff));
+                    mf.kinModel.isOn ? 1 : 0, mf.kinModel.imuShare, mf.headObs.Leff));
         }
 
         // ---------------------------------------------------------------- info panel
@@ -252,61 +248,125 @@ namespace AgOpenGPS
         {
             if (!hr)
                 return "Antenna height (Config > Vehicle) and invert roll (Config > Data) come from the existing "
-                     + "AOG settings and are NOT entered here. The antenna height is also the lever used for terrain roll.\n\n"
+                     + "AOG settings and are NOT entered here.\n\n"
                      + "Each item: what it does - typical range - how to get the value - what if it is wrong.";
 
             return
-"Visina antene (Config → Vozilo) i invert roll (Config → Data) uzimaju se iz postojećih postavki\n" +
-"AOG-a i ovdje se NE unose ponovno. Visina antene je ujedno poluga za nagib terena.\n\n" +
-"── KOMPENZACIJA KABINE ──────────────────────────────\n\n" +
+"Visina antene (Config → Vozilo) i invert roll (Config → Data) uzimaju se iz postojećih\n" +
+"postavki AOG-a i ovdje se NE unose ponovno. Visina antene je ujedno poluga za nagib terena.\n" +
+"\n" +
+"── KOMPENZACIJA KABINE ──────────────────────────────\n" +
+"\n" +
 "k_fast [m]   tipično 0.5–2.5\n" +
-"Poluga njihanja kabine: visina antene minus visina osi oko koje se kabina njiše. Govori koliko\n" +
-"se antena stvarno pomakne kod brze promjene rolla.\n" +
-"Kako: gumb Učenje (2–4 min vožnje po neravnom). Ručno: izmjeri visinu nosača ovjesa kabine i\n" +
-"oduzmi je od visine antene.\n" +
-"Krivo: premalo → njihanje ostaje nekompenzirano; previše (npr. puna visina antene) → lažni\n" +
-"skokovi pozicije i trzaji volana.\n\n" +
-"fc [Hz]   0 = filtar isključen, inače 0.5–1.5\n" +
+"Poluga njihanja kabine: visina antene minus visina osi oko koje se kabina njiše. Govori\n" +
+"koliko se antena stvarno pomakne kod brze promjene rolla.\n" +
+"Kako: gumb Učenje (2–4 min vožnje po neravnom). Ručno: izmjeri visinu nosača ovjesa\n" +
+"kabine i oduzmi je od visine antene.\n" +
+"Krivo: premalo → njihanje ostaje nekompenzirano; previše → lažni skokovi pozicije i\n" +
+"trzaji volana.\n" +
+"Izmjereno: poluga varira i unutar jedne vožnje (0.66–1.92 m), pa je 1.40 kompromis, ne\n" +
+"istina. Greška u oba smjera ostaje ispod ±1.2 cm/°, naspram −4.9 cm/° bez kompenzacije.\n" +
+"\n" +
+"fc [Hz]   0 = filtar isključen, inače 0.2–1.0\n" +
 "Granica bočnog filtra. Niže = mirnija linija, ali sporiji odziv na stvarni bočni pomak.\n" +
-"Kako: podešava se na terenu. Kreni od 0 (isključen); ako je linija nemirna stavi 1.5, pa 1.0.\n" +
-"Krivo: prenisko → trom odziv; previsoko → filtar ne radi ništa.\n\n" +
-"lead [0–1]   tipično 0.3–0.7\n" +
-"Koliko se kašnjenja filtra vraća natrag. 0 = najmirnije i najsporije, 1 = bez kašnjenja uz\n" +
-"slabije glađenje. Nema učinka dok je fc = 0.\n" +
-"Kako: podešava se zajedno s fc.\n\n" +
-"τ_slow [s]   (napredno)   tipično 1–2\n" +
-"Granica između nagiba terena i njihanja kabine. Spori dio rolla množi se punom visinom antene,\n" +
-"brzi s k_fast.\n" +
-"Kako: ostaviti zadano; kraće τ bolje hvata brz ulazak na nagib, dulje bolje razdvaja kabinu.\n\n" +
-"── OBSERVER SMJERA ──────────────────────────────────\n\n" +
-"Kp   tipično 0.2–0.5\n" +
-"Koliko heading prati GPS smjer; vremenska konstanta je približno 1/Kp (0.3 → oko 3 s).\n" +
-"Kako: podešavanje. Niže = mirnije, više = brže poravnanje uz više šuma.\n\n" +
-"Ki   tipično 0.002–0.01\n" +
-"Brzina kojom observer sam nalazi nulu WAS-a; radi na skali minute.\n" +
-"Kako: ostaviti zadano; provjeriti da prikazana nula ne bježi.\n\n" +
-"udio IMU-a [0–1]   tipično 0–0.5\n" +
-"Koliko IMU brzine zakretanja ulazi u model. Pomaže na ravnom, odmaže u okretu jer se kabina\n" +
-"zakreće i sama.\n" +
-"Kako: podešavanje; povisiti na ravnom terenu s dobrim IMU-om.\n\n" +
-"L_eff [m]   (naučeno)\n" +
-"Efektivni međuosovinski razmak; uključuje klizanje kotača pa je veći od mehaničkog.\n" +
-"Kako: gumb Učenje, uz okrete u obje strane i barem 30 s ravne vožnje.\n" +
-"Bez učenja: mehanički razmak × 1.3–1.5.\n\n" +
-"Nula WAS-a [°]   (naučeno)\n" +
-"Odstupanje senzora kuta kako ga vidi model; dijelom upija i bočno klizanje na nagibu.\n" +
-"Kako: uči se sama tijekom vožnje; provjera: pri ravnoj vožnji WAS treba biti blizu nule.\n\n" +
-"U okretu i pri maloj brzini observer sam prelazi s GPS smjera na IMU heading (offset IMU-a uči\n" +
-"dok se vozi ravno). Vožnja unatrag se prepoznaje i predznak se okreće.\n\n" +
-"── RAW LOG ──────────────────────────────────────────\n\n" +
-"Snima svaki fix (10 Hz) u Documents\\AgOpenGPS\\Logs kao AOG_AdvSensorFusion_<datum>_<vrijeme>.csv:\n" +
-"sirovi ulazi i svi unutarnji signali lanca. Služi za analizu i ponovno učenje parametara.\n\n" +
-"── ŽIVI PRIKAZ ──────────────────────────────────────\n\n" +
+"Kako: kreni od 0. Ako je linija nemirna, stavi 0.5 pa 0.3 — i OBAVEZNO lead na 0.\n" +
+"Krivo: prenisko → trom odziv (fc 0.15 unosi 1.06 s kašnjenja); previsoko → ne radi ništa.\n" +
+"\n" +
+"lead [0–1]   preporučeno 0 kad je fc uključen\n" +
+"Koliko se kašnjenja filtra vraća natrag. Nema učinka dok je fc = 0.\n" +
+"Izmjereno: sa zadanih 0.70 filtar vrati 70 % onoga što je uklonio — skok 8.2 cm naspram\n" +
+"5.9 cm uz lead 0. Ako uključiš fc, stavi lead na 0.\n" +
+"\n" +
+"τ_slow je hardkodiran na 1.0 s — razdvaja nagib terena (puna visina antene) od njihanja\n" +
+"kabine (k_fast). Nije se pokazao kao nešto što se ugađa na terenu.\n" +
+"\n" +
+"── KINEMATIČKI MODEL ────────────────────────────────\n" +
+"\n" +
+"Model predviđa gdje traktor MOŽE biti iz kuta kotača i brzine, pa GPS-u vjeruje onoliko\n" +
+"koliko je mjerenje fizički moguće. Skok koji vozilo ne može napraviti dobiva malu težinu;\n" +
+"stvarno gibanje prolazi bez kašnjenja jer dolazi iz predikcije.\n" +
+"\n" +
+"Slider WAS ◀──▶ IMU [0–0.6]   tipično 0.25\n" +
+"Koliko brzine zakretanja model uzima iz žiroskopa umjesto iz kuta kotača:\n" +
+"   zakretanje = (1 − slider) · v·tan(WAS − nula)/L_eff  +  slider · yaw iz IMU-a\n" +
+"\n" +
+"Zašto postoji: s prednjim priključkom (npr. tanjurača) prednji kraj gura i traktor skrene\n" +
+"manje nego što WAS kaže. To je greška predikcije i ispravlja se upravo ovdje.\n" +
+"\n" +
+"Kako: 0 na traktoru bez prednjeg priključka. Podigni ako u živom prikazu red „zakretanje\"\n" +
+"stalno pokazuje omjer manji od ~0.8× — model tada zaostaje za stvarnim zakretanjem.\n" +
+"\n" +
+"Krivo: previsoko → u model ulazi zakretanje same kabine. IMU je na kabini i mjeri 1.15×\n" +
+"kinematičkog limita, a roll to ne objašnjava (r² 0.045), pa se ne može oduzeti. Zato je\n" +
+"gornja granica 0.6, a ne 1.0.\n" +
+"\n" +
+"Napomena: stalno klizanje hvata L_eff (uči se). Slider pokriva samo promjenjivi dio —\n" +
+"tvrdo naspram mekog tla, dubina zahvata.\n" +
+"\n" +
+"── ŠTO MODEL RAČUNA SAM ─────────────────────────────\n" +
+"\n" +
+"Ovo se NE unosi. Izvedeno je iz geometrije vozila i iz mjerenja, pa nema što ugađati:\n" +
+"\n" +
+"prag pozicije 0.079 m\n" +
+"  Izmjerena amplituda njihanja kabine (p99 ±6.6 cm) + 20 % rezerve. Ispod toga je\n" +
+"  njihanje, iznad je stvarni pomak. Ovjes fizički ne dopušta više.\n" +
+"prag smjera  v·tan(WAS)/L_eff · τ × 1.20\n" +
+"  Kinematički moguća promjena smjera kroz horizont korekcije.\n" +
+"τ pozicije 1.0 s · τ smjera 2.0 s\n" +
+"yaw iz IMU-a\n" +
+"  Nagib pravca kroz zadnjih 5 uzoraka (najmanji kvadrati). Dvije točke bi dale 0.408 °/s\n" +
+"  šuma na signal od 0.56 °/s — 70 % šuma. Pet točaka: 0.091 °/s uz 0.20 s kašnjenja.\n" +
+"nula WAS-a\n" +
+"  Uči se svaku sesiju (Ki 0.15), i to SAMO dok je zakretanje ispod 1 °/s — iznad toga\n" +
+"  odnos WAS → zakretanje nije siguran (proklizavanje, Ackermann). Sidro je AOG-ov heading,\n" +
+"  ne modelov vlastiti (inače bi procjena bila kružna). NE sprema se jer se Keya\n" +
+"  inicijalizira pri svakom paljenju. Traje ~12 s vožnje naprijed.\n" +
+"L_eff\n" +
+"  Iz gumba Učenje, kao i dosad. Ne uči se zajedno s nulom WAS-a jer su njih dvoje u jednoj\n" +
+"  regresiji degenerirani (isti traktor je na dva prolaza ispao 4.35 m/+2.6° i 4.11 m/−3.0°).\n" +
+"\n" +
+"── KAD JE MODEL PASIVAN ─────────────────────────────\n" +
+"\n" +
+"Pasivno znači: model je isključen kao izvor, autosteer dobiva AOG-ov današnji lanac. Model\n" +
+"se i dalje računa u pozadini i puni se tim podacima, pa preuzima bez skoka.\n" +
+"\n" +
+"  • autosteer isključen — vozač vozi, model samo prati\n" +
+"  • WAS iznad 10° — okret. WAS je pouzdan unutar ±10°; iznad toga ulaze greške od\n" +
+"    Ackermannove geometrije i montaže senzora, a model stoji ili pada na WAS-u.\n" +
+"    Vraća se ispod 8° nakon 1 s (histereza), rampa 3 s.\n" +
+"  • uči nulu — prvih ~12 s vožnje u svakoj sesiji\n" +
+"  • reset (razilaženje) — razlika veća od 25 cm dulje od 2 s znači da je MODEL kriv,\n" +
+"    pa se odbacuje i postavlja nanovo iz GPS-a\n" +
+"\n" +
+"── RAW LOG ──────────────────────────────────────────\n" +
+"\n" +
+"Snima svaki fix (10 Hz) u Documents\\AgOpenGPS\\Logs kao\n" +
+"AOG_AdvSensorFusion_<datum>_<vrijeme>.csv: sirovi ulazi i svi unutarnji signali lanca.\n" +
+"Kvačica „auto\" pokreće log pri sljedećem pokretanju AOG-a i ne gasi ga sama.\n" +
+"\n" +
+"── ŽIVI PRIKAZ: KOMPENZACIJA KABINE ─────────────────\n" +
+"\n" +
 "roll sirovi / spori / brzi — sirovi roll i njegova dva dijela (teren i kabina)\n" +
 "korekcija — koliko se pozicija pomiče, ukupno i po dijelovima\n" +
-"bočno prije/poslije filtra — koliko filtar zapravo skida\n" +
-"heading f2f / IMU / observer — tri izvora smjera i trenutni omjer\n" +
-"dt — razmak između fixeva, normalno oko 100 ms\n";
+"bočno prije/poslije filtra — koliko filtar zapravo skida; „—\" znači fc = 0\n" +
+"\n" +
+"── ŽIVI PRIKAZ: MODEL ───────────────────────────────\n" +
+"\n" +
+"stanje   PASIVNO / PRIJELAZ / AKTIVNO\n" +
+"  Tko trenutno vodi. Kad je pasivno, piše i razlog.\n" +
+"razlika   model − GPS, u cm\n" +
+"  Jedina brojka po kojoj se vidi je li model zdrav. Mali i miran = model prati. Raste i\n" +
+"  ostaje velik = model luta i slijedi tvrdi reset na GPS.\n" +
+"odbačeno   koliko je vaga odrezala, u %\n" +
+"  Pokazuje da model radi. Na neravnom skoči preko 90 %, na glatkom padne blizu nule.\n" +
+"nula WAS-a   procjena i je li ustaljena\n" +
+"  Ako vrijednost stalno bježi, WAS ima problem koji se inače ne bi primijetio.\n" +
+"zakretanje   °/s i omjer prema kinematici\n" +
+"  Ispod 1× znači da je smjer unutar fizički mogućeg. Iznad — nešto propušta šum.\n" +
+"brzina   iznos, izvor i dt\n" +
+"  Izvor je VTG iznad 2 km/h, ispod toga pozicija (VTG ondje pokazuje do 0.73 m/s lažne\n" +
+"  brzine). dt je razmak između fixeva, normalno oko 100 ms.\n" +
+"\n";
         }
 
         // ---------------------------------------------------------------- learning
@@ -385,8 +445,8 @@ namespace AgOpenGPS
                 mf.pn.fixQuality, mf.pn.speed, mf.ahrs.imuRoll, mf.mc.actualSteerAngleDegrees);
 
             lblLearned.Text = string.Format(CultureInfo.InvariantCulture,
-                hr ? "naučeno:  L_eff {0:F2} m    nula WAS {1:+0.00;-0.00}°"
-                   : "learned:  L_eff {0:F2} m    WAS zero {1:+0.00;-0.00}°", ob.Leff, ob.biasDeg);
+                hr ? "naučeno:  L_eff {0:F2} m   ·   model uči nulu WAS-a sam, svaku sesiju"
+                   : "learned:  L_eff {0:F2} m   ·   the model learns the WAS zero itself", ob.Leff);
 
             if (learning)
             {
@@ -404,29 +464,44 @@ namespace AgOpenGPS
                 : (string.IsNullOrEmpty(mf.rawLog.FileName) ? "—" : (hr ? "spremljeno: " : "saved: ") + mf.rawLog.FileName);
 
             lblLive.Text = string.Format(CultureInfo.InvariantCulture,
-                (hr ? "roll sirovi {0,7:F2}°   spori {1,7:F2}°   brzi {2,7:F2}°\n"
-                    + "korekcija   {3,7:F1} cm  (spori {4,5:F1} / brzi {5,5:F1})\n"
-                    + "bočno prije/poslije filtra {6,6} / {7,6} cm\n"
-                    + "\n"
-                    + "heading f2f {8,7:F2}°   IMU {9,7:F2}°\n"
-                    + "observer    {10,7:F2}°   model {11,6:F2} °/s  IMU {12,6:F2} °/s\n"
-                    + "\n"
-                    + "kabina {13}    observer {14}    IMU udio {16:P0}    dt {15:F0} ms"
-                    : "roll raw {0,7:F2}°   slow {1,7:F2}°   fast {2,7:F2}°\n"
-                    + "correction {3,7:F1} cm  (slow {4,5:F1} / fast {5,5:F1})\n"
-                    + "lateral before/after {6,6} / {7,6} cm\n"
-                    + "\n"
-                    + "heading f2f {8,7:F2}°   IMU {9,7:F2}°\n"
-                    + "observer    {10,7:F2}°   model {11,6:F2} °/s  IMU {12,6:F2} °/s\n"
-                    + "\n"
-                    + "cabin {13}    observer {14}    IMU share {16:P0}    dt {15:F0} ms"),
+                (hr ? "roll  sirovi {0,7:F2}°   spori {1,7:F2}°   brzi {2,7:F2}°\n"
+                    + "korekcija    {3,7:F1} cm   (spori {4,5:F1} / brzi {5,5:F1})\n"
+                    + "bočno prije/poslije filtra  {6,6} / {7,6} cm"
+                    : "roll  raw {0,7:F2}°   slow {1,7:F2}°   fast {2,7:F2}°\n"
+                    + "correction {3,7:F1} cm   (slow {4,5:F1} / fast {5,5:F1})\n"
+                    + "lateral before/after filter {6,6} / {7,6} cm"),
                 mf.ahrs.imuRoll, cc.rollSlowDeg, cc.rollFastDeg,
                 cc.corrTotal * 100, cc.corrSlow * 100, cc.corrFast * 100,
-                LatTxt(cc.latBefore), LatTxt(cc.latAfter),
-                glm.toDegrees(mf.gpsHeading), mf.ahrs.imuHeading,
-                glm.toDegrees(ob.psiRad), ob.modelYaw, ob.imuYaw,
-                cc.isOn ? "ON " : "off", ob.isOn ? (ob.isInitialized ? "ON " : "init") : "off",
-                mf.sfDt * 1000, ob.imuWeight);
+                LatTxt(cc.latBefore), LatTxt(cc.latAfter));
+
+            var km = mf.kinModel;
+            string state;
+            if (!km.isOn) state = hr ? "ISKLJUČEN" : "OFF";
+            else if (km.activeFrac >= 0.999) state = hr ? "AKTIVNO  (rampa 100 %)" : "ACTIVE  (ramp 100 %)";
+            else if (km.activeFrac <= 0.001)
+                state = (hr ? "PASIVNO" : "PASSIVE") + (km.passiveReason.Length > 0 ? "  — " + km.passiveReason : "");
+            else state = string.Format(hr ? "PRIJELAZ  (rampa {0:F0} %)" : "HANDOVER  (ramp {0:F0} %)",
+                                       km.activeFrac * 100);
+
+            double ratio = km.kinLimit > 0.02 ? Math.Abs(km.usedYaw) / km.kinLimit : 0;
+            lblLiveModel.Text = string.Format(CultureInfo.InvariantCulture,
+                (hr ? "stanje      {0}\n"
+                    + "razlika     {1,6:F1} cm      odbačeno {2,3:F0} %\n"
+                    + "nula WAS-a  {3,6:+0.00;-0.00}°       {4}\n"
+                    + "zakretanje  {5,6:F2} °/s     kinematika {6:F2} → {7:F2}×\n"
+                    + "brzina      {8,6:F1} km/h    {9}   dt {10:F0} ms"
+                    : "state       {0}\n"
+                    + "innovation  {1,6:F1} cm      rejected {2,3:F0} %\n"
+                    + "WAS zero    {3,6:+0.00;-0.00}°       {4}\n"
+                    + "yaw rate    {5,6:F2} °/s     kinematic {6:F2} → {7:F2}×\n"
+                    + "speed       {8,6:F1} km/h    {9}   dt {10:F0} ms"),
+                state, km.innovCm, km.rejectPct, km.biasDeg,
+                km.biasSettled ? (hr ? "ustaljena" : "settled")
+                               : string.Format(hr ? "uči {0:F0} s" : "learning {0:F0} s", km.biasSeconds),
+                km.usedYaw, km.kinLimit, ratio, km.speedUsed * 3.6,
+                km.vtgShare > 0.99 ? "VTG" : (km.vtgShare < 0.01 ? (hr ? "pozicija" : "position")
+                    : string.Format(hr ? "VTG {0:F0} %" : "VTG {0:F0} %", km.vtgShare * 100)),
+                mf.sfDt * 1000);
         }
 
         /// <summary>Lateral offset in cm, or a dash while the lateral filter is not running.</summary>

@@ -1,4 +1,4 @@
-// F10 Advanced Sensor Fusion (NV custom) — glue between FormGPS and the two independent
+﻿// F10 Advanced Sensor Fusion (NV custom) — glue between FormGPS and the two independent
 // functions (cabin compensation, heading observer) plus the raw logger.
 //
 // The two functions never depend on each other: a fixed-cab tractor only turns the observer
@@ -12,6 +12,8 @@ namespace AgOpenGPS
     {
         public double sfDt = 0.1;                  // measured fix interval [s]
         private double sfRawEast, sfRawNorth;      // antenna position before any correction
+        private double sfImuUnwrapped = double.NaN; // IMU heading, unwrapped for the model
+        private double sfElapsed;                   // running time for the model [s]
 
         public void LoadSensorFusionSettings()
         {
@@ -22,7 +24,13 @@ namespace AgOpenGPS
             cabinComp.lead = s.setSF_lead;
             cabinComp.tauSlow = s.setSF_tauSlow;
 
-            headObs.isOn = s.setSF_obsOn;
+            kinModel.isOn = s.setSF_modelOn;
+            kinModel.imuShare = s.setSF_modelImuW;
+            kinModel.Reset();
+
+            //the observer stays instantiated only for the L_eff learning; it no longer drives
+            //the heading - the kinematic model does (REQ 2026-09-17-1)
+            headObs.isOn = false;
             headObs.Kp = s.setSF_obsKp;
             headObs.Ki = s.setSF_obsKi;
             headObs.wImu = s.setSF_obsImuWeight;
@@ -48,7 +56,9 @@ namespace AgOpenGPS
             s.setSF_lead = cabinComp.lead;
             s.setSF_tauSlow = cabinComp.tauSlow;
 
-            s.setSF_obsOn = headObs.isOn;
+            s.setSF_modelOn = kinModel.isOn;
+            s.setSF_modelImuW = kinModel.imuShare;
+            s.setSF_obsOn = false;
             s.setSF_obsKp = headObs.Kp;
             s.setSF_obsKi = headObs.Ki;
             s.setSF_obsImuWeight = headObs.wImu;
@@ -63,6 +73,7 @@ namespace AgOpenGPS
         /// <summary>Start of every fix: measure dt and remember the raw antenna position.</summary>
         public void SensorFusionNewFix()
         {
+            sfElapsed += Math.Max(0.0, Math.Min(1.0, timeSliceOfLastFix));
             double dt = timeSliceOfLastFix;             // measured at the top of UpdateFixPosition
             if (dt < 0.02 || dt > 1.0) dt = 0.1;        // dropped packet / first fix
             sfDt = dt;
@@ -100,19 +111,49 @@ namespace AgOpenGPS
             if (headObs.learn.running && courseValid)
                 headObs.learn.Sample(mc.actualSteerAngleDegrees, speedMs, courseRad, isReverse, sfDt);
 
-            double outHeading = fallbackHeadingRad;
-            if (headObs.isOn)
-            {
-                double psi = headObs.Update(mc.actualSteerAngleDegrees, speedMs, courseRad, courseValid,
-                                            ahrs.imuHeading, isReverse, sfDt);
-                if (headObs.isInitialized) outHeading = psi;
-            }
+            headObs.psiRad = fallbackHeadingRad;
+            return fallbackHeadingRad;
+        }
+
+        /// <summary>
+        /// Kinematic model: runs after AOG's own chain has produced its position and heading,
+        /// because it uses that chain both as the passive solution and as the independent
+        /// anchor for the WAS zero. Replaces the fix and the heading when active.
+        /// </summary>
+        public double SensorFusionModel(double headingRad)
+        {
+            if (!kinModel.isOn) return headingRad;
+
+            //IMU heading unwrapped, so the 5-point slope does not jump at the 360 seam
+            double ih = ahrs.imuHeading;
+            if (ih > 65000) ih = glm.toDegrees(headingRad);
+            if (double.IsNaN(sfImuUnwrapped)) sfImuUnwrapped = ih;
             else
             {
-                headObs.psiRad = fallbackHeadingRad;
+                double d = ih - sfImuUnwrapped;
+                while (d > 180) d -= 360;
+                while (d < -180) d += 360;
+                sfImuUnwrapped += d;
             }
 
-            return outHeading;
+            //AOG's chain, at the pivot axle - the model works on the vehicle, not the antenna
+            double aogE = pn.fix.easting - Math.Sin(headingRad) * vehicle.VehicleConfig.AntennaPivot;
+            double aogN = pn.fix.northing - Math.Cos(headingRad) * vehicle.VehicleConfig.AntennaPivot;
+
+            kinModel.mfLeff = headObs.Leff;
+            kinModel.Update(aogE, aogN, headingRad, mc.actualSteerAngleDegrees,
+                            Math.Abs(pn.vtgSpeed < 9999 ? pn.vtgSpeed : pn.speed) / 3.6,
+                            sfImuUnwrapped, gpsHeading,
+                            avgSpeed > startSpeed && isFirstHeadingSet,
+                            isBtnAutoSteerOn, sfElapsed, sfDt);
+
+            double oE, oN, oP;
+            kinModel.Output(aogE, aogN, headingRad, out oE, out oN, out oP);
+
+            //back to the antenna frame, so the rest of AOG is untouched
+            pn.fix.easting = oE + Math.Sin(oP) * vehicle.VehicleConfig.AntennaPivot;
+            pn.fix.northing = oN + Math.Cos(oP) * vehicle.VehicleConfig.AntennaPivot;
+            return oP;
         }
 
         /// <summary>
