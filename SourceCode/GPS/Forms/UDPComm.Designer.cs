@@ -184,7 +184,7 @@ namespace AgOpenGPS
                             else rollK *= 0.1;
                             rollK -= ahrs.rollZero;
                             ahrs.imuRollRaw = rollK;
-                                    ahrs.imuRoll = ahrs.imuRoll * ahrs.rollFilter + rollK * (1 - ahrs.rollFilter);
+                            ahrs.imuRoll = ahrs.imuRoll * ahrs.rollFilter + rollK * (1 - ahrs.rollFilter);
 
                             //Angular velocity
                             ahrs.angVel = (Int16)((data[10] << 8) + data[9]);
@@ -227,7 +227,7 @@ namespace AgOpenGPS
                                 else rollK *= 0.1;
                                 rollK -= ahrs.rollZero;
                                 ahrs.imuRollRaw = rollK;
-                                    ahrs.imuRoll = ahrs.imuRoll * ahrs.rollFilter + rollK * (1 - ahrs.rollFilter);
+                                ahrs.imuRoll = ahrs.imuRoll * ahrs.rollFilter + rollK * (1 - ahrs.rollFilter);
                             }
                             //else ahrs.imuRoll = 88888;
 
