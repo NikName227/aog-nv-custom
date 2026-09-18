@@ -1,5 +1,11 @@
 ﻿[*.cs]
 
+# .gitattributes normalises every text file to LF ("* text=auto") - verified 2026-09-18, 0 of 675
+# tracked files carry CR in git. Without this line the formatter assumes CRLF on Windows, IDE0055
+# fires across the tree, and since Release turns warnings into errors (Directory.Build.props) the
+# Release build fails while Debug passes. That is how a working copy with CRLF hid the problem.
+end_of_line = lf
+
 #### Naming styles ####
 
 # Symbol specifications
