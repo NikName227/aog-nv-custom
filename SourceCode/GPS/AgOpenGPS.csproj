@@ -27,6 +27,10 @@
     <Content Include="License.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- F10 documentation, opened by the button in the Advanced Sensor Fusion window -->
+    <Content Include="Docs\sensor-fusion.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>

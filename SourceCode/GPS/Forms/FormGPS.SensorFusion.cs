@@ -18,36 +18,28 @@ namespace AgOpenGPS
         public void LoadSensorFusionSettings()
         {
             var s = Properties.VehicleSettings.Default;
-            cabinComp.isOn = s.setSF_cabinOn;
-            cabinComp.kFast = s.setSF_kFast;
-            cabinComp.fc = s.setSF_fc;
-            cabinComp.lead = s.setSF_lead;
-            cabinComp.tauSlow = s.setSF_tauSlow;
 
             kinModel.isOn = s.setSF_modelOn;
-            kinModel.imuShare = s.setSF_modelImuW;
-            kinModel.posFloor = s.setSF_modelFloor;
-            kinModel.posTau = s.setSF_modelTau;
-            kinModel.hdgFloor = s.setSF_modelHFloor;
-            kinModel.hdgTau = s.setSF_modelHTau;
-            kinModel.leff = s.setSF_modelLeff;
-            kinModel.mix = s.setSF_modelMix;
+            kinModel.mixPos = s.setSF_modelMixPos;
+            kinModel.mixHdg = s.setSF_modelMixHdg;
+
+            // The tunables are release constants unless this install is in service mode. Reading
+            // them from the profile only in debug means a machine behaves identically on every
+            // install regardless of what an earlier session left in its vehicle XML, and that a
+            // tuned machine falls back to standard the moment the debug flag is taken away.
+            if (CFeatureLock.IsDebug)
+            {
+                kinModel.posFloor = s.setSF_modelFloor;
+                kinModel.posTau = s.setSF_modelTau;
+                kinModel.hdgFloor = s.setSF_modelHFloor;
+                kinModel.hdgTau = s.setSF_modelHTau;
+                kinModel.leff = s.setSF_modelLeff;
+                kinModel.anchorTau = s.setSF_modelATau;
+            }
+            else kinModel.ReleaseDefaults();
+
             kinModel.Reset();
 
-            //the observer stays instantiated only for the L_eff learning; it no longer drives
-            //the heading - the kinematic model does (REQ 2026-09-17-1)
-            headObs.isOn = false;
-            headObs.Kp = s.setSF_obsKp;
-            headObs.Ki = s.setSF_obsKi;
-            headObs.wImu = s.setSF_obsImuWeight;
-            headObs.Leff = s.setSF_obsLeff;
-            headObs.biasDeg = s.setSF_obsWasBias;
-            headObs.KpTurn = s.setSF_obsKpTurn;
-            headObs.wasLo = s.setSF_obsWasLo;
-            headObs.wasHi = s.setSF_obsWasHi;
-
-            cabinComp.Reset();
-            headObs.Reset();
 
             //raw logger can start with AOG (handy when chasing a problem in the field)
             if (s.setSF_autoLog && !rawLog.isLogging) rawLog.Start();
@@ -56,28 +48,16 @@ namespace AgOpenGPS
         public void SaveSensorFusionSettings()
         {
             var s = Properties.VehicleSettings.Default;
-            s.setSF_cabinOn = cabinComp.isOn;
-            s.setSF_kFast = cabinComp.kFast;
-            s.setSF_fc = cabinComp.fc;
-            s.setSF_lead = cabinComp.lead;
-            s.setSF_tauSlow = cabinComp.tauSlow;
 
             s.setSF_modelOn = kinModel.isOn;
-            s.setSF_modelImuW = kinModel.imuShare;
             s.setSF_modelFloor = kinModel.posFloor;
             s.setSF_modelTau = kinModel.posTau;
             s.setSF_modelHFloor = kinModel.hdgFloor;
             s.setSF_modelHTau = kinModel.hdgTau;
             s.setSF_modelLeff = kinModel.leff;
-            s.setSF_modelMix = kinModel.mix;
-            s.setSF_obsOn = false;
-            s.setSF_obsKp = headObs.Kp;
-            s.setSF_obsKi = headObs.Ki;
-            s.setSF_obsImuWeight = headObs.wImu;
-            s.setSF_obsWasBias = headObs.biasDeg;
-            s.setSF_obsKpTurn = headObs.KpTurn;
-            s.setSF_obsWasLo = headObs.wasLo;
-            s.setSF_obsWasHi = headObs.wasHi;
+            s.setSF_modelATau = kinModel.anchorTau;
+            s.setSF_modelMixPos = kinModel.mixPos;
+            s.setSF_modelMixHdg = kinModel.mixHdg;
             s.Save();
         }
 
@@ -93,43 +73,11 @@ namespace AgOpenGPS
             sfRawNorth = pn.fix.northing;
         }
 
-        /// <summary>Roll correction distance - new chain when on, old formula when off.</summary>
-        public double SensorFusionRollCorrection(double rollDeg)
-        {
-            return cabinComp.RollCorrection(rollDeg, vehicle.VehicleConfig.AntennaHeight, sfDt);
-        }
-
-        /// <summary>Lateral filter on the corrected fix (once per fix, after the roll correction).</summary>
-        public void SensorFusionFilterFix(double headingRad)
-        {
-            double e = pn.fix.easting, n = pn.fix.northing;
-            cabinComp.FilterFix(ref e, ref n, headingRad, Math.Abs(pn.speed) / 3.6, sfDt);
-            pn.fix.easting = e;
-            pn.fix.northing = n;
-        }
-
-        /// <summary>
-        /// Heading observer + learning + raw log. Called once per fix after the heading is known.
-        /// Returns the heading that guidance should use [rad].
-        /// </summary>
-        public double SensorFusionHeading(double courseRad, bool courseValid, double fallbackHeadingRad)
-        {
-            double speedMs = Math.Abs(pn.speed) / 3.6;
-
-            // learning always runs from the RAW signals, so it is independent of what is enabled
-            if (cabinComp.learn.running)
-                cabinComp.learn.Sample(sfRawEast, sfRawNorth, ahrs.imuRoll, courseRad, speedMs, sfDt);
-            if (headObs.learn.running && courseValid)
-                headObs.learn.Sample(mc.actualSteerAngleDegrees, speedMs, courseRad, isReverse, sfDt);
-
-            headObs.psiRad = fallbackHeadingRad;
-            return fallbackHeadingRad;
-        }
-
         /// <summary>
         /// Kinematic model: runs after AOG's own chain has produced its position and heading,
-        /// because it uses that chain both as the passive solution and as the independent
-        /// anchor for the WAS zero. Replaces the fix and the heading when active.
+        /// because it uses that chain both as the passive solution and as the reference the
+        /// output is blended against. Replaces the fix and the heading when active - by separate
+        /// shares, since the field says the model earns its keep on position, not on heading.
         /// </summary>
         public double SensorFusionModel(double headingRad)
         {
@@ -155,7 +103,8 @@ namespace AgOpenGPS
                             Math.Abs(pn.vtgSpeed < 9999 ? pn.vtgSpeed : pn.speed) / 3.6,
                             sfImuUnwrapped, gpsHeading,
                             avgSpeed > startSpeed && isFirstHeadingSet,
-                            isBtnAutoSteerOn, sfElapsed, sfDt);
+                            isBtnAutoSteerOn, sfElapsed, sfDt,
+                            vehicle.VehicleConfig.Wheelbase);
 
             double oE, oN, oP;
             kinModel.Output(aogE, aogN, headingRad, out oE, out oN, out oP);

@@ -15,26 +15,45 @@
 //     limit. Time constants cannot separate them: the disturbances last a median of 1.9 s,
 //     which is the same scale as any correction slow enough to be safe.
 //
-// Everything except the WAS/IMU slider is derived from vehicle geometry and from measurement,
-// so there is nothing to tune in the field.
+//  3. The excitation is DELTA WAS, not absolute WAS (REQ 2026-09-17-3). The steer sensor zero
+//     wandered -0.35..-2.81 deg between passes of the same tractor on the same day and drove the
+//     XTE offset at -3.65 cm per degree. Only differences are used, so that zero drops out - and
+//     with it the free L_eff parameter: the delta-WAS fit lands on 2.93 m against the 3.020 m
+//     wheelbase in the vehicle settings.
+//
+// The user sets two numbers: how much of the model reaches POSITION and how much reaches HEADING.
+// They are separate because the field says the optimum is not the same value - the model earns its
+// keep on position, while on heading it only attenuates the error Stanley steers on.
 using System;
 
 namespace AgOpenGPS
 {
     public class CKinematicModel
     {
-        // ---- the one user setting -------------------------------------------------------
+        // ---- the user settings ----------------------------------------------------------
         public bool isOn;
-        public double imuShare = 0.25;      // [0..0.6] how much of the yaw rate comes from the IMU
-        public double leff = 3.70;          // [m] effective wheelbase; measured r=0.87 on line
-                                            // following (WAS +-9 deg). 4.20 came from headland
-                                            // turns where the bicycle model does not hold.
+        public double imuShare = 0.25;      // [0..0.6] LEGACY. The static WAS/IMU weight is gone:
+                                            // with delta WAS the split is by FREQUENCY, set by
+                                            // anchorTau. No longer read by Update() and no longer
+                                            // on the window; the field and the setting stay until
+                                            // the parameters are fixed.
+        public double leff = 0.0;           // [m] 0 = take the wheelbase from vehicle settings.
+                                            // Measured by delta-WAS regression on 3.7 km of field
+                                            // passes: 2.93 m, against 3.020 m in the settings -
+                                            // 3 %. Every earlier estimate (3.67/4.20/1.66/2.61)
+                                            // came from ABSOLUTE WAS and was contaminated by the
+                                            // unknown sensor zero. It is not a free parameter.
 
-        // How much of the model reaches guidance. 0 = today's AOG untouched, 1 = full model.
-        // Tuning floor/tau/h_floor/h_tau only ever traded one behaviour for another, because all
-        // of them set how far the model trusts GPS. This sets the SHARE instead, so the result is
-        // guaranteed to sit between two known end points and moves monotonically.
-        public double mix = 1.0;
+        // How much of the model reaches guidance - SEPARATELY for position and for heading,
+        // because the field says the optimum is not the same number (REQ 2026-09-17-3):
+        //   share 0,0  heading gain 1,00  WASset/XTE -0,187 deg/cm  sd XTE 10,10 cm
+        //   share 0,5  heading gain 0,95  WASset/XTE -0,229 deg/cm  sd XTE  6,94 cm
+        //   share 1,0  heading gain 0,58  WASset/XTE -0,128 deg/cm  sd XTE 10,66 cm
+        // The model earns its keep on POSITION. On heading it only attenuates, which starves
+        // Stanley of the error it steers on - that is the slow weave, measured as a 66 % loss of
+        // WASset per degree of heading error.
+        public double mixPos = 1.00;        // [0..1]
+        public double mixHdg = 0.20;        // [0..0.6] capped: see anchorTau note below
 
         // Test aid only: keeps the model active with autosteer off, in a turn, and before the
         // WAS zero has settled - so a data replay can drive it. NOT saved between sessions, so
@@ -65,8 +84,16 @@ namespace AgOpenGPS
         private const double HdgAvgTau = 1.5;               // [s] smoothing of the f2f course
 
 
-        private const double WasOut = 10.0;                 // [deg] above this: passive
-        private const double WasIn = 8.0;                   // [deg] return below this
+        // Raised from 10/8 (REQ 2026-09-18-1). 10 deg was a guess, never measured. Replaying the
+        // gate logic over 3118 s of field data: at 10/8 the model is off full share 9.5 % of the
+        // time across 77 exits, at 15/13 it is 6.9 % across 57. The cost is not the time above the
+        // threshold (0.3 %) but that every exit spends 1 s hold + 3 s ramp - the model dropped out
+        // whenever WAS merely brushed the gate in a manoeuvre. Quality does not fall with steer
+        // angle either: kinematics-vs-truth correlation is 0.356 in the 0-4 deg band and 0.705 in
+        // 4-8 deg, slope steady. The 10-15 band itself has only 74 samples, so it is NOT verified -
+        // the divergence watchdog is what covers that.
+        private const double WasOut = 15.0;                 // [deg] above this: passive
+        private const double WasIn = 13.0;                  // [deg] return below this
         private const double HoldIn = 1.0;                  // [s] and only after this long
         private const double RampSec = 3.0;                 // [s] handover ramp
 
@@ -74,13 +101,38 @@ namespace AgOpenGPS
         private const double VtgNone = 0.5 / 3.6;           // [m/s] below: position only
         private const int RateN = 5;                        // IMU yaw rate: 5-point least squares
 
+        // Delta WAS drives the CHANGE of yaw rate, the IMU gives its absolute level. Measured on
+        // 15548 windows of 0.5 s across 3.7 km of field passes:
+        //   absolute WAS -> heading change     r = 0.581 (slope 0.190, should be 1.0)
+        //   delta WAS    -> heading change     r = -0.175   (wrong quantity)
+        //   delta WAS    -> yaw RATE change    r = 0.692    <- this one
+        // Physically that is exactly right: WAS gives psi-dot, delta WAS gives psi-dot-dot. The
+        // point of it is that only DIFFERENCES are used, so the WAS zero drops out of the model.
+        // That zero wandered -0.35..-2.81 deg between passes of the same tractor on the same day
+        // and drove the XTE offset at -3.65 cm per degree (r = -0.994).
+        // The price: two integrations instead of one, so the error grows with the SQUARE of time.
+        // anchorTau is what stops that - and it is why the heading share is capped below 1.
+        // Replayed over 14787 samples of field data (28 straight segments): the anchor bounds the
+        // drift of the double integration, and the bound is set by this tau -
+        //   tau 1.0 s -> worst per-segment drift 0.083 deg/s
+        //   tau 2.5 s -> 0.210 deg/s
+        //   tau 6.0 s -> 0.509 deg/s
+        // It has to stay several times the 0.5 s events it is meant to pass, or the anchor simply
+        // cancels the delta WAS again. 2.5 s is that compromise, but it is the ONE number here
+        // that is not measured, so it is field-adjustable until it is.
+        public double anchorTau = 2.5;                      // [s] yaw state -> IMU yaw rate
+        public const double MixHdgMax = 0.60;
+
         private const double DivergeM = 0.25;               // [m] watchdog
         private const double DivergeSec = 2.0;
 
         // ---- state ----------------------------------------------------------------------
         private bool init;
         private double E, N, psi;                           // pivot axle position + heading
-        public double biasDeg;                              // WAS zero, learned per session
+        public double biasDeg;                              // WAS zero - NOT used any more, see
+                                                            // anchorTau. Kept at 0 for the log.
+        private double yawState;                            // [deg/s] delta-WAS integrator
+        private double tanWasPrev;
         private double f2fSmooth;
         private readonly double[] hBuf = new double[RateN];
         private readonly double[] tBuf = new double[RateN];
@@ -100,12 +152,26 @@ namespace AgOpenGPS
         public double speedUsed;                            // [m/s]
         public double anchorDeg;            // model heading - AOG heading [deg]; poisons nothing
                                             // now, but tells us how clean the anchor is
+        public double leffUsed;             // [m] what the model actually used this step
+        public double dWasYaw;              // [deg/s] this step's delta-WAS contribution
+        public double yawStateOut { get { return yawState; } }
         public string passiveReason = "";
+
+        /// <summary>Tunables back to the values this release ships with - used whenever the
+        /// install is not in service mode, so behaviour cannot drift with a profile's history.</summary>
+        public void ReleaseDefaults()
+        {
+            posFloor = 0.40; posTau = 0.3;
+            hdgFloor = 0.35; hdgTau = 0.8;
+            leff = 0.0;                     // = wheelbase from the vehicle profile
+            anchorTau = 2.5;
+        }
 
         public void Reset()
         {
             init = false; nBuf = 0; act = 0; belowSec = 0; divergeSec = 0;
             biasDeg = 0; anchorDeg = 0; prevPosOk = false;
+            yawState = 0; tanWasPrev = 0; dWasYaw = 0;
             innovCm = 0; rejectPct = 0; passiveReason = "";
         }
 
@@ -157,15 +223,18 @@ namespace AgOpenGPS
         /// <param name="vtgMs">speed from VTG (Doppler) [m/s]</param>
         /// <param name="imuHeadDeg">raw IMU heading [deg], unwrapped by the caller</param>
         /// <param name="courseRad">f2f course [rad]</param>
+        /// <param name="wheelbaseM">wheelbase from vehicle settings, used when leff is 0</param>
         public void Update(double aogE, double aogN, double aogPsi, double wasDeg,
                            double vtgMs, double imuHeadDeg, double courseRad, bool courseOk,
-                           bool steerOn, double t, double dt)
+                           bool steerOn, double t, double dt, double wheelbaseM)
         {
             double rate = ImuRate(imuHeadDeg, t);
+            leffUsed = leff > 0.1 ? leff : Math.Max(0.5, wheelbaseM);
 
             if (!init)
             {
                 E = aogE; N = aogN; psi = aogPsi; f2fSmooth = aogPsi;
+                yawState = rate; tanWasPrev = Math.Tan(glm.toRadians(wasDeg)); dWasYaw = 0;
                 init = true; act = 0; prevE = aogE; prevN = aogN; prevPosOk = true;
                 return;
             }
@@ -202,17 +271,28 @@ namespace AgOpenGPS
             else want = act > 0.5 ? 1 : 0;      // dead band between WasIn and WasOut
 
 
-            double ceil = Math.Max(0.0, Math.Min(1.0, mix));
+            // The ramp is pure activation now (autosteer, turns, handover). The shares are applied
+            // in Output() only, so the estimator always runs at full quality and we choose how
+            // much of it to use - in build0017 mix was a CEILING on this ramp, which also left the
+            // model state permanently half-pulled toward AOG through the passive block below.
             double step = dt / Math.Max(RampSec, 1e-3);
-            act = want > 0.5 ? Math.Min(ceil, act + step) : Math.Max(0.0, act - step);
-            if (act >= ceil - 1e-6 && ceil > 0.999) passiveReason = "";
+            act = want > 0.5 ? Math.Min(1.0, act + step) : Math.Max(0.0, act - step);
+            if (act >= 1.0 - 1e-6) passiveReason = "";
 
-            // ---- prediction: WAS and IMU lead the fast changes, up to about 1 s ------------
-            double leff_ = Math.Max(0.5, leff);
-            modelYaw = glm.toDegrees(v * Math.Tan(glm.toRadians(wasDeg - biasDeg)) / leff_);
+            // ---- prediction: delta WAS leads the fast changes, the IMU holds the level -------
+            double tanW = Math.Tan(glm.toRadians(wasDeg));
+            dWasYaw = glm.toDegrees(v * (tanW - tanWasPrev) / leffUsed);
+            tanWasPrev = tanW;
             imuYaw = rate;
-            double w = Math.Max(0, Math.Min(0.6, imuShare));
-            usedYaw = (1.0 - w) * modelYaw + w * imuYaw;
+
+            yawState += dWasYaw;                                         // fast: delta WAS
+            yawState += (dt / (Math.Max(anchorTau, 0.1) + dt)) * (imuYaw - yawState);  // slow: IMU
+            usedYaw = yawState;
+
+            // kept from the absolute WAS, but ONLY as the kinematic ceiling for the display and
+            // for the heading gate below - it never drives the prediction any more, so its zero
+            // error cannot reach the position.
+            modelYaw = glm.toDegrees(v * tanW / leffUsed);
             kinLimit = Math.Abs(modelYaw);
 
             psi += glm.toRadians(usedYaw) * dt;
@@ -259,6 +339,7 @@ namespace AgOpenGPS
             if (divergeSec > DivergeSec)
             {
                 E = aogE; N = aogN; psi = aogPsi; divergeSec = 0; act = 0;
+                yawState = imuYaw;                  // the yaw integrator is what drifted - reseed it
                 passiveReason = "reset (razilaženje)";
             }
 
@@ -269,18 +350,22 @@ namespace AgOpenGPS
                 double b = 1.0 - act;
                 E += b * (aogE - E); N += b * (aogN - N);
                 psi += b * Wrap(aogPsi - psi);
+                yawState += b * (imuYaw - yawState);
                 if (psi < 0) psi += glm.twoPI; else if (psi >= glm.twoPI) psi -= glm.twoPI;
             }
         }
 
-        /// <summary>Blend of model and AOG by the ramp - what guidance should use.</summary>
+        /// <summary>What guidance should use: the ramp says whether the model may speak at all,
+        /// the two shares say how much of it reaches position and heading separately.</summary>
         public void Output(double aogE, double aogN, double aogPsi,
                            out double outE, out double outN, out double outPsi)
         {
             if (!init || act <= 0.0) { outE = aogE; outN = aogN; outPsi = aogPsi; return; }
-            outE = act * E + (1 - act) * aogE;
-            outN = act * N + (1 - act) * aogN;
-            outPsi = aogPsi + act * Wrap(psi - aogPsi);
+            double mp = act * Math.Max(0.0, Math.Min(1.0, mixPos));
+            double mh = act * Math.Max(0.0, Math.Min(MixHdgMax, mixHdg));
+            outE = mp * E + (1 - mp) * aogE;
+            outN = mp * N + (1 - mp) * aogN;
+            outPsi = aogPsi + mh * Wrap(psi - aogPsi);
             if (outPsi < 0) outPsi += glm.twoPI; else if (outPsi >= glm.twoPI) outPsi -= glm.twoPI;
         }
     }

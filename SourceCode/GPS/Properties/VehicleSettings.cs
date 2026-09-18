@@ -46,32 +46,20 @@ namespace AgOpenGPS.Properties
         public double setIMU_fusionWeight2 = 0.06;
 
         // F10 Advanced Sensor Fusion — cabin compensation (independent of the observer)
-        public bool setSF_cabinOn = false;
-        public double setSF_kFast = 1.4;        // [m] lever of the fast (cabin) roll part
-        public double setSF_fc = 0.0;           // [Hz] lateral filter cutoff (0 = off)
-        public double setSF_lead = 0.7;         // [0..1] how much filter delay is given back
-        public double setSF_tauSlow = 1.0;      // [s] terrain / cabin split
 
         // F10 Advanced Sensor Fusion — kinematic model (replaces the heading observer)
         public bool setSF_modelOn = false;
-        public double setSF_modelImuW = 0.25;   // [0..0.6] slider WAS <-> IMU
-        public double setSF_modelFloor = 0.30;  // gain floor; tau/floor is the effective time const
-        public double setSF_modelTau = 0.4;     // [s] correction time constant
+        public double setSF_modelFloor = 0.40;  // gain floor; tau/floor is the effective time const
+        public double setSF_modelTau = 0.3;     // [s] correction time constant
         public double setSF_modelHFloor = 0.35; // same, for the heading correction
         public double setSF_modelHTau = 0.8;    // [s]
-        public double setSF_modelMix = 1.0;     // how much of the model reaches guidance, 0..1
-        public double setSF_modelLeff = 3.70;   // [m]
+        public double setSF_modelMixPos = 1.00; // model share into POSITION, 0..1
+        public double setSF_modelMixHdg = 0.00; // model share into HEADING, 0..0.6 (capped: with
+                                                // delta WAS the yaw path integrates twice)
+        public double setSF_modelLeff = 0.0;    // [m] 0 = use the wheelbase from vehicle settings
+        public double setSF_modelATau = 2.5;    // [s] yaw state -> IMU anchor (delta WAS drift bound)
 
         // F10 — heading observer: retired from the window, kept only for L_eff learning
-        public bool setSF_obsOn = false;
-        public double setSF_obsKp = 0.3;
-        public double setSF_obsKi = 0.004;
-        public double setSF_obsImuWeight = 0.25;
-        public double setSF_obsLeff = 4.2;      // [m] effective wheelbase (incl. slip), learned
-        public double setSF_obsWasBias = 0.0;   // [deg] WAS zero, learned / kept between runs
-        public double setSF_obsKpTurn = 1.0;    // correction strength while the IMU is the measurement
-        public double setSF_obsWasLo = 5.0;     // [deg] below: measurement = course
-        public double setSF_obsWasHi = 15.0;    // [deg] above: measurement = IMU
         public bool setSF_autoLog = false;      // start the raw logger with AOG
 
         // GPS settings

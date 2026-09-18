@@ -53,13 +53,13 @@ namespace AgOpenGPS
                 sw.WriteLine(
                     "pc_time,t_s,type,fix_time,lat,lon,fix_q,sats,hdop,alt,age,speed_kn,heading_deg,roll_deg," +
                     "pitch_deg,yaw_rate,was_deg,label,switch,pwm,was_set_deg,xte_cm,steer_status,aog_speed_kmh," +
-                    "raw_east,raw_north,fix_east,fix_north,roll_slow_deg,roll_fast_deg,corr_slow_m,corr_fast_m," +
-                    "lat_before_m,lat_after_m,gps_heading_deg,imu_corrected_deg,obs_heading_deg,obs_bias_deg," +
-                    "obs_model_yaw,obs_imu_yaw,obs_imu_w,cab_on,obs_on," +
+                    "raw_east,raw_north,fix_east,fix_north," +
+                    "gps_heading_deg,imu_corrected_deg," +
                     "roll_raw_deg,fix_heading_deg,avg_speed_kmh,pivot_east,pivot_north," +
                     "dt_s,xte_valid,xte_pgn_cm,head_err_deg,kin_yaw_rate,fusion_w,roll_filter," +
-                    "wheelbase_m,ant_pivot_m,ant_height_m,obs_leff_m,is_sim," +
-                    "mdl_on,mdl_force,mdl_act,mdl_innov_cm,mdl_reject,mdl_bias,mdl_yaw,mdl_kin,mdl_vtg");
+                    "wheelbase_m,ant_pivot_m,ant_height_m,is_sim," +
+                    "mdl_on,mdl_force,mdl_act,mdl_innov_cm,mdl_reject,mdl_bias,mdl_yaw,mdl_kin,mdl_vtg," +
+                    "mdl_mixpos,mdl_mixhdg,mdl_yawstate,mdl_dwas,mdl_leff");
                 rows = 0; bytes = 0;
                 isLogging = true;
                 return true;
@@ -88,8 +88,8 @@ namespace AgOpenGPS
             try
             {
                 sw.WriteLine(string.Format(CultureInfo.InvariantCulture,
-                    //69 fields, label in the 18th - keep in sync with the header in Start()
-                    "{0},{1:F3},MARK,,,,,,,,,,,,,,,{2},,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,",
+                    //60 fields, label in the 18th - keep in sync with the header in Start()
+                    "{0},{1:F3},MARK,,,,,,,,,,,,,,,{2},,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,",
                     DateTime.Now.ToString("HH:mm:ss.fff"), Elapsed.TotalSeconds, label));
             }
             catch { }
@@ -147,16 +147,8 @@ namespace AgOpenGPS
                 N(mf.pn.speed, 2);
                 N(rawEast, 4); N(rawNorth, 4);
                 N(mf.pn.fix.easting, 4); N(mf.pn.fix.northing, 4);
-                N(mf.cabinComp.rollSlowDeg, 3); N(mf.cabinComp.rollFastDeg, 3);
-                N(mf.cabinComp.corrSlow, 4); N(mf.cabinComp.corrFast, 4);
-                N(mf.cabinComp.latBefore, 4); N(mf.cabinComp.latAfter, 4);
                 N(glm.toDegrees(mf.gpsHeading), 3);
                 N(glm.toDegrees(mf.imuCorrected), 3);
-                N(glm.toDegrees(mf.headObs.psiRad), 3);
-                N(mf.headObs.biasDeg, 3);
-                N(mf.headObs.modelYaw, 3); N(mf.headObs.imuYaw, 3); N(mf.headObs.imuWeight, 2);
-                sb.Append(mf.cabinComp.isOn ? 1 : 0).Append(',');
-                sb.Append(mf.headObs.isOn ? 1 : 0).Append(',');
                 N(mf.ahrs.imuRollRaw, 2);
                 N(glm.toDegrees(mf.fixHeading), 3);
                 N(mf.avgSpeed, 2);
@@ -178,7 +170,6 @@ namespace AgOpenGPS
                 N(wb, 3);
                 N(mf.vehicle.VehicleConfig.AntennaPivot, 3);
                 N(mf.vehicle.VehicleConfig.AntennaHeight, 3);
-                N(mf.headObs.Leff, 3);
                 sb.Append(mf.timerSim.Enabled ? 1 : 0).Append(',');
 
                 //F10: kinematic model state - what the window shows, so the log tells the same story
@@ -190,7 +181,12 @@ namespace AgOpenGPS
                 N(mf.kinModel.biasDeg, 3);
                 N(mf.kinModel.usedYaw, 3);
                 N(mf.kinModel.kinLimit, 3);
-                sb.Append(mf.kinModel.vtgShare.ToString("F2", CultureInfo.InvariantCulture));
+                N(mf.kinModel.vtgShare, 2);
+                N(mf.kinModel.mixPos, 2);
+                N(mf.kinModel.mixHdg, 2);
+                N(mf.kinModel.yawStateOut, 3);
+                N(mf.kinModel.dWasYaw, 3);
+                sb.Append(mf.kinModel.leffUsed.ToString("F3", CultureInfo.InvariantCulture));
 
                 string line = sb.ToString();
                 sw.WriteLine(line);

@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="hr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+  :root{color-scheme:light dark;
+        padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+  body{margin:0;font:14px system-ui,-apple-system,Segoe UI,sans-serif;background:#faf9f7}
+  img{max-width:100%} [hidden]{display:none!important}
+</style>
+<title>Kinematički model položaja</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#F3F5F2; --panel:#FFFFFF; --panel2:#EAEEE9;
+  --ink:#1C2520; --ink2:#4A5B51; --ink3:#7C8D83;
+  --rule:#D3DBD5; --grid:#E2E8E3;
+  --accent:#C96A18; --accent2:#0F7F90; --warn:#B23A38;
+  --band:rgba(15,127,144,.10);
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,Segoe UI,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#151C18; --panel:#1E2823; --panel2:#26332C;
+    --ink:#DCE6DF; --ink2:#A3B5A9; --ink3:#71857A;
+    --rule:#33423A; --grid:#2A3730;
+    --accent:#E5913F; --accent2:#4FB6C6; --warn:#E0716E;
+    --band:rgba(79,182,198,.13);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#151C18; --panel:#1E2823; --panel2:#26332C;
+  --ink:#DCE6DF; --ink2:#A3B5A9; --ink3:#71857A;
+  --rule:#33423A; --grid:#2A3730;
+  --accent:#E5913F; --accent2:#4FB6C6; --warn:#E0716E;
+  --band:rgba(79,182,198,.13);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
+     font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1000px;margin:0 auto;padding-block:30px 70px;padding-left:18px;padding-right:18px}
+header{border-bottom:2px solid var(--ink);padding-bottom:22px;margin-bottom:8px}
+h1{font-size:clamp(26px,5vw,40px);line-height:1.1;margin:0 0 10px;font-weight:600;
+   letter-spacing:-.024em;text-wrap:balance}
+.sub{color:var(--ink2);margin:0;max-width:64ch}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.15em;text-transform:uppercase;
+         color:var(--accent);margin:0 0 10px;font-weight:500}
+h2{font-size:clamp(19px,3vw,24px);margin:52px 0 6px;font-weight:600;letter-spacing:-.017em;
+   padding-top:14px;border-top:1px solid var(--rule);text-wrap:balance}
+h2 .num{font-family:var(--mono);color:var(--accent);font-size:.62em;margin-right:10px;
+        font-weight:500;vertical-align:.14em}
+h3{font-size:16px;margin:30px 0 6px;font-weight:600;letter-spacing:-.01em}
+p{margin:0 0 13px;max-width:70ch}
+ul,ol{margin:0 0 14px;padding-left:22px;max-width:70ch}
+li{margin-bottom:5px}
+code,.mono{font-family:var(--mono);font-size:.9em;background:var(--panel2);
+     padding:1px 5px;border-radius:3px;color:var(--ink)}
+h2 code,h3 code{background:none;padding:0}
+b,strong{font-weight:600}
+a{color:var(--accent2)}
+
+/* nav */
+nav{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background:var(--ground);
+    border-bottom:1px solid var(--rule);padding:9px 0 10px;margin-bottom:6px}
+nav ol{display:flex;flex-wrap:wrap;gap:5px 16px;list-style:none;padding:0;margin:0;
+       font-family:var(--mono);font-size:11.5px;max-width:none}
+nav a{color:var(--ink3);text-decoration:none;white-space:nowrap}
+nav a:hover{color:var(--accent)}
+nav li{margin:0}
+
+/* data blocks */
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:1px;
+      background:var(--rule);border:1px solid var(--rule);border-radius:3px;margin:20px 0 24px}
+.facts div{background:var(--panel);padding:13px 15px}
+.facts dt{font-size:10.5px;color:var(--ink3);font-family:var(--mono);letter-spacing:.06em;
+         text-transform:uppercase;margin:0 0 4px}
+.facts dd{margin:0;font-family:var(--mono);font-size:21px;font-weight:600;
+         font-variant-numeric:tabular-nums;letter-spacing:-.02em;color:var(--accent2)}
+.facts dd small{font-size:12px;font-weight:400;color:var(--ink3);margin-left:2px}
+
+.tbl{width:100%;border-collapse:collapse;font-size:13.5px;margin:6px 0 18px;
+     font-variant-numeric:tabular-nums}
+.tbl th{text-align:left;font-family:var(--mono);font-size:10.5px;text-transform:uppercase;
+        letter-spacing:.06em;color:var(--ink3);font-weight:500;padding:6px 11px 6px 0;
+        border-bottom:1px solid var(--rule)}
+.tbl td{padding:7px 11px 7px 0;border-bottom:1px solid var(--grid);vertical-align:top}
+.tbl td:first-child{font-family:var(--mono);white-space:nowrap}
+.tbl .v{font-family:var(--mono);font-weight:600;color:var(--accent)}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+.callout{margin:20px 0;padding:15px 18px;background:var(--panel2);border-left:3px solid var(--accent);
+      border-radius:0 3px 3px 0;font-size:14px;color:var(--ink2)}
+.callout b{color:var(--ink)}
+.callout.warn{border-left-color:var(--warn)}
+.callout p:last-child{margin-bottom:0}
+
+/* figures */
+.figs{display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:24px;margin-top:18px}
+@media(max-width:860px){.figs{grid-template-columns:1fr}}
+figure{margin:0 0 20px;background:var(--panel);border:1px solid var(--rule);border-radius:3px;
+       padding:16px 18px 14px}
+figure h4{font-size:14.5px;margin:0 0 3px;font-weight:600}
+figure .lede{font-size:12px;color:var(--ink3);margin:0 0 12px;font-family:var(--mono)}
+svg{width:100%;height:auto;display:block;overflow:visible}
+figcaption{font-size:13px;color:var(--ink2);margin-top:12px;padding-top:11px;
+           border-top:1px solid var(--rule)}
+figcaption b{color:var(--ink);font-weight:600}
+.key{display:flex;flex-wrap:wrap;gap:12px;font-size:11.5px;color:var(--ink2);
+     font-family:var(--mono);margin-top:9px}
+.key i{display:inline-block;width:15px;height:2.5px;vertical-align:middle;margin-right:5px;border-radius:2px}
+text{font-family:var(--mono);font-size:10.5px;fill:var(--ink3)}
+.axis{stroke:var(--rule);stroke-width:1}
+.gl{stroke:var(--grid);stroke-width:1}
+
+/* controls */
+.ctl{background:var(--panel);border:1px solid var(--rule);border-radius:3px;padding:17px 19px;margin:20px 0 12px}
+.ctlgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px 30px}
+.sl label{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+          font-size:12.5px;color:var(--ink2);margin-bottom:5px}
+.sl label b{font-family:var(--mono);font-size:17px;color:var(--ink);font-weight:600;
+            font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--accent);height:22px;margin:0}
+.presets{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px;padding-top:13px;border-top:1px solid var(--rule)}
+button{font-family:var(--sans);font-size:12.5px;padding:6px 12px;border-radius:3px;cursor:pointer;
+       border:1px solid var(--rule);background:var(--panel2);color:var(--ink2)}
+button:hover{border-color:var(--accent);color:var(--ink)}
+button[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:#fff}
+button:focus-visible{outline:2px solid var(--accent2);outline-offset:2px}
+footer{margin-top:56px;padding-top:18px;border-top:1px solid var(--rule);
+       font-size:12.5px;color:var(--ink3);font-family:var(--mono)}
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+<header>
+  <p class="eyebrow">AgOpenGPS · NV custom · F10</p>
+  <h1>Kinematički model položaja</h1>
+  <p class="sub">Kompenzacija njihanja kabine na traktoru s ovješenom kabinom. Što model radi,
+  kako se postavlja i što se od njega smije očekivati.</p>
+</header>
+
+<nav aria-label="Sadržaj"><ol>
+  <li><a href="#problem">1 Problem</a></li>
+  <li><a href="#kako">2 Kako radi</a></li>
+  <li><a href="#postavke">3 Postavke</a></li>
+  <li><a href="#interaktivno">4 Interaktivno</a></li>
+  <li><a href="#rezultati">5 Rezultati</a></li>
+  <li><a href="#referenca">6 Referenca</a></li>
+  <li><a href="#granice">7 Granice</a></li>
+  <li><a href="#dijagnostika">8 Dijagnostika</a></li>
+</ol></nav>
+
+<h2 id="problem"><span class="num">1</span>Problem</h2>
+
+<p>GPS antena stoji na krovu kabine, a kabina je na ovjesu. Kad traktor prijeđe preko neravnine,
+kabina se zaljulja i <b>antena se pomakne bočno iako traktor nije skrenuo</b>. AOG to vidi kao
+stvarno odstupanje od linije i autosteer reagira — trzne volanom u stranu.</p>
+
+<p>Izmjereno na terenu: njihanje kabine pomiče antenu do <b>6,6 cm</b> (p99), a tipično traje
+oko <b>1,9 s</b>. Traktor se u toj sekundi fizički ne može toliko pomaknuti bočno — kinematička
+granica pri 2,8 m/s i kutu kotača 1,85° je oko 1 cm.</p>
+
+<div class="facts">
+  <div><dt>njihanje kabine p99</dt><dd>6,6<small>cm</small></dd></div>
+  <div><dt>trajanje smetnje</dt><dd>1,9<small>s</small></dd></div>
+  <div><dt>poluga rolla</dt><dd>6,11<small>cm/°</small></dd></div>
+  <div><dt>visina antene</dt><dd>3,50<small>m</small></dd></div>
+</div>
+
+<p>Klasični filtar tu ne pomaže: da bi izgladio njihanje od 1,9 s, mora kasniti barem toliko —
+a tada kasni i za stvarnim skretanjem. Njihanje i stvarno gibanje traju jednako dugo, pa se
+<b>vremenom ne mogu razdvojiti</b>.</p>
+
+<h2 id="kako"><span class="num">2</span>Kako model radi</h2>
+
+<p>Model ne filtrira GPS. On <b>predviđa gdje traktor može biti</b> iz kuta kotača i brzine, pa
+mjerenju vjeruje samo onoliko koliko je fizički moguće. Pomak koji vozilo ne može napraviti
+dobiva malu težinu; stvarno gibanje prolazi bez kašnjenja jer dolazi iz predikcije, ne iz
+korekcije.</p>
+
+<figure>
+<h4>Gdje model sjedi u lancu</h4>
+<svg viewBox="0 0 700 260" role="img" aria-label="Tok signala: kurs prolazi netaknut, položaj ide kroz kinematički model">
+<defs><marker id="ar" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+<polygon points="0 0, 9 3.5, 0 7" fill="currentColor"/></marker></defs>
+<g color="var(--ink3)">
+<rect x="6" y="104" width="112" height="46" rx="3" fill="var(--panel2)" stroke="var(--rule)"/>
+<text x="62" y="123" text-anchor="middle" fill="var(--ink)">GPS antena</text>
+<text x="62" y="138" text-anchor="middle">+ IMU</text>
+
+<rect x="152" y="104" width="120" height="46" rx="3" fill="var(--panel2)" stroke="var(--rule)"/>
+<text x="212" y="123" text-anchor="middle" fill="var(--ink)">AOG lanac</text>
+<text x="212" y="138" text-anchor="middle">roll, offset, f2f</text>
+<line x1="120" y1="127" x2="148" y2="127" stroke="currentColor" stroke-width="1.6" marker-end="url(#ar)"/>
+
+<line x1="274" y1="118" x2="330" y2="62" stroke="currentColor" stroke-width="1.6" marker-end="url(#ar)"/>
+<line x1="274" y1="136" x2="330" y2="192" stroke="currentColor" stroke-width="1.6" marker-end="url(#ar)"/>
+
+<rect x="336" y="38" width="190" height="48" rx="3" fill="none" stroke="var(--rule)" stroke-dasharray="4 3"/>
+<text x="431" y="57" text-anchor="middle" fill="var(--ink)">KURS — netaknut</text>
+<text x="431" y="73" text-anchor="middle">IMU + f2f, izvorni AOG</text>
+
+<rect x="336" y="168" width="190" height="48" rx="3" fill="var(--panel)" stroke="var(--accent)" stroke-width="2"/>
+<text x="431" y="187" text-anchor="middle" fill="var(--accent)">POLOŽAJ — model</text>
+<text x="431" y="203" text-anchor="middle">predikcija + korekcija</text>
+
+<line x1="530" y1="62" x2="592" y2="112" stroke="currentColor" stroke-width="1.6" marker-end="url(#ar)"/>
+<line x1="530" y1="192" x2="592" y2="142" stroke="currentColor" stroke-width="1.6" marker-end="url(#ar)"/>
+<rect x="598" y="104" width="96" height="46" rx="3" fill="var(--panel2)" stroke="var(--rule)"/>
+<text x="646" y="123" text-anchor="middle" fill="var(--ink)">navođenje</text>
+<text x="646" y="138" text-anchor="middle">Pure Pursuit</text>
+
+<text x="431" y="112" text-anchor="middle" fill="var(--accent2)">udio kursa 0,00</text>
+<text x="431" y="152" text-anchor="middle" fill="var(--accent2)">udio pozicije 1,00</text>
+</g>
+</svg>
+<figcaption>Dva klizača biraju koliko svakog kanala ide u navođenje. U preporučenoj postavci
+<b>kurs prolazi potpuno netaknut</b> — identičan izvornom AOG-u — a model radi samo na položaju.
+Tamo i zarađuje; na kursu bi samo prigušio signal po kojem autosteer upravlja.</figcaption>
+</figure>
+
+<p>Dvije stvari čine da to radi, i obje su nađene teško:</p>
+
+<ol>
+<li><b>Pojačanje raste s greškom, ne pada.</b> Pojačanje koje ide u nulu na velikoj grešci
+otvara petlju i model odluta — izmjereno 44 m u 50 s. S rastućim pojačanjem petlja je uvijek
+zatvorena i GPS na kraju uvijek pobijedi.</li>
+<li><b>Razdvajanje ide po amplitudi, ne po vremenu.</b> Njihanje je fizički ograničeno ovjesom
+(p99 ±6,6 cm), a drift raste bez granice. Prag je postavljen na <b>7,92 cm</b> = izmjereno
+njihanje + 20 % rezerve.</li>
+</ol>
+
+<h3>Pobuda: ΔWAS, ne apsolutni WAS</h3>
+
+<p>Brzina zakretanja se ne računa iz apsolutnog kuta kotača, nego iz njegove <b>promjene</b>,
+dok apsolutnu razinu daje IMU. Razlog je što nula senzora kuta kotača luta — izmjereno
+−0,35° do −2,81° između prolaza <b>istog traktora istog dana</b> — a ta nula izravno vuče
+odstupanje od linije: <code>ofset [cm] = −3,65 × WAS0 [°]</code>, r = −0,994, dakle do 10 cm
+trajnog preklopa. Koriste se samo razlike, pa ta nula iz modela ispada.</p>
+
+<h2 id="postavke"><span class="num">3</span>Postavke</h2>
+
+<p>Na ekranu su <b>dva klizača</b>. Sve ostalo je izvedeno iz geometrije vozila i mjerenja.</p>
+
+<div class="scroll"><table class="tbl">
+<tr><th>klizač</th><th>preporučeno</th><th>što radi</th></tr>
+<tr><td>udio modela — položaj</td><td class="v">1,00</td>
+<td>Koliko očišćenog položaja ide u navođenje. 0 = izvorni AOG, 1 = puni model.
+Utjecaj je <b>linearan</b>: na 0,5 dobiješ točno pola.</td></tr>
+<tr><td>udio modela — kurs</td><td class="v">0,00</td>
+<td>Koliko modelov kurs ide u navođenje. Ograničen na 0,60. <b>Drži na 0</b> osim ako
+mjerenje na konkretnom stroju ne pokaže drukčije.</td></tr>
+</table></div>
+
+<div class="callout"><p><b>Zašto je udio kursa nula.</b> Izmjereno po udjelu: na 0 autosteer
+komandira 0,187° volana po cm odstupanja, na 0,5 → 0,229, na <b>1,0 → 0,128</b>. Na punom
+udjelu model priguši kurs za 42 %, autosteer zbog toga komandira <b>66 % manje volana po
+stupnju greške kursa</b>, greška raste polako i traktor krene u dugo njihanje perioda 12–23 s.
+Model zarađuje na položaju; na kursu samo odmaže.</p></div>
+
+<p>Model je nakon instalacije <b>isključen</b>. Uključuje se svjesno, kvačicom u prozoru
+Advanced Sensor Fusion.</p>
+
+<h2 id="interaktivno"><span class="num">4</span>Interaktivno: progresivno pojačanje</h2>
+
+<p>Ovi parametri su zaključani u isporučenoj verziji i vide se samo u servisnom modu. Grafovi
+su tu da se razumije <i>zašto</i> su takvi kakvi jesu — povuci klizače i gledaj što se mijenja.</p>
+
+<div class="ctl">
+  <div class="ctlgrid">
+    <div class="sl">
+      <label for="fl">gain floor — donja granica pojačanja <b id="flv">0,40</b></label>
+      <input type="range" id="fl" min="0.05" max="0.90" step="0.05" value="0.40">
+    </div>
+    <div class="sl">
+      <label for="ta">τ — osnovna konstanta korekcije <b id="tav">0,3 s</b></label>
+      <input type="range" id="ta" min="0.1" max="2.0" step="0.1" value="0.3">
+    </div>
+  </div>
+  <div class="presets" id="pre"></div>
+</div>
+
+<dl class="facts" id="read"></dl>
+
+<div class="figs">
+  <figure>
+    <h4>1 · Pojačanje raste s greškom</h4>
+    <p class="lede">g = floor + (1−floor)·x²/(1+x²),  x = |greška| / 7,92 cm</p>
+    <svg id="c1" viewBox="0 0 440 250" role="img" aria-label="Pojačanje modela prema veličini neslaganja s GPS-om"></svg>
+    <div class="key"><span><i style="background:var(--accent)"></i>postavka</span>
+      <span><i style="background:var(--ink3)"></i>floor 0,10 · 0,25 · 0,55</span>
+      <span><i style="background:var(--band);height:9px"></i>domet njihanja</span></div>
+    <figcaption>Krivulja uvijek <b>raste</b> — zato je petlja uvijek zatvorena.
+    <code>floor</code> pomiče samo lijevi kraj, kod malih neslaganja. Na desnom kraju sve
+    krivulje završe u 1, pa velika greška uvijek prođe.</figcaption>
+  </figure>
+
+  <figure>
+    <h4>2 · Koliko dugo model drži</h4>
+    <p class="lede">efektivna konstanta τ_ef = τ / g</p>
+    <svg id="c2" viewBox="0 0 440 250" role="img" aria-label="Efektivna vremenska konstanta prema veličini neslaganja"></svg>
+    <div class="key"><span><i style="background:var(--accent)"></i>postavka</span>
+      <span><i style="background:var(--warn)"></i>granica 1,9 s</span></div>
+    <figcaption>Crvena crta je <b>trajanje smetnje</b>. Iznad nje model više ne razdvaja
+    njihanje po amplitudi nego se oslanja na vrijeme — a to je izvorna greška koja je radila
+    njihanje od 12–23 s.</figcaption>
+  </figure>
+
+  <figure>
+    <h4>3 · Što prolazi, a što ne</h4>
+    <p class="lede">njihanje 6,6 cm @ 0,72 Hz + stvarni zanos 0,8 cm/s od t=6 s</p>
+    <svg id="c3" viewBox="0 0 440 250" role="img" aria-label="Vremenski odziv na njihanje kabine i na stvarni bočni zanos"></svg>
+    <div class="key"><span><i style="background:var(--ink3)"></i>GPS</span>
+      <span><i style="background:var(--accent2)"></i>stvarni zanos</span>
+      <span><i style="background:var(--accent)"></i>model</span></div>
+    <figcaption>Cilj: narančasta prati tirkiznu, a ignorira valove. Prikaz je
+    <b>pesimističan</b> — ovdje zanos dolazi samo kroz korekciju. Pomak koji model predviđa iz
+    brzine i kursa prolazi bez kašnjenja; ovako izgleda samo ono što model ne zna unaprijed,
+    npr. bočno klizanje na kosini.</figcaption>
+  </figure>
+
+  <figure>
+    <h4>4 · Cijena dugog držanja</h4>
+    <p class="lede">vlastiti drift modela raste s <i>kvadratom</i> vremena</p>
+    <svg id="c4" viewBox="0 0 440 250" role="img" aria-label="Kompromis između vremena držanja i vlastite greške modela"></svg>
+    <div class="key"><span><i style="background:var(--accent2)"></i>koliko ukloni</span>
+      <span><i style="background:var(--warn)"></i>koliko sam unese</span>
+      <span><i style="background:var(--accent)"></i>postavka</span></div>
+    <figcaption>Dok drži, model se oslanja na predikciju koja drifta <b>0,21 °/s</b>. Greška
+    raste s <b>t²</b>, pa se dvostruko duže držanje plaća četverostrukom greškom. Njihanje je
+    oscilatorno i poništi se; drift je sustavan i ostaje.</figcaption>
+  </figure>
+</div>
+
+<h2 id="rezultati"><span class="num">5</span>Izmjereni rezultati</h2>
+
+<p>Terenski testovi 17.–18.09.2026., 2 319 s vožnje s uključenim autosteerom, usporedba s
+istim strojem bez modela.</p>
+
+<div class="facts">
+  <div><dt>njihanje u XTE-u</dt><dd>−41<small>%</small></dd></div>
+  <div><dt>rad volana |dWAS|</dt><dd>−73<small>%</small></dd></div>
+  <div><dt>najbolji prozor |XTE|</dt><dd>2,81<small>cm</small></dd></div>
+  <div><dt>ofset od linije</dt><dd>+0,40<small>cm</small></dd></div>
+</div>
+
+<h3>Doprinosi li ΔWAS zaista nešto</h3>
+<p>Kontrolni test — greška procjene brzine zakretanja prema stvarnoj, manje je bolje:</p>
+<div class="scroll"><table class="tbl">
+<tr><th>procjena</th><th>RMS [°/s]</th></tr>
+<tr><td>nikakva (nula)</td><td>2,550</td></tr>
+<tr><td>goli IMU yaw rate</td><td>2,420</td></tr>
+<tr><td>sami apsolutni WAS</td><td>2,130</td></tr>
+<tr><td>ΔWAS lanac + sidrenje</td><td class="v">1,859</td></tr>
+</table></div>
+<p>Lanac je <b>23 % bolji od IMU-a i 13 % bolji od apsolutnog WAS-a</b> — dakle bolji od oba
+svoja sastojka.</p>
+
+<h2 id="referenca"><span class="num">6</span>Referenca parametara</h2>
+
+<h3>Iz postavki vozila — prati profil stroja</h3>
+<div class="scroll"><table class="tbl">
+<tr><th>veličina</th><th>izvor</th><th>uloga</th></tr>
+<tr><td>Wheelbase</td><td>postavke vozila</td><td><b>ujedno je L_eff</b> modela — vidi niže</td></tr>
+<tr><td>AntennaPivot</td><td>postavke vozila</td><td>model radi u osovini, ne u anteni</td></tr>
+<tr><td>AntennaHeight</td><td>postavke vozila</td><td>korekcija rolla, 6,11 cm po stupnju</td></tr>
+</table></div>
+
+<div class="callout"><p><b>L_eff se ne ugađa.</b> Optimalna vrijednost mjerena po sesijama na
+istom traktoru istog dana ispala je 3,20 / 2,60 / 2,10 m — raspon <b>0,70 do 1,06 ×
+međuosovinskog razmaka</b>. Veličina nije mjerljiva iz terenskih podataka; svaka „ugođena"
+vrijednost pripasava šum te sesije. Na svim podacima zajedno optimum je 0,96 × wheelbase, a
+sam wheelbase je unutar <b>0,06 %</b> od najboljeg. Zato se uzima izravno iz profila vozila —
+i time se model sam prilagodi svakom stroju u floti.</p></div>
+
+<h3>Zaključano u kodu — isto na svakom stroju</h3>
+<div class="scroll"><table class="tbl">
+<tr><th>parametar</th><th>vrijednost</th><th>odakle</th></tr>
+<tr><td>sidro τ</td><td class="v">2,5 s</td><td>frekvencijska granica ΔWAS ↔ IMU. Pri 4,0 s ista
+točnost ali drift 1,45 → 2,37 °/s. 2,5 je koljeno.</td></tr>
+<tr><td>floor</td><td class="v">0,40</td><td>terenski potvrđeno; τ_ef 0,69 s = 36 % trajanja smetnje</td></tr>
+<tr><td>τ</td><td class="v">0,3 s</td><td>isto</td></tr>
+<tr><td>h_floor / h_τ</td><td class="v">0,35 / 0,8 s</td><td>sidrenje unutarnjeg kursa na f2f;
+štiti položaj, ne izlazni kurs</td></tr>
+<tr><td>prag njihanja</td><td class="v">7,92 cm</td><td>p99 6,6 cm × 20 % rezerve</td></tr>
+<tr><td>prag okreta</td><td class="v">15° / 13°</td><td>iznad 15° WAS model ide u pasivu.
+Podignuto s 10/8: model je ondje ispadao čim bi WAS očešao prag u manevru, a svaki izlazak
+košta 1 s zadrške + 3 s rampe. Pojas 10–15° nije izmjeren (74 uzorka) — pokriva ga watchdog.</td></tr>
+<tr><td>watchdog</td><td class="v">25 cm / 2 s</td><td>trajno neslaganje = kriv je model, reset na GPS</td></tr>
+<tr><td>rampa predaje</td><td class="v">3,0 s</td><td>da se prijelaz ne osjeti</td></tr>
+</table></div>
+
+<h3>Servisni mod</h3>
+<p>Uz <code>debug</code> u konfiguraciji instalacije svi gornji parametri se vraćaju na ekran i
+mogu se mijenjati bez novog builda. Bez te oznake model koristi isključivo vrijednosti iz
+tablice, bez obzira što je u profilu ostalo od ranijeg ugađanja — stroj se ponaša isto na svakoj
+instalaciji.</p>
+
+<h2 id="granice"><span class="num">7</span>Što model ne rješava</h2>
+
+<p>Ovo nisu nedostaci izvedbe nego stvari izvan dosega modela. Vrijedi ih znati unaprijed.</p>
+
+<h3>Ofset od nule kuta kotača — do 10 cm</h3>
+<p>Traktor konstantno vozi nekoliko cm od linije na istu stranu, u oba smjera. To nije greška
+visine antene (takva bi okretanjem smjera promijenila predznak) nego pomak nule senzora kuta
+kotača. Veza je gotovo savršena: <code>ofset = −3,65 × WAS0</code>, r = −0,994. To je u AOG-u i
+regulacijskoj petlji, ne u modelu.</p>
+
+<h3>Njihanje perioda ~2,6 s</h3>
+<p>Dolazi iz kašnjenja u petlji, ne iz smetnje:</p>
+<ul>
+<li>aktuator upravljanja: <b>0,42 s</b> (65 % faznog budžeta)</li>
+<li>kurs: <b>0,23 s</b> (35 %)</li>
+<li>kurs je integral brzine zakretanja: fiksnih 90°</li>
+</ul>
+<p>Zbroj daje <code>90° + 360·f·0,65 s = 180°</code> → period <b>2,60 s</b>; izmjereno 2,9 s.
+Model to ne dira jer kurs prolazi netaknut — smanjuje samo smetnju koja tu petlju pobuđuje.</p>
+
+<div class="callout"><p><b>Najveći dobici su izvan modela, i besplatni su.</b>
+Ubrzanje aktuatora (Kp / minPWM) gađa 65 % faznog budžeta. Duži look-ahead spušta pojačanje
+kursa kao <code>2L/D</code> — jedina ručica koja radi protiv oba kašnjenja odjednom.
+Za orijentaciju: uz Pure Pursuit <b>1° greške kursa vrijedi regulatoru 7,1 cm odstupanja</b>.</p></div>
+
+<h3>Njihanje kabine koje nije rotacija</h3>
+<p>IMU na kabini mjeri samo kut. Ako se kabina pomakne bočno bez zakretanja, taj je pomak
+senzoru nevidljiv. Na izmjerenom stroju roll objašnjava samo oko <b>13 %</b> varijance — ostalo
+je vjerojatno translacija. Puno rješenje traži drugi IMU na šasiji.</p>
+
+<h2 id="dijagnostika"><span class="num">8</span>Dijagnostika</h2>
+
+<p>Živi prikaz u prozoru Advanced Sensor Fusion, odjeljak „model":</p>
+
+<div class="scroll"><table class="tbl">
+<tr><th>redak</th><th>zdravo</th><th>ako nije</th></tr>
+<tr><td>stanje</td><td>AKTIVNO (rampa 100 %)</td>
+<td>PASIVNO uz razlog — autosteer isključen, okret, ili reset zbog razilaženja</td></tr>
+<tr><td>razlika</td><td>2–8 cm</td>
+<td>trajno &gt;15 cm → provjeri kvalitetu RTK fixa i postavke antene</td></tr>
+<tr><td>odbačeno</td><td>40–60 %</td>
+<td>blizu 0 % → model ne filtrira ništa; blizu 100 % → previše se opire</td></tr>
+<tr><td>sidro</td><td>oko 0, unutar ±1°</td>
+<td>stalno raste → unutarnji kurs odlutava</td></tr>
+<tr><td>ΔWAS</td><td>povremeni skokovi</td>
+<td>stalno 0 → senzor kuta kotača ne stiže ili stoji</td></tr>
+<tr><td>L_eff</td><td>= wheelbase, „(iz vozila)"</td>
+<td>„(ručno)" → netko je postavio ručnu vrijednost u servisnom modu</td></tr>
+</table></div>
+
+<h3>Ako traktor vozi u zmiju</h3>
+<ol>
+<li>Provjeri je li <b>udio kursa</b> na 0. To je najčešći uzrok.</li>
+<li>Ako jest — zmija nije od modela. Isključi model i provjeri postoji li i dalje. Ako da,
+uzrok je kašnjenje aktuatora ili prekratak look-ahead.</li>
+<li>Snimi raw log i pogledaj period: <b>2–3 s</b> je petlja upravljanja, <b>&gt;10 s</b> je
+prefiltriranje.</li>
+</ol>
+
+<h3>Ako se ne vidi nikakva razlika</h3>
+<p>Pri malim udjelima korekcija utone u šum RTK-a (~1,5 cm). Ispod udjela <b>0,4</b> efekt se ne
+može ni vidjeti. Provjeri i redak „odbačeno" — ako je blizu nule, model nema što raditi, što
+znači da na tom polju njihanja praktički nema.</p>
+
+<footer>
+Mjere: <span class="mono">features/10_advanced-sensor-fusion/testdata/04_test sa terena</span>,
+17.–18.09.2026., 2 319 s · traktor s ovješenom kabinom, antena 3,50 m, wheelbase 3,02 m,
+7–9 km/h · Grafovi računaju lokalno, bez interneta.
+</footer>
+</div>
+
+<script>
+const E0=7.92, DIST=1.9, DRIFT=0.21*Math.PI/180, V=2.44;
+const $=s=>document.querySelector(s);
+const fl=$('#fl'), ta=$('#ta');
+const PRE=[['isporučeno',0.40,0.3],['blaže',0.30,0.4],['agresivnije',0.20,0.3],['prefiltrirano',0.10,1.0]];
+const gain=(cm,f)=>{const x=Math.abs(cm)/E0,q=x*x/(1+x*x);return f+(1-f)*q;};
+const teff=(cm,f,t)=>t/gain(cm,f);
+const nf=(v,d=2)=>v.toFixed(d).replace('.',',');
+PRE.forEach((p,i)=>{const b=document.createElement('button');b.textContent=p[0];
+  b.onclick=()=>{fl.value=p[1];ta.value=p[2];draw();};$('#pre').appendChild(b);});
+
+function chart(el,{x0=46,y0=14,w=378,h=182,xmin,xmax,ymin,ymax,xt,yt,xlab,ylab}){
+  const s=[];const X=v=>x0+(v-xmin)/(xmax-xmin)*w, Y=v=>y0+h-(v-ymin)/(ymax-ymin)*h;
+  yt.forEach(v=>s.push(`<line class="gl" x1="${x0}" y1="${Y(v)}" x2="${x0+w}" y2="${Y(v)}"/>`));
+  xt.forEach(v=>{s.push(`<line class="gl" x1="${X(v)}" y1="${y0}" x2="${X(v)}" y2="${y0+h}"/>`);
+    s.push(`<text x="${X(v)}" y="${y0+h+15}" text-anchor="middle">${nf(v,v%1?1:0)}</text>`);});
+  s.push(`<line class="axis" x1="${x0}" y1="${y0+h}" x2="${x0+w}" y2="${y0+h}"/>`);
+  s.push(`<line class="axis" x1="${x0}" y1="${y0}" x2="${x0}" y2="${y0+h}"/>`);
+  s.push(`<text x="${x0+w}" y="${y0+h+31}" text-anchor="end" fill="var(--ink3)">${xlab}</text>`);
+  s.push(`<text x="${x0-38}" y="${y0-2}" fill="var(--ink3)">${ylab}</text>`);
+  return {s,X,Y,x0,y0,w,h};
+}
+const ylabels=(c,vals,fmt)=>vals.forEach(v=>c.s.push(
+  `<text x="${c.x0-7}" y="${c.Y(v)+3.5}" text-anchor="end">${fmt(v)}</text>`));
+function path(c,pts,col,wd=2.2,dash=''){
+  const d=pts.map((p,i)=>(i?'L':'M')+c.X(p[0]).toFixed(1)+' '+c.Y(p[1]).toFixed(1)).join(' ');
+  c.s.push(`<path d="${d}" fill="none" stroke="${col}" stroke-width="${wd}" stroke-linejoin="round" stroke-linecap="round"${dash?` stroke-dasharray="${dash}"`:''}/>`);
+}
+function draw(){
+  const f=+fl.value, t=+ta.value;
+  $('#flv').textContent=nf(f); $('#tav').textContent=nf(t,1)+' s';
+  [...$('#pre').children].forEach((b,i)=>b.setAttribute('aria-pressed',
+    Math.abs(PRE[i][1]-f)<1e-9&&Math.abs(PRE[i][2]-t)<1e-9));
+  const t2=teff(2,f,t), t8=teff(7.92,f,t), self=V*DRIFT*t2*t2/2*100, pct=t2/DIST*100;
+  $('#read').innerHTML=[
+    ['τ_ef pri 2 cm',nf(t2)+'<small>s</small>'],['τ_ef pri 8 cm',nf(t8)+'<small>s</small>'],
+    ['udio trajanja smetnje',nf(pct,0)+'<small>%</small>'],['vlastita greška',nf(self)+'<small>cm</small>'],
+  ].map(r=>`<div><dt>${r[0]}</dt><dd>${r[1]}</dd></div>`).join('');
+
+  {const c=chart($('#c1'),{xmin:0,xmax:25,ymin:0,ymax:1,xt:[0,5,10,15,20,25],yt:[0,.25,.5,.75,1],
+      xlab:'neslaganje s GPS-om [cm]',ylab:'g'});
+   ylabels(c,[0,.25,.5,.75,1],v=>nf(v,2));
+   c.s.unshift(`<rect x="${c.X(0)}" y="${c.y0}" width="${c.X(6.6)-c.X(0)}" height="${c.h}" fill="var(--band)"/>`);
+   c.s.push(`<line x1="${c.X(E0)}" y1="${c.y0}" x2="${c.X(E0)}" y2="${c.y0+c.h}" stroke="var(--ink3)" stroke-width="1" stroke-dasharray="3 3"/>`);
+   c.s.push(`<text x="${c.X(E0)+5}" y="${c.y0+11}">prag 7,9</text>`);
+   const g=n=>{const p=[];for(let i=0;i<=250;i++){const cm=i*.1;p.push([cm,gain(cm,n)]);}return p;};
+   [0.10,0.25,0.55].forEach(n=>path(c,g(n),'var(--ink3)',1.3));
+   path(c,g(f),'var(--accent)',2.6);
+   $('#c1').innerHTML=c.s.join('');}
+
+  {const ym=Math.max(3,Math.min(9,teff(0.5,f,t)*1.15)); const yt=[0,ym/4,ym/2,ym*3/4,ym];
+   const c=chart($('#c2'),{xmin:0,xmax:25,ymin:0,ymax:ym,xt:[0,5,10,15,20,25],yt,
+      xlab:'neslaganje s GPS-om [cm]',ylab:'τ_ef [s]'});
+   ylabels(c,yt,v=>nf(v,1));
+   if(DIST<ym){c.s.push(`<line x1="${c.x0}" y1="${c.Y(DIST)}" x2="${c.x0+c.w}" y2="${c.Y(DIST)}" stroke="var(--warn)" stroke-width="1.4" stroke-dasharray="5 3"/>`);
+     c.s.push(`<text x="${c.x0+c.w}" y="${c.Y(DIST)-6}" text-anchor="end" fill="var(--warn)">trajanje smetnje 1,9 s</text>`);}
+   const p=[];for(let i=1;i<=250;i++){const cm=i*.1;p.push([cm,Math.min(ym,teff(cm,f,t))]);}
+   path(c,p,'var(--accent)',2.6);
+   const yy=Math.min(ym,teff(2,f,t));
+   c.s.push(`<circle cx="${c.X(2)}" cy="${c.Y(yy)}" r="4" fill="var(--accent)" stroke="var(--panel)" stroke-width="2"/>`);
+   c.s.push(`<text x="${c.X(2)+9}" y="${c.Y(yy)-7}" fill="var(--accent)">2 cm → ${nf(teff(2,f,t))} s</text>`);
+   $('#c2').innerHTML=c.s.join('');}
+
+  {const N=200,dt=0.1,k=dt/(t+dt); let P=0;const meas=[],mod=[],real=[];let rej=0,ref=0;
+   let seed=7;const rnd=()=>{seed=(seed*1103515245+12345)&0x7fffffff;return seed/0x7fffffff-0.5;};
+   for(let i=0;i<N;i++){const tt=i*dt;
+     const drift=tt>6?(tt-6)*0.8:0, sway=6.6*Math.sin(2*Math.PI*0.72*tt);
+     const m=drift+sway+rnd()*3.0, lat=m-P; P+=k*gain(lat,f)*lat;
+     meas.push([tt,m]);mod.push([tt,P]);real.push([tt,drift]);
+     if(tt>2){rej+=Math.abs(P-drift);ref+=Math.abs(m-drift);}}
+   const c=chart($('#c3'),{xmin:0,xmax:20,ymin:-12,ymax:26,xt:[0,5,10,15,20],yt:[-10,0,10,20],
+      xlab:'vrijeme [s]',ylab:'bočno [cm]'});
+   ylabels(c,[-10,0,10,20],v=>nf(v,0));
+   path(c,meas,'var(--ink3)',1.1); path(c,real,'var(--accent2)',2,'6 3'); path(c,mod,'var(--accent)',2.6);
+   c.s.push(`<text x="${c.x0+c.w}" y="${c.y0+12}" text-anchor="end" fill="var(--accent)">smetnja uklonjena ${nf(100*(1-rej/ref),0)} %</text>`);
+   $('#c3').innerHTML=c.s.join('');}
+
+  {const c=chart($('#c4'),{xmin:0.05,xmax:0.9,ymin:0,ymax:2.4,xt:[0.1,0.3,0.5,0.7,0.9],
+      yt:[0,0.6,1.2,1.8,2.4],xlab:'gain floor',ylab:'cm'});
+   ylabels(c,[0,0.6,1.2,1.8,2.4],v=>nf(v,1));
+   const rem=[],err=[];
+   for(let i=0;i<=85;i++){const n=0.05+i*0.01, te=teff(2,n,t);
+     rem.push([n,2*(1-gain(2,n))]); err.push([n,Math.min(2.4,V*DRIFT*te*te/2*100)]);}
+   path(c,rem,'var(--accent2)',2.2); path(c,err,'var(--warn)',2.2);
+   const se=Math.min(2.4,V*DRIFT*teff(2,f,t)**2/2*100);
+   c.s.push(`<line x1="${c.X(f)}" y1="${c.y0}" x2="${c.X(f)}" y2="${c.y0+c.h}" stroke="var(--accent)" stroke-width="1.6"/>`);
+   c.s.push(`<circle cx="${c.X(f)}" cy="${c.Y(se)}" r="4" fill="var(--warn)" stroke="var(--panel)" stroke-width="2"/>`);
+   c.s.push(`<circle cx="${c.X(f)}" cy="${c.Y(2*(1-gain(2,f)))}" r="4" fill="var(--accent2)" stroke="var(--panel)" stroke-width="2"/>`);
+   c.s.push(`<text x="${c.X(f)}" y="${c.y0-2}" text-anchor="middle" fill="var(--accent)">floor ${nf(f)}</text>`);
+   $('#c4').innerHTML=c.s.join('');}
+}
+fl.oninput=draw; ta.oninput=draw; draw();
+</script>
+
+</body>
+</html>

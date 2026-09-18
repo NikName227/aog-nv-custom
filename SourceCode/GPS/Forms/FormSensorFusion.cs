@@ -1,6 +1,7 @@
 ﻿// F10 Advanced Sensor Fusion (NV custom) — Wizards dialog.
-// Two independent functions (cabin compensation, heading observer), one learning run for
-// both parameters, a raw logger and a live view of every signal in the chain.
+// The kinematic model, a raw logger and a live view of the chain. Two sliders is all a normal
+// install shows; the tuning parameters appear only when the install config carries the debug
+// flag (REQ 2026-09-18-1), so a machine can be serviced without a new build.
 // Code-built UI (no designer), same style/size as the F07 Integration Test window.
 using System;
 using System.Diagnostics;
@@ -17,15 +18,14 @@ namespace AgOpenGPS
         private readonly bool hr;
         private readonly Timer poll = new Timer();
 
-        private CheckBox cbCabin, cbModel, cbForce, cbAutoLog;
-        private NumericUpDown nKFast, nFc, nLead, nImuW, nFloor, nTau, nLeff, nHFloor, nHTau, nMix;
-        private Label lblLearned, lblLearnStatus, lblLogInfo, lblLive, lblLiveModel, lblStatusTop;
-        private Button btnLearn, btnLog, btnFolder, btnClose, btnInfo;
+        private CheckBox cbModel, cbForce, cbAutoLog;
+        private NumericUpDown nATau, nFloor, nTau, nLeff, nHFloor, nHTau, nMixPos, nMixHdg;
+        private Label lblLogInfo, lblLiveModel, lblStatusTop;
+        private Button btnLog, btnFolder, btnClose, btnInfo, btnDocs;
         private Panel panInfo;
         private bool infoOpen;
+        private readonly bool dbg = CFeatureLock.IsDebug;
         private const int WNarrow = 440, WWide = 800;
-        private bool learning;
-        private DateTime learnStart;
 
         public FormSensorFusion(FormGPS callingForm)
         {
@@ -37,7 +37,7 @@ namespace AgOpenGPS
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;
             MaximizeBox = false; MinimizeBox = false;
-            ClientSize = new Size(440, 588);
+            //height is set at the end of the constructor - the service-mode rows change it
             BackColor = Color.FromArgb(24, 33, 29);
             ForeColor = Color.Gainsboro;
             Font = new Font("Tahoma", 9f);
@@ -45,44 +45,39 @@ namespace AgOpenGPS
             int y = 8;
             lblStatusTop = Lbl("", 12, y, 416, 18, 9f, Color.FromArgb(150, 200, 180)); y += 22;
 
-            // ---------------- cabin compensation ----------------
-            Sep(y - 2);
-            cbCabin = Chk(hr ? "KOMPENZACIJA KABINE" : "CABIN COMPENSATION", 12, y); y += 24;
-            Lbl("k_fast [m]", 20, y + 3, 70, 16);
-            nKFast = Num(96, y, 0, 6, 0.05m, 2);
-            Lbl("fc [Hz]", 190, y + 3, 52, 16);
-            nFc = Num(244, y, 0, 3, 0.1m, 2);
-            Lbl("lead", 330, y + 3, 34, 16);
-            nLead = Num(366, y, 0, 1, 0.05m, 2); y += 28;
-            btnLearn = Btn(hr ? "Učenje (k_fast + L_eff)" : "Learning (k_fast + L_eff)", 20, y, 250, 30, Color.FromArgb(15, 131, 149));
-            lblLearnStatus = Lbl("—", 278, y + 8, 150, 16, 8.5f, Color.FromArgb(160, 180, 170)); y += 36;
-
             // ---------------- kinematic model ----------------
-            Sep(y - 4);
-            cbModel = Chk(hr ? "KINEMATIČKI MODEL" : "KINEMATIC MODEL", 12, y);
-            cbForce = Chk(hr ? "force on (test)" : "force on (test)", 300, y + 1);
-            cbForce.Font = new Font("Tahoma", 8f);
-            cbForce.ForeColor = Color.FromArgb(220, 150, 70);
-            cbForce.Width = 130; y += 24;
-            Lbl(hr ? "WAS ◀──────▶ IMU" : "WAS ◀──────▶ IMU", 20, y + 3, 130, 16);
-            nImuW = Num(156, y, 0, 0.6m, 0.05m, 2);
-            Lbl(hr ? "udio modela" : "model share", 236, y + 3, 80, 16);
-            nMix = Num(320, y, 0, 1.0m, 0.05m, 2);
-            y += 28;
-            Lbl("floor", 20, y + 3, 40, 16);
-            nFloor = Num(62, y, 0.05m, 0.90m, 0.05m, 2);
-            Lbl("τ [s]", 152, y + 3, 36, 16);
-            nTau = Num(190, y, 0.1m, 2.0m, 0.1m, 1);
-            Lbl("L_eff [m]", 286, y + 3, 58, 16);
-            nLeff = Num(348, y, 2.0m, 8.0m, 0.1m, 2); y += 26;
-            Lbl("h_floor", 20, y + 3, 50, 16);
-            nHFloor = Num(72, y, 0.05m, 0.90m, 0.05m, 2);
-            Lbl("h_τ [s]", 152, y + 3, 44, 16);
-            nHTau = Num(198, y, 0.1m, 3.0m, 0.1m, 1); y += 26;
-            Lbl(hr ? "ugađanje na terenu — τ/floor = efektivna konstanta (gore pozicija, dolje smjer)"
-                   : "field tuning — tau/floor = effective time constant (position above, heading below)",
-                20, y, 406, 14, 8f, Color.FromArgb(140, 160, 150)); y += 20;
-            lblLearned = Lbl("", 20, y, 400, 16, 8.5f, Color.FromArgb(160, 180, 170)); y += 24;
+            Sep(y - 2);
+            cbModel = Chk(hr ? "KINEMATIČKI MODEL" : "KINEMATIC MODEL", 12, y); y += 24;
+            Lbl(hr ? "udio modela — pozicija" : "model share — position", 20, y + 3, 150, 16);
+            nMixPos = Num(176, y, 0, 1.0m, 0.05m, 2); y += 26;
+            Lbl(hr ? "udio modela — smjer" : "model share — heading", 20, y + 3, 150, 16);
+            nMixHdg = Num(176, y, 0, (decimal)CKinematicModel.MixHdgMax, 0.05m, 2); y += 28;
+
+            // Service mode only. Built, not merely hidden, so the layout closes up without a gap
+            // and a customer install cannot reach these at all.
+            if (dbg)
+            {
+                cbForce = Chk("force on (test)", 300, y - 52);
+                cbForce.Font = new Font("Tahoma", 8f);
+                cbForce.ForeColor = Color.FromArgb(220, 150, 70);
+                cbForce.Width = 130;
+                Lbl("floor", 20, y + 3, 40, 16);
+                nFloor = Num(62, y, 0.05m, 0.90m, 0.05m, 2);
+                Lbl("τ [s]", 152, y + 3, 36, 16);
+                nTau = Num(190, y, 0.1m, 2.0m, 0.1m, 1);
+                Lbl("L_eff [m]", 286, y + 3, 58, 16);
+                nLeff = Num(348, y, 0m, 8.0m, 0.1m, 2); y += 26;
+                Lbl("h_floor", 20, y + 3, 50, 16);
+                nHFloor = Num(72, y, 0.05m, 0.90m, 0.05m, 2);
+                Lbl("h_τ [s]", 152, y + 3, 44, 16);
+                nHTau = Num(198, y, 0.1m, 3.0m, 0.1m, 1);
+                Lbl("sidro τ", 292, y + 3, 50, 16);
+                nATau = Num(348, y, 0.5m, 6.0m, 0.5m, 1); y += 26;
+                Lbl(hr ? "SERVISNI MOD — τ/floor = efektivna konstanta; L_eff 0 = iz postavki vozila"
+                       : "SERVICE MODE — tau/floor = effective time constant; L_eff 0 = from vehicle settings",
+                    20, y, 430, 14, 8f, Color.FromArgb(220, 150, 70)); y += 20;
+            }
+            y += 4;
 
             // ---------------- raw log ----------------
             Sep(y - 4);
@@ -95,21 +90,12 @@ namespace AgOpenGPS
             // ---------------- live ----------------
             Sep(y - 4);
             Lbl(hr ? "ŽIVI PRIKAZ" : "LIVE", 12, y, 120, 18, 9.5f, Color.White); y += 20;
-            Lbl(hr ? "kompenzacija kabine" : "cabin compensation", 18, y, 200, 14, 8f,
-                Color.FromArgb(130, 155, 142)); y += 16;
-            lblLive = new Label
-            {
-                Location = new Point(16, y), Size = new Size(408, 54), AutoSize = false,
-                Font = new Font("Consolas", 8.5f), ForeColor = Color.FromArgb(200, 214, 206)
-            };
-            Controls.Add(lblLive); y += 58;
-            Lbl(hr ? "model" : "model", 18, y, 200, 14, 8f, Color.FromArgb(130, 155, 142)); y += 16;
             lblLiveModel = new Label
             {
-                Location = new Point(16, y), Size = new Size(408, 86), AutoSize = false,
+                Location = new Point(16, y), Size = new Size(416, 102), AutoSize = false,
                 Font = new Font("Consolas", 8.5f), ForeColor = Color.FromArgb(200, 214, 206)
             };
-            Controls.Add(lblLiveModel); y += 90;
+            Controls.Add(lblLiveModel); y += 106;
 
             btnClose = Btn(hr ? "Zatvori" : "Close", 340, y, 84, 30, Color.FromArgb(60, 71, 64));
 
@@ -128,7 +114,10 @@ namespace AgOpenGPS
                 btnInfo.Region = new Region(gp);
             }
             Controls.Add(btnInfo);
-            Lbl(hr ? "Info o parametrima" : "Parameter info", 46, y + 8, 160, 16, 8.5f, Color.FromArgb(120, 170, 220));
+            Lbl(hr ? "Info o parametrima" : "Parameter info", 46, y + 8, 122, 16, 8.5f, Color.FromArgb(120, 170, 220));
+            btnDocs = Btn(hr ? "Dokumentacija" : "Documentation", 174, y, 124, 30, Color.FromArgb(40, 84, 96));
+            btnDocs.Font = new Font("Tahoma", 8.5f);
+            btnDocs.Click += (s, e) => OpenDocs();
 
             panInfo = new Panel
             {
@@ -142,32 +131,32 @@ namespace AgOpenGPS
             };
             panInfo.Controls.Add(lblInfo);
             Controls.Add(panInfo);
+            ClientSize = new Size(WNarrow, y + 44);
             btnInfo.Click += (s, e) => ToggleInfo();
 
             // ---------------- wire up ----------------
             LoadToControls();
 
-            cbCabin.CheckedChanged += (s, e) => { mf.cabinComp.isOn = cbCabin.Checked; mf.cabinComp.Reset(); Store(); };
             cbModel.CheckedChanged += (s, e) => { mf.kinModel.isOn = cbModel.Checked; mf.kinModel.Reset(); Store(); };
             //force is a test aid: never stored, so it cannot be left on at a customer
-            cbForce.CheckedChanged += (s, e) => { mf.kinModel.forceOn = cbForce.Checked; Store(); };
+            if (dbg) cbForce.CheckedChanged += (s, e) => { mf.kinModel.forceOn = cbForce.Checked; Store(); };
             cbAutoLog.CheckedChanged += (s, e) =>
             {
                 Properties.VehicleSettings.Default.setSF_autoLog = cbAutoLog.Checked;
                 Properties.VehicleSettings.Default.Save();
             };
-            nKFast.ValueChanged += (s, e) => { mf.cabinComp.kFast = (double)nKFast.Value; Store(); };
-            nFc.ValueChanged += (s, e) => { mf.cabinComp.fc = (double)nFc.Value; mf.cabinComp.Reset(); Store(); };
-            nLead.ValueChanged += (s, e) => { mf.cabinComp.lead = (double)nLead.Value; Store(); };
-            nImuW.ValueChanged += (s, e) => { mf.kinModel.imuShare = (double)nImuW.Value; Store(); };
-            nMix.ValueChanged += (s, e) => { mf.kinModel.mix = (double)nMix.Value; Store(); };
-            nFloor.ValueChanged += (s, e) => { mf.kinModel.posFloor = (double)nFloor.Value; Store(); };
-            nTau.ValueChanged += (s, e) => { mf.kinModel.posTau = (double)nTau.Value; Store(); };
-            nLeff.ValueChanged += (s, e) => { mf.kinModel.leff = (double)nLeff.Value; Store(); };
-            nHFloor.ValueChanged += (s, e) => { mf.kinModel.hdgFloor = (double)nHFloor.Value; Store(); };
-            nHTau.ValueChanged += (s, e) => { mf.kinModel.hdgTau = (double)nHTau.Value; Store(); };
+            nMixPos.ValueChanged += (s, e) => { mf.kinModel.mixPos = (double)nMixPos.Value; Store(); };
+            nMixHdg.ValueChanged += (s, e) => { mf.kinModel.mixHdg = (double)nMixHdg.Value; Store(); };
+            if (dbg)
+            {
+                nFloor.ValueChanged += (s, e) => { mf.kinModel.posFloor = (double)nFloor.Value; Store(); };
+                nTau.ValueChanged += (s, e) => { mf.kinModel.posTau = (double)nTau.Value; Store(); };
+                nLeff.ValueChanged += (s, e) => { mf.kinModel.leff = (double)nLeff.Value; Store(); };
+                nHFloor.ValueChanged += (s, e) => { mf.kinModel.hdgFloor = (double)nHFloor.Value; Store(); };
+                nHTau.ValueChanged += (s, e) => { mf.kinModel.hdgTau = (double)nHTau.Value; Store(); };
+                nATau.ValueChanged += (s, e) => { mf.kinModel.anchorTau = (double)nATau.Value; Store(); };
+            }
 
-            btnLearn.Click += (s, e) => ToggleLearn();
             btnLog.Click += (s, e) => ToggleLog();
             btnFolder.Click += (s, e) =>
             {
@@ -178,7 +167,7 @@ namespace AgOpenGPS
             poll.Interval = 200;
             poll.Tick += (s, e) => UpdateLive();
             poll.Start();
-            FormClosing += (s, e) => { poll.Stop(); if (learning) ToggleLearn(); };
+            FormClosing += (s, e) => poll.Stop();
         }
 
         // ---------------------------------------------------------------- UI helpers
@@ -239,19 +228,19 @@ namespace AgOpenGPS
 
         private void LoadToControls()
         {
-            cbCabin.Checked = mf.cabinComp.isOn;
-            nKFast.Value = Clamp(mf.cabinComp.kFast, nKFast);
-            nFc.Value = Clamp(mf.cabinComp.fc, nFc);
-            nLead.Value = Clamp(mf.cabinComp.lead, nLead);
             cbModel.Checked = mf.kinModel.isOn;
-            cbForce.Checked = mf.kinModel.forceOn;
-            nImuW.Value = Clamp(mf.kinModel.imuShare, nImuW);
-            nMix.Value = Clamp(mf.kinModel.mix, nMix);
-            nFloor.Value = Clamp(mf.kinModel.posFloor, nFloor);
-            nTau.Value = Clamp(mf.kinModel.posTau, nTau);
-            nLeff.Value = Clamp(mf.kinModel.leff, nLeff);
-            nHFloor.Value = Clamp(mf.kinModel.hdgFloor, nHFloor);
-            nHTau.Value = Clamp(mf.kinModel.hdgTau, nHTau);
+            if (dbg) cbForce.Checked = mf.kinModel.forceOn;
+            nMixPos.Value = Clamp(mf.kinModel.mixPos, nMixPos);
+            nMixHdg.Value = Clamp(mf.kinModel.mixHdg, nMixHdg);
+            if (dbg)
+            {
+                nFloor.Value = Clamp(mf.kinModel.posFloor, nFloor);
+                nTau.Value = Clamp(mf.kinModel.posTau, nTau);
+                nLeff.Value = Clamp(mf.kinModel.leff, nLeff);
+                nHFloor.Value = Clamp(mf.kinModel.hdgFloor, nHFloor);
+                nHTau.Value = Clamp(mf.kinModel.hdgTau, nHTau);
+                nATau.Value = Clamp(mf.kinModel.anchorTau, nATau);
+            }
             cbAutoLog.Checked = Properties.VehicleSettings.Default.setSF_autoLog;
         }
 
@@ -261,12 +250,13 @@ namespace AgOpenGPS
             // a mark in the raw log, so a parameter change is visible in the replay/analysis
             if (mf.rawLog.isLogging)
                 mf.rawLog.Mark(string.Format(CultureInfo.InvariantCulture,
-                    "SET cab={0} k_fast={1:F2} fc={2:F2} lead={3:F2} model={4} force={5} imuW={6:F2} " +
-                    "floor={7:F2} tau={8:F1} Leff={9:F2} hfloor={10:F2} htau={11:F1} mix={12:F2}",
-                    mf.cabinComp.isOn ? 1 : 0, mf.cabinComp.kFast, mf.cabinComp.fc, mf.cabinComp.lead,
-                    mf.kinModel.isOn ? 1 : 0, mf.kinModel.forceOn ? 1 : 0, mf.kinModel.imuShare,
+                    "SET model={0} force={1} mixpos={2:F2} mixhdg={3:F2} " +
+                    "floor={4:F2} tau={5:F1} Leff={6:F2} hfloor={7:F2} htau={8:F1} atau={9:F1} dbg={10}",
+                    mf.kinModel.isOn ? 1 : 0, mf.kinModel.forceOn ? 1 : 0,
+                    mf.kinModel.mixPos, mf.kinModel.mixHdg,
                     mf.kinModel.posFloor, mf.kinModel.posTau, mf.kinModel.leff,
-                    mf.kinModel.hdgFloor, mf.kinModel.hdgTau, mf.kinModel.mix));
+                    mf.kinModel.hdgFloor, mf.kinModel.hdgTau, mf.kinModel.anchorTau,
+                    dbg ? 1 : 0));
         }
 
         // ---------------------------------------------------------------- info panel
@@ -418,58 +408,17 @@ namespace AgOpenGPS
 "\n";
         }
 
-        // ---------------------------------------------------------------- learning
-        private void ToggleLearn()
+        /// <summary>Opens the shipped HTML documentation next to the exe.</summary>
+        private void OpenDocs()
         {
-            if (!learning)
+            try
             {
-                mf.cabinComp.learn.Reset(); mf.headObs.learn.Reset();
-                mf.cabinComp.learn.running = true; mf.headObs.learn.running = true;
-                learning = true; learnStart = DateTime.Now;
-                btnLearn.Text = hr ? "Gotovo (izračunaj)" : "Finish (compute)";
-                btnLearn.BackColor = Color.FromArgb(46, 139, 79);
-                return;
+                string path = Path.Combine(Path.GetDirectoryName(Application.ExecutablePath),
+                                           "Docs", "sensor-fusion.html");
+                if (File.Exists(path)) Process.Start(path);
+                else MessageBox.Show(this, (hr ? "Dokumentacija nije nađena:\n" : "Documentation not found:\n") + path);
             }
-
-            mf.cabinComp.learn.running = false; mf.headObs.learn.running = false;
-            learning = false;
-            btnLearn.Text = hr ? "Učenje (k_fast + model)" : "Learning (k_fast + model)";
-            btnLearn.BackColor = Color.FromArgb(15, 131, 149);
-
-            double k, r2, leff, lbias, q;
-            bool okK = mf.cabinComp.learn.Result(out k, out r2);
-            bool okL = mf.headObs.learn.Result(out leff, out lbias, out q)
-                       && mf.headObs.learn.HasBothTurns && mf.headObs.learn.HasStraight;
-
-            string msg = "";
-            msg += okK
-                ? string.Format(hr ? "k_fast = {0:F2} m   (sada {1:F2} m, R² {2:F2}, n={3})\n"
-                                   : "k_fast = {0:F2} m   (now {1:F2} m, R2 {2:F2}, n={3})\n",
-                                Math.Abs(k), mf.cabinComp.kFast, r2, mf.cabinComp.learn.n)
-                : (hr ? "k_fast: premalo podataka (treba vožnja po neravnom, 2-4 min)\n"
-                      : "k_fast: not enough data (2-4 min on uneven ground)\n");
-            msg += okL
-                ? string.Format(hr ? "L_eff = {0:F2} m, nula WAS {1:+0.00;-0.00}°   (sada {2:F2} m / {3:+0.00;-0.00}°, n={4}, okreti L/D {5}/{6})"
-                                   : "L_eff = {0:F2} m, WAS zero {1:+0.00;-0.00}°   (now {2:F2} m / {3:+0.00;-0.00}°, n={4}, turns L/R {5}/{6})",
-                                leff, lbias, mf.headObs.Leff, mf.headObs.biasDeg, mf.headObs.learn.n,
-                                mf.headObs.learn.turnsLeft, mf.headObs.learn.turnsRight)
-                : (hr ? "L_eff: treba ravna vožnja (≥30 s) i okret lijevo i desno"
-                      : "L_eff: needs straight driving (>=30 s) and a left and a right turn");
-
-            if (!okK && !okL)
-            {
-                MessageBox.Show(this, msg, hr ? "Učenje" : "Learning");
-                return;
-            }
-
-            var res = MessageBox.Show(this, msg + (hr ? "\n\nPrihvatiti izračunate vrijednosti?"
-                                                     : "\n\nAccept the computed values?"),
-                                      hr ? "Učenje" : "Learning", MessageBoxButtons.YesNo);
-            if (res != DialogResult.Yes) return;
-
-            if (okK) { mf.cabinComp.kFast = Math.Min(6, Math.Abs(k)); nKFast.Value = Clamp(mf.cabinComp.kFast, nKFast); }
-            if (okL) { mf.headObs.Leff = leff; mf.headObs.biasDeg = lbias; }
-            Store();
+            catch (Exception ex) { MessageBox.Show(this, ex.Message); }
         }
 
         // ---------------------------------------------------------------- log
@@ -486,8 +435,6 @@ namespace AgOpenGPS
         // ---------------------------------------------------------------- live
         private void UpdateLive()
         {
-            var cc = mf.cabinComp;
-            var ob = mf.headObs;
 
             lblStatusTop.Text = string.Format(CultureInfo.InvariantCulture,
                 "fix {0} · {1:F1} km/h · roll {2:F2}° · WAS {3:F2}°{4}",
@@ -496,34 +443,12 @@ namespace AgOpenGPS
             lblStatusTop.ForeColor = mf.kinModel.forceOn
                 ? Color.FromArgb(230, 150, 60) : Color.FromArgb(150, 200, 180);
 
-            lblLearned.Text = hr ? "nula WAS-a se više ne uči — trovala ju je buka sidra (REQ 2026-09-17-2)"
-                                 : "WAS zero learning removed — it was poisoned by anchor noise";
-
-            if (learning)
-            {
-                lblLearnStatus.Text = string.Format(hr ? "{0:F0} s · n={1} · okreti {2}/{3}"
-                                                       : "{0:F0} s · n={1} · turns {2}/{3}",
-                    (DateTime.Now - learnStart).TotalSeconds, cc.learn.n,
-                    ob.learn.turnsLeft, ob.learn.turnsRight);
-            }
-            else lblLearnStatus.Text = "—";
 
             lblLogInfo.Text = mf.rawLog.isLogging
                 ? string.Format("{0}  ·  {1:mm\\:ss}  ·  {2} {3}  ·  {4:F1} MB",
                     mf.rawLog.FileName, mf.rawLog.Elapsed, mf.rawLog.rows,
                     hr ? "redaka" : "rows", mf.rawLog.bytes / 1048576.0)
                 : (string.IsNullOrEmpty(mf.rawLog.FileName) ? "—" : (hr ? "spremljeno: " : "saved: ") + mf.rawLog.FileName);
-
-            lblLive.Text = string.Format(CultureInfo.InvariantCulture,
-                (hr ? "roll  sirovi {0,7:F2}°   spori {1,7:F2}°   brzi {2,7:F2}°\n"
-                    + "korekcija    {3,7:F1} cm   (spori {4,5:F1} / brzi {5,5:F1})\n"
-                    + "bočno prije/poslije filtra  {6,6} / {7,6} cm"
-                    : "roll  raw {0,7:F2}°   slow {1,7:F2}°   fast {2,7:F2}°\n"
-                    + "correction {3,7:F1} cm   (slow {4,5:F1} / fast {5,5:F1})\n"
-                    + "lateral before/after filter {6,6} / {7,6} cm"),
-                mf.ahrs.imuRoll, cc.rollSlowDeg, cc.rollFastDeg,
-                cc.corrTotal * 100, cc.corrSlow * 100, cc.corrFast * 100,
-                LatTxt(cc.latBefore), LatTxt(cc.latAfter));
 
             var km = mf.kinModel;
             string state;
@@ -542,11 +467,13 @@ namespace AgOpenGPS
                     + "razlika     {1,6:F1} cm      odbačeno {2,3:F0} %\n"
                     + "sidro       {3,6:+0.00;-0.00}°       τ_ef {4}\n"
                     + "zakretanje  {5,6:F2} °/s     kinematika {6:F2} → {7:F2}×\n"
+                    + "ΔWAS        {11,6:+0.00;-0.00} °/s   L_eff {12:F2} m {13}\n"
                     + "brzina      {8,6:F1} km/h    {9}   dt {10:F0} ms"
                     : "state       {0}\n"
                     + "innovation  {1,6:F1} cm      rejected {2,3:F0} %\n"
                     + "anchor      {3,6:+0.00;-0.00}°       tau_ef {4}\n"
                     + "yaw rate    {5,6:F2} °/s     kinematic {6:F2} → {7:F2}×\n"
+                    + "dWAS        {11,6:+0.00;-0.00} deg/s L_eff {12:F2} m {13}\n"
                     + "speed       {8,6:F1} km/h    {9}   dt {10:F0} ms"),
                 state, km.innovCm, km.rejectPct, km.anchorDeg,
                 string.Format(CultureInfo.InvariantCulture, "{0:F1} s",
@@ -554,7 +481,9 @@ namespace AgOpenGPS
                 km.usedYaw, km.kinLimit, ratio, km.speedUsed * 3.6,
                 km.vtgShare > 0.99 ? "VTG" : (km.vtgShare < 0.01 ? (hr ? "pozicija" : "position")
                     : string.Format(hr ? "VTG {0:F0} %" : "VTG {0:F0} %", km.vtgShare * 100)),
-                mf.sfDt * 1000);
+                mf.sfDt * 1000,
+                km.dWasYaw, km.leffUsed,
+                km.leff > 0.1 ? (hr ? "(ručno)" : "(manual)") : (hr ? "(iz vozila)" : "(vehicle)"));
         }
 
         /// <summary>Lateral offset in cm, or a dash while the lateral filter is not running.</summary>

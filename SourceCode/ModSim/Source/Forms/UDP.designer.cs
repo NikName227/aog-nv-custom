@@ -30,6 +30,32 @@ namespace ModSim
 
         public IPAddress ipCurrent;
 
+        // A directed broadcast (x.y.z.255) has to be ROUTED: Windows needs an interface that
+        // belongs to that subnet. With the LAN cable out there is no such interface, no route,
+        // and every send fails silently - the simulator looks dead until something is plugged in
+        // just long enough for the NIC to come up. Sending to loopback instead needs no route, so
+        // ModSim and AgIO talk on one machine with no network at all.
+        // This is only used when the module subnet is NOT reachable; with a module on the wire
+        // nothing changes.
+        private IPEndPoint epAgIOLoop = new IPEndPoint(IPAddress.Loopback, 9999);
+        private bool useLoopback;
+
+        /// <summary>True when some local IPv4 lives in a.b.c.x, i.e. the broadcast is routable.</summary>
+        private static bool SubnetReachable(byte a, byte b, byte c)
+        {
+            try
+            {
+                foreach (IPAddress ip in Dns.GetHostAddresses(Dns.GetHostName()))
+                {
+                    if (ip.AddressFamily != AddressFamily.InterNetwork) continue;
+                    byte[] q = ip.GetAddressBytes();
+                    if (q[0] == a && q[1] == b && q[2] == c) return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+
         //initialize udp network
         public void LoadUDPNetwork()
         {
@@ -54,6 +80,12 @@ namespace ModSim
                 UDPSocket.Bind(new IPEndPoint(IPAddress.Any, 8888));
                 UDPSocket.BeginReceiveFrom(buffer, 0, buffer.Length, SocketFlags.None, ref endPointUDP,
                     new AsyncCallback(ReceiveDataUDPAsync), null);
+
+                useLoopback = !SubnetReachable(Properties.Settings.Default.etIP_SubnetOne,
+                                               Properties.Settings.Default.etIP_SubnetTwo,
+                                               Properties.Settings.Default.etIP_SubnetThree);
+                if (useLoopback)
+                    lblIP.Text += "loopback 127.0.0.1\r\n(nema sucelja u " + epAgIO.Address + ")\r\n";
 
                 isUDPNetworkConnected = true;
 
@@ -87,14 +119,14 @@ namespace ModSim
                     if (byteData.Length != 0)
                     {
                         UDPSocket.BeginSendTo(byteData, 0, byteData.Length, SocketFlags.None,
-                           epAgIO, new AsyncCallback(SendDataUDPAsync), null);
+                           useLoopback ? epAgIOLoop : epAgIO, new AsyncCallback(SendDataUDPAsync), null);
                     }
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
-                    //WriteErrorLog("Sending UDP Message" + e.ToString());
-                    //MessageBox.Show("Send Error: " + e.Message, "UDP Client", MessageBoxButtons.OK,
-                    //MessageBoxIcon.Error);
+                    //a swallowed send error is why this looked like "no communication" with no
+                    //message at all - say it instead
+                    lblIP.Text = "Send error: " + ex.Message;
                 }
             }
         }
@@ -109,10 +141,11 @@ namespace ModSim
                     byte[] byteData = Encoding.ASCII.GetBytes(message);
                     if (byteData.Length != 0)
                         UDPSocket.BeginSendTo(byteData, 0, byteData.Length, SocketFlags.None,
-                            epAgIO, new AsyncCallback(SendDataUDPAsync), null);
+                            useLoopback ? epAgIOLoop : epAgIO, new AsyncCallback(SendDataUDPAsync), null);
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
+                    lblIP.Text = "Send error: " + ex.Message;
                 }
             }
         }

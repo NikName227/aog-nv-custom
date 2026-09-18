@@ -22,6 +22,12 @@ namespace AgOpenGPS
         public const string FeatureIntegrationTest = "integrationtest"; // Integration Test wizard (F07)
         public const string FeatureSensorFusion = "sensorfusion";       // Advanced Sensor Fusion (F10)
 
+        // Not a feature anyone buys - a service switch. With it the F10 window shows the tuning
+        // parameters again, so a machine can be adjusted in the field without a new build; without
+        // it those parameters are the release constants. Lives in the same encrypted config, so
+        // the customer cannot turn it on.
+        public const string FeatureDebug = "debug";
+
         // unremarkable file name on purpose (not "license"/"premium")
         private static readonly string configPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -72,6 +78,9 @@ namespace AgOpenGPS
         {
             return config?["features"]?[feature]?.Value<bool>() ?? false;
         }
+
+        /// <summary>Service mode: tuning parameters visible and read from the vehicle profile.</summary>
+        public static bool IsDebug { get { return IsOn(FeatureDebug); } }
 
         /// <summary>Endpoint URL from the config; "" when not provided.</summary>
         public static string Endpoint(string name)
