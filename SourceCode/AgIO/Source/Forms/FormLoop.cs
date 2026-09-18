@@ -455,7 +455,7 @@ namespace AgIO
             }
 
             //send a hello to modules
-            SendUDPMessage(helloFromAgIO, EpModuleOut);
+            SendUDPMessage(helloFromAgIO, epModule);
 
 
             //if (isLogNMEA)

@@ -60,33 +60,6 @@ namespace AgIO
         private IPEndPoint epNtrip;
 
         public IPEndPoint epModuleSet = new IPEndPoint(IPAddress.Parse("255.255.255.255"), 8888);
-
-        // epModule is a directed broadcast (x.y.z.255) and therefore has to be ROUTED - Windows
-        // needs an interface inside that subnet. With no module on the wire there is no such
-        // interface, no route, and every send to it fails silently, so a simulator on this same
-        // machine never hears AgIO. Loopback needs no route. Used ONLY when the module subnet is
-        // unreachable: with a module connected, behaviour is unchanged.
-        private readonly IPEndPoint epModuleLoop = new IPEndPoint(IPAddress.Loopback, 8888);
-        private bool moduleSubnetUnreachable;
-
-        /// <summary>True when some local IPv4 lives in a.b.c.x, i.e. the broadcast is routable.</summary>
-        private static bool SubnetReachable(byte a, byte b, byte c)
-        {
-            try
-            {
-                foreach (IPAddress ip in Dns.GetHostAddresses(Dns.GetHostName()))
-                {
-                    if (ip.AddressFamily != AddressFamily.InterNetwork) continue;
-                    byte[] q = ip.GetAddressBytes();
-                    if (q[0] == a && q[1] == b && q[2] == c) return true;
-                }
-            }
-            catch { }
-            return false;
-        }
-
-        /// <summary>Where module traffic actually goes this session.</summary>
-        public IPEndPoint EpModuleOut { get { return moduleSubnetUnreachable ? epModuleLoop : epModule; } }
         public byte[] ipAutoSet = { 192, 168, 5 };
 
         //class for counting bytes
@@ -127,20 +100,11 @@ namespace AgIO
                 UDPSocket.BeginReceiveFrom(buffer, 0, buffer.Length, SocketFlags.None, ref endPointUDP,
                     new AsyncCallback(ReceiveDataUDPAsync), null);
 
-                moduleSubnetUnreachable = !SubnetReachable(Properties.Settings.Default.etIP_SubnetOne,
-                                                          Properties.Settings.Default.etIP_SubnetTwo,
-                                                          Properties.Settings.Default.etIP_SubnetThree);
                 isUDPNetworkConnected = true;
 
                 if (isUDPNetworkConnected)
                 {
                     Log.EventWriter("UDP Network is connected: " + epModule.ToString());
-                    if (moduleSubnetUnreachable)
-                    {
-                        Log.EventWriter("No interface in " + epModule.Address
-                            + " - module traffic goes to loopback so a local simulator can hear it");
-                        lblIP.Text += "loopback 127.0.0.1\r\n";
-                    }
                 }
                 else
                 {
@@ -228,7 +192,7 @@ namespace AgIO
         private void ReceiveFromLoopBack(byte[] data)
         {
             //Send out to udp network
-            SendUDPMessage(data, EpModuleOut);
+            SendUDPMessage(data, epModule);
 
             if (data[0] == 0x80 && data[1] == 0x81)
             {
