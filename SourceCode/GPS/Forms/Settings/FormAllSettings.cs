@@ -1,4 +1,4 @@
-//Please, if you use this, share the improvements
+﻿//Please, if you use this, share the improvements
 
 using System;
 using System.Drawing;
@@ -167,6 +167,18 @@ namespace AgOpenGPS
             AddRow(right, "Fusion Weight", vsDefault.setIMU_fusionWeight2, vs.setIMU_fusionWeight2);
             AddRow(right, "Invert Roll", vsDefault.setIMU_invertRoll, vs.setIMU_invertRoll);
             AddRow(right, "Dual As IMU", vsDefault.setIMU_isDualAsIMU, vs.setIMU_isDualAsIMU);
+
+            AddHeader(right, "── F10 Sensor Fusion");
+            AddRow(right, "Model On", vsDefault.setSF_modelOn, vs.setSF_modelOn);
+            AddRow(right, "Mix position", vsDefault.setSF_modelMixPos, vs.setSF_modelMixPos);
+            AddRow(right, "Mix heading", vsDefault.setSF_modelMixHdg, vs.setSF_modelMixHdg);
+            AddRow(right, "Gain floor", vsDefault.setSF_modelFloor, vs.setSF_modelFloor);
+            AddRow(right, "Tau [s]", vsDefault.setSF_modelTau, vs.setSF_modelTau);
+            AddRow(right, "Hdg floor", vsDefault.setSF_modelHFloor, vs.setSF_modelHFloor);
+            AddRow(right, "Hdg tau [s]", vsDefault.setSF_modelHTau, vs.setSF_modelHTau);
+            AddRow(right, "L_eff [m] (0=wheelbase)", vsDefault.setSF_modelLeff, vs.setSF_modelLeff);
+            AddRow(right, "Anchor tau [s]", vsDefault.setSF_modelATau, vs.setSF_modelATau);
+            AddRow(right, "Auto log", vsDefault.setSF_autoLog, vs.setSF_autoLog);
 
             AddHeader(right, "── Brand");
             AddRow(right, "Tractor Brand", vsDefault.setBrand_TBrand, vs.setBrand_TBrand);

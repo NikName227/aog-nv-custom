@@ -1,4 +1,4 @@
-using AgLibrary.Settings;
+﻿using AgLibrary.Settings;
 using AgOpenGPS.Core.Models;
 using System.IO;
 
@@ -44,6 +44,23 @@ namespace AgOpenGPS.Properties
         public bool setIMU_invertRoll = false;
         public bool setIMU_isDualAsIMU = false;
         public double setIMU_fusionWeight2 = 0.06;
+
+        // F10 Advanced Sensor Fusion — cabin compensation (independent of the observer)
+
+        // F10 Advanced Sensor Fusion — kinematic model (replaces the heading observer)
+        public bool setSF_modelOn = false;
+        public double setSF_modelFloor = 0.40;  // gain floor; tau/floor is the effective time const
+        public double setSF_modelTau = 0.3;     // [s] correction time constant
+        public double setSF_modelHFloor = 0.35; // same, for the heading correction
+        public double setSF_modelHTau = 0.8;    // [s]
+        public double setSF_modelMixPos = 1.00; // model share into POSITION, 0..1
+        public double setSF_modelMixHdg = 0.00; // model share into HEADING, 0..0.6 (capped: with
+                                                // delta WAS the yaw path integrates twice)
+        public double setSF_modelLeff = 0.0;    // [m] 0 = use the wheelbase from vehicle settings
+        public double setSF_modelATau = 2.5;    // [s] yaw state -> IMU anchor (delta WAS drift bound)
+
+        // F10 — heading observer: retired from the window, kept only for L_eff learning
+        public bool setSF_autoLog = false;      // start the raw logger with AOG
 
         // GPS settings
         public string setGPS_headingFromWhichSource = "Fix";

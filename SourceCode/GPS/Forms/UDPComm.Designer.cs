@@ -104,6 +104,7 @@ namespace AgOpenGPS
                                 if (temp != float.MaxValue)
                                 {
                                     if (ahrs.isRollInvert) temp *= -1;
+                                    ahrs.imuRollRaw = temp - ahrs.rollZero;
                                     ahrs.imuRoll = temp - ahrs.rollZero;
                                 }
                                 if (temp == float.MinValue)
@@ -144,6 +145,7 @@ namespace AgOpenGPS
                                     if (ahrs.isRollInvert) rollK *= -0.1;
                                     else rollK *= 0.1;
                                     rollK -= ahrs.rollZero;
+                                    ahrs.imuRollRaw = rollK;
                                     ahrs.imuRoll = ahrs.imuRoll * ahrs.rollFilter + rollK * (1 - ahrs.rollFilter);
                                 }
 
@@ -181,6 +183,7 @@ namespace AgOpenGPS
                             if (ahrs.isRollInvert) rollK *= -0.1;
                             else rollK *= 0.1;
                             rollK -= ahrs.rollZero;
+                            ahrs.imuRollRaw = rollK;
                             ahrs.imuRoll = ahrs.imuRoll * ahrs.rollFilter + rollK * (1 - ahrs.rollFilter);
 
                             //Angular velocity
@@ -223,6 +226,7 @@ namespace AgOpenGPS
                                 if (ahrs.isRollInvert) rollK *= -0.1;
                                 else rollK *= 0.1;
                                 rollK -= ahrs.rollZero;
+                                ahrs.imuRollRaw = rollK;
                                 ahrs.imuRoll = ahrs.imuRoll * ahrs.rollFilter + rollK * (1 - ahrs.rollFilter);
                             }
                             //else ahrs.imuRoll = 88888;

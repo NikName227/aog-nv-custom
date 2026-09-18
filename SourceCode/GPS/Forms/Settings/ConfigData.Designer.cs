@@ -66,6 +66,9 @@ namespace AgOpenGPS
                 hsbarFusion.Enabled = false;
             }
 
+            //F10: with the heading observer on, this slider has no role any more
+            //(its job is taken over by observer Kp + IMU share)
+
             if (cboxIsAutoSwitchDualFixOn.Checked)
             {
                 hsbarFusion.Enabled = true;

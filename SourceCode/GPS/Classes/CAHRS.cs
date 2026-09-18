@@ -6,6 +6,7 @@
 
         //Roll and heading from the IMU
         public double imuHeading = 99999, imuRoll = 0, imuPitch = 0, imuYawRate = 0;
+        public double imuRollRaw = 0;     //F10: roll before the rollFilter EMA (for analysis/logging)
 
         public System.Int16 angVel;
 

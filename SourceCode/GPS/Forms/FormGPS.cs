@@ -326,6 +326,10 @@ namespace AgOpenGPS
         /// </summary>
         public CAHRS ahrs;
 
+        //F10 Advanced Sensor Fusion: cabin compensation + heading observer + raw logger
+        public CKinematicModel kinModel;
+        public CRawLogger rawLog;
+
         /// <summary>
         /// Recorded Path
         /// </summary>
@@ -434,6 +438,22 @@ namespace AgOpenGPS
                 };
                 wizardsMenu.DropDownItems.Add(itMenu);
             }
+            //F10 Advanced Sensor Fusion — same pattern, own unlock
+            if (CFeatureLock.IsOn(CFeatureLock.FeatureSensorFusion))
+            {
+                var sfMenu = new System.Windows.Forms.ToolStripMenuItem("Advanced Sensor Fusion")
+                {
+                    Image = Properties.Resources.Chart,
+                    ImageAlign = System.Drawing.ContentAlignment.MiddleLeft
+                };
+                sfMenu.Click += (s, e) =>
+                {
+                    Form f = Application.OpenForms["FormSensorFusion"];
+                    if (f != null) { f.Focus(); return; }
+                    new FormSensorFusion(this).Show(this);
+                };
+                wizardsMenu.DropDownItems.Add(sfMenu);
+            }
             //the orchard unlock needs the Turn window too (orchard plan = PATH tab)
             if (!CFeatureLock.IsOn(CFeatureLock.FeatureTurnApp)
                 && !CFeatureLock.IsOn(CFeatureLock.FeatureOrchard))
@@ -518,6 +538,11 @@ namespace AgOpenGPS
 
             ////all the attitude, heading, roll, pitch reference system
             ahrs = new CAHRS();
+
+            //F10
+            kinModel = new CKinematicModel();
+            rawLog = new CRawLogger(this);
+            LoadSensorFusionSettings();
 
             //A recorded path
             recPath = new CRecordedPath(this);

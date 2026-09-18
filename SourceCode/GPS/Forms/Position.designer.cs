@@ -158,6 +158,9 @@ namespace AgOpenGPS
             //Initialization counter
             startCounter++;
 
+            //F10: fix interval + raw antenna position, before any correction
+            SensorFusionNewFix();
+
             if (!isGPSPositionInitialized)
             {
                 InitializeFirstFewGPSPositions();
@@ -353,7 +356,7 @@ namespace AgOpenGPS
                         if (ahrs.imuRoll != 88888)
                         {
                             //change for roll to the right is positive times -1
-                            rollCorrectionDistance = Math.Sin(glm.toRadians((ahrs.imuRoll))) * -vehicle.VehicleConfig.AntennaHeight;
+                            rollCorrectionDistance = Math.Sin(glm.toRadians(ahrs.imuRoll)) * -vehicle.VehicleConfig.AntennaHeight;
                             correctionDistanceGraph = rollCorrectionDistance;
 
                             pn.fix.easting = (Math.Cos(-gpsHeading) * rollCorrectionDistance) + pn.fix.easting;
@@ -614,6 +617,9 @@ namespace AgOpenGPS
 
                         camHeading = glm.toDegrees(smoothCamHeading);
 
+                        //F10: heading observer (model from WAS + PI correction); no-op when off
+                        fixHeading = SensorFusionModel(fixHeading);   //F10: kinematic model (no-op when off)
+
                         TheRest();
                         break;
                     }
@@ -696,13 +702,15 @@ namespace AgOpenGPS
                         if (ahrs.imuRoll != 88888)
                         {
                             //change for roll to the right is positive times -1
-                            rollCorrectionDistance = Math.Sin(glm.toRadians((ahrs.imuRoll))) * -vehicle.VehicleConfig.AntennaHeight;
+                            rollCorrectionDistance = Math.Sin(glm.toRadians(ahrs.imuRoll)) * -vehicle.VehicleConfig.AntennaHeight;
                             correctionDistanceGraph = rollCorrectionDistance;
 
                             // roll to right is positive  **** important!!
                             pn.fix.easting = (Math.Cos(-fixHeading) * rollCorrectionDistance) + pn.fix.easting;
                             pn.fix.northing = (Math.Sin(-fixHeading) * rollCorrectionDistance) + pn.fix.northing;
                         }
+
+                        fixHeading = SensorFusionModel(fixHeading);   //F10: kinematic model (no-op when off)
 
                         #endregion Roll
 
@@ -737,12 +745,14 @@ namespace AgOpenGPS
                         {
 
                             //change for roll to the right is positive times -1
-                            rollCorrectionDistance = Math.Sin(glm.toRadians((ahrs.imuRoll))) * -vehicle.VehicleConfig.AntennaHeight;
+                            rollCorrectionDistance = Math.Sin(glm.toRadians(ahrs.imuRoll)) * -vehicle.VehicleConfig.AntennaHeight;
                             correctionDistanceGraph = rollCorrectionDistance;
 
                             pn.fix.easting = (Math.Cos(-gpsHeading) * rollCorrectionDistance) + pn.fix.easting;
                             pn.fix.northing = (Math.Sin(-gpsHeading) * rollCorrectionDistance) + pn.fix.northing;
                         }
+
+                        fixHeading = SensorFusionModel(fixHeading);   //F10: kinematic model (no-op when off)
 
                         //grab the most current fix and save the distance from the last fix
                         distanceCurrentStepFix = glm.Distance(pn.fix, prevDistFix);
@@ -1075,6 +1085,10 @@ namespace AgOpenGPS
             }
 
             #endregion
+
+            //F10: one raw log row, here at the end - the guidance line, XTE and pivot for THIS
+            //fix are all final by now, so a row is one consistent snapshot
+            SensorFusionLog();
 
             //NV follow plan: track how much of the current pass is driven
             plan.UpdateProgress();
