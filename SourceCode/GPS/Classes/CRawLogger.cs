@@ -59,7 +59,7 @@ namespace AgOpenGPS
                     "dt_s,xte_valid,xte_pgn_cm,head_err_deg,kin_yaw_rate,fusion_w,roll_filter," +
                     "wheelbase_m,ant_pivot_m,ant_height_m,is_sim," +
                     "mdl_on,mdl_force,mdl_act,mdl_innov_cm,mdl_reject,mdl_bias,mdl_yaw,mdl_kin,mdl_vtg," +
-                    "mdl_mixpos,mdl_mixhdg,mdl_yawstate,mdl_dwas,mdl_leff");
+                    "mdl_mixpos,mdl_mixhdg,mdl_yawstate,mdl_dwas,mdl_leff,mdl_preset");
                 rows = 0; bytes = 0;
                 isLogging = true;
                 return true;
@@ -88,8 +88,8 @@ namespace AgOpenGPS
             try
             {
                 sw.WriteLine(string.Format(CultureInfo.InvariantCulture,
-                    //60 fields, label in the 18th - keep in sync with the header in Start()
-                    "{0},{1:F3},MARK,,,,,,,,,,,,,,,{2},,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,",
+                    //61 fields, label in the 18th - keep in sync with the header in Start()
+                    "{0},{1:F3},MARK,,,,,,,,,,,,,,,{2},,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,",
                     DateTime.Now.ToString("HH:mm:ss.fff"), Elapsed.TotalSeconds, label));
             }
             catch { }
@@ -186,7 +186,8 @@ namespace AgOpenGPS
                 N(mf.kinModel.mixHdg, 2);
                 N(mf.kinModel.yawStateOut, 3);
                 N(mf.kinModel.dWasYaw, 3);
-                sb.Append(mf.kinModel.leffUsed.ToString("F3", CultureInfo.InvariantCulture));
+                sb.Append(mf.kinModel.leffUsed.ToString("F3", CultureInfo.InvariantCulture)).Append(',');
+                sb.Append((int)mf.kinModel.preset);        // 0 weak .. 3 extra strong
 
                 string line = sb.ToString();
                 sw.WriteLine(line);
