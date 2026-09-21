@@ -20,6 +20,8 @@ namespace AgOpenGPS
 
         private CheckBox cbModel, cbForce, cbAutoLog;
         private NumericUpDown nATau, nFloor, nTau, nLeff, nHFloor, nHTau, nMixPos, nMixHdg;
+        private ComboBox cboSway;
+        private bool loading;               // guards the controls while they are being filled
         private Label lblLogInfo, lblLiveModel, lblStatusTop;
         private Button btnLog, btnFolder, btnClose, btnInfo, btnDocs;
         private Panel panInfo;
@@ -48,16 +50,32 @@ namespace AgOpenGPS
             // ---------------- kinematic model ----------------
             Sep(y - 2);
             cbModel = Chk(hr ? "KINEMATIČKI MODEL" : "KINEMATIC MODEL", 12, y); y += 24;
+            int yMixPos = y;                // the service block hangs its force checkbox off this
             Lbl(hr ? "udio modela — pozicija" : "model share — position", 20, y + 3, 150, 16);
             nMixPos = Num(176, y, 0, 1.0m, 0.05m, 2); y += 26;
             Lbl(hr ? "udio modela — smjer" : "model share — heading", 20, y + 3, 150, 16);
-            nMixHdg = Num(176, y, 0, (decimal)CKinematicModel.MixHdgMax, 0.05m, 2); y += 28;
+            nMixHdg = Num(176, y, 0, (decimal)CKinematicModel.MixHdgMax, 0.05m, 2); y += 26;
+
+            //Sway compensation: four steps instead of the raw gain floor (REQ 2026-09-21-1).
+            //Chosen from the state of the cabin suspension, so it stays on screen at a customer.
+            Lbl(hr ? "kompenzacija njihanja" : "sway compensation", 20, y + 3, 150, 16);
+            cboSway = new ComboBox
+            {
+                Location = new Point(176, y), Size = new Size(140, 24),
+                DropDownStyle = ComboBoxStyle.DropDownList, Font = new Font("Tahoma", 10f),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.FromArgb(38, 48, 43), ForeColor = Color.White
+            };
+            cboSway.Items.AddRange(hr
+                ? new object[] { "Slabo", "Srednje", "Jako", "Ekstra jako" }
+                : new object[] { "Weak", "Medium", "Strong", "Extra strong" });
+            Controls.Add(cboSway); y += 28;
 
             // Service mode only. Built, not merely hidden, so the layout closes up without a gap
             // and a customer install cannot reach these at all.
             if (dbg)
             {
-                cbForce = Chk("force on (test)", 300, y - 52);
+                cbForce = Chk("force on (test)", 300, yMixPos);
                 cbForce.Font = new Font("Tahoma", 8f);
                 cbForce.ForeColor = Color.FromArgb(220, 150, 70);
                 cbForce.Width = 130;
@@ -145,12 +163,26 @@ namespace AgOpenGPS
                 Properties.VehicleSettings.Default.setSF_autoLog = cbAutoLog.Checked;
                 Properties.VehicleSettings.Default.Save();
             };
-            nMixPos.ValueChanged += (s, e) => { mf.kinModel.mixPos = (double)nMixPos.Value; Store(); };
-            nMixHdg.ValueChanged += (s, e) => { mf.kinModel.mixHdg = (double)nMixHdg.Value; Store(); };
+            nMixPos.ValueChanged += (s, e) => { if (!loading) { mf.kinModel.mixPos = (double)nMixPos.Value; Store(); } };
+            nMixHdg.ValueChanged += (s, e) => { if (!loading) { mf.kinModel.mixHdg = (double)nMixHdg.Value; Store(); } };
+            cboSway.SelectedIndexChanged += (s, e) =>
+            {
+                if (loading) return;
+                mf.kinModel.ApplyPreset((CKinematicModel.SwayPreset)cboSway.SelectedIndex);
+                //in service mode the raw boxes are on screen and would otherwise show stale numbers
+                if (dbg)
+                {
+                    loading = true;
+                    nFloor.Value = Clamp(mf.kinModel.posFloor, nFloor);
+                    nTau.Value = Clamp(mf.kinModel.posTau, nTau);
+                    loading = false;
+                }
+                Store();
+            };
             if (dbg)
             {
-                nFloor.ValueChanged += (s, e) => { mf.kinModel.posFloor = (double)nFloor.Value; Store(); };
-                nTau.ValueChanged += (s, e) => { mf.kinModel.posTau = (double)nTau.Value; Store(); };
+                nFloor.ValueChanged += (s, e) => { if (!loading) { mf.kinModel.posFloor = (double)nFloor.Value; Store(); } };
+                nTau.ValueChanged += (s, e) => { if (!loading) { mf.kinModel.posTau = (double)nTau.Value; Store(); } };
                 nLeff.ValueChanged += (s, e) => { mf.kinModel.leff = (double)nLeff.Value; Store(); };
                 nHFloor.ValueChanged += (s, e) => { mf.kinModel.hdgFloor = (double)nHFloor.Value; Store(); };
                 nHTau.ValueChanged += (s, e) => { mf.kinModel.hdgTau = (double)nHTau.Value; Store(); };
@@ -228,10 +260,12 @@ namespace AgOpenGPS
 
         private void LoadToControls()
         {
+            loading = true;
             cbModel.Checked = mf.kinModel.isOn;
             if (dbg) cbForce.Checked = mf.kinModel.forceOn;
             nMixPos.Value = Clamp(mf.kinModel.mixPos, nMixPos);
             nMixHdg.Value = Clamp(mf.kinModel.mixHdg, nMixHdg);
+            cboSway.SelectedIndex = (int)mf.kinModel.preset;
             if (dbg)
             {
                 nFloor.Value = Clamp(mf.kinModel.posFloor, nFloor);
@@ -242,6 +276,7 @@ namespace AgOpenGPS
                 nATau.Value = Clamp(mf.kinModel.anchorTau, nATau);
             }
             cbAutoLog.Checked = Properties.VehicleSettings.Default.setSF_autoLog;
+            loading = false;
         }
 
         private void Store()
@@ -250,13 +285,13 @@ namespace AgOpenGPS
             // a mark in the raw log, so a parameter change is visible in the replay/analysis
             if (mf.rawLog.isLogging)
                 mf.rawLog.Mark(string.Format(CultureInfo.InvariantCulture,
-                    "SET model={0} force={1} mixpos={2:F2} mixhdg={3:F2} " +
+                    "SET model={0} force={1} mixpos={2:F2} mixhdg={3:F2} sway={11} " +
                     "floor={4:F2} tau={5:F1} Leff={6:F2} hfloor={7:F2} htau={8:F1} atau={9:F1} dbg={10}",
                     mf.kinModel.isOn ? 1 : 0, mf.kinModel.forceOn ? 1 : 0,
                     mf.kinModel.mixPos, mf.kinModel.mixHdg,
                     mf.kinModel.posFloor, mf.kinModel.posTau, mf.kinModel.leff,
                     mf.kinModel.hdgFloor, mf.kinModel.hdgTau, mf.kinModel.anchorTau,
-                    dbg ? 1 : 0));
+                    dbg ? 1 : 0, (int)mf.kinModel.preset));
         }
 
         // ---------------------------------------------------------------- info panel
@@ -311,6 +346,17 @@ namespace AgOpenGPS
 "Model predviđa gdje traktor MOŽE biti iz kuta kotača i brzine, pa GPS-u vjeruje onoliko\n" +
 "koliko je mjerenje fizički moguće. Skok koji vozilo ne može napraviti dobiva malu težinu;\n" +
 "stvarno gibanje prolazi bez kašnjenja jer dolazi iz predikcije.\n" +
+"\n" +
+"Kompenzacija njihanja   Slabo / Srednje / Jako / Ekstra jako — zadano Srednje\n" +
+"Koliko model sam filtrira bočno njihanje kabine prije nego posluša GPS. Bira se prema\n" +
+"STANJU OVJESA KABINE, ne prema polju: Slabo = kruta kabina i novi amortizeri, Ekstra jako\n" +
+"= istrošen, rasklimani ovjes gdje se kabina njiše neovisno o šasiji.\n" +
+"Stupanj mijenja samo donju granicu pojačanja (0.55 / 0.40 / 0.27 / 0.14); konstanta ostaje\n" +
+"0.3 s na svima, pa svi stupnjevi jednako brzo posluše STVARNI skok GPS-a. Razlika je samo\n" +
+"kod sitnih odstupanja: efektivna konstanta 0.52 / 0.69 / 0.96 / 1.56 s.\n" +
+"Krivo: prejako → traktor se počne sporo valjati oko linije (vrati stupanj niže);\n" +
+"preslabo → njihanje kabine ostaje u poziciji i volan trza.\n" +
+"Detalji i grafovi: gumb Dokumentacija, odjeljak „Interaktivno\".\n" +
 "\n" +
 "Slider WAS ◀──▶ IMU [0–0.6]   tipično 0.25\n" +
 "Koliko brzine zakretanja model uzima iz žiroskopa umjesto iz kuta kotača:\n" +

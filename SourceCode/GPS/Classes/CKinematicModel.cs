@@ -71,9 +71,28 @@ namespace AgOpenGPS
         // posTau/gain, and the gain sits near posFloor most of the time because the innovation
         // is usually 2-6 cm. With 1.0/0.10 that is ~10 s of open-loop running - measured in the
         // field as a slow weave with a ~20 s period. Raise the floor and shorten the tau to fix it.
-        public double posFloor = 0.30;
-        public double posTau = 0.4;                         // [s]
+        public double posFloor = 0.40;
+        public double posTau = PresetTau;                   // [s]
         private const double HdgFloor0 = 1.5;               // [deg] floor at IMU quantisation
+
+        // Sway compensation, as four steps instead of a loose number (REQ 2026-09-21-1). The step
+        // is chosen from the state of the cabin suspension - the one thing about this the operator
+        // can actually judge - and it moves posFloor ONLY. posTau stays 0.3 s on every step
+        // because tau is what sets the response to LARGE innovations: there g -> 1, so
+        // tau_ef -> tau, and a real GPS jump has to be followed just as fast whatever the cabin
+        // is like. The floor is what decides how much small-amplitude cabin sway is ignored.
+        //   preset       floor  tau_ef @ 2 cm  @ 6 cm  share of the 1.9 s disturbance  self error
+        //   Weak         0.55      0.52 s      0.41 s            27 %                   0.12 cm
+        //   Medium       0.40      0.69 s      0.48 s            36 %                   0.21 cm
+        //   Strong       0.27      0.96 s      0.56 s            51 %                   0.41 cm
+        //   ExtraStrong  0.14      1.56 s      0.66 s            82 %                   1.09 cm
+        // So the steps differ 4x on the small disagreements, where cabin sway lives, and only
+        // 1.6x on the large ones - the progressive gain keeps the safety end to itself.
+        // Medium is bit-identical to what the field test of 21.09.2026 ran on.
+        public enum SwayPreset { Weak = 0, Medium = 1, Strong = 2, ExtraStrong = 3 }
+        private static readonly double[] PresetFloor = { 0.55, 0.40, 0.27, 0.14 };
+        public const double PresetTau = 0.3;                // [s] same on every step, see above
+        public SwayPreset preset = SwayPreset.Medium;
 
         // Heading correction had the same trap as the position one: floor 0.10 with tau 2.0 s
         // gives an effective time constant of 6.4 s at a 1 deg error. Measured in the field
@@ -157,11 +176,23 @@ namespace AgOpenGPS
         public double yawStateOut { get { return yawState; } }
         public string passiveReason = "";
 
+        /// <summary>Sway compensation step -> posFloor. posTau is fixed, see the table above.</summary>
+        public void ApplyPreset(SwayPreset p)
+        {
+            int i = (int)p;
+            if (i < 0 || i >= PresetFloor.Length) i = (int)SwayPreset.Medium;
+            preset = (SwayPreset)i;
+            posFloor = PresetFloor[i];
+            posTau = PresetTau;
+        }
+
         /// <summary>Tunables back to the values this release ships with - used whenever the
-        /// install is not in service mode, so behaviour cannot drift with a profile's history.</summary>
+        /// install is not in service mode, so behaviour cannot drift with a profile's history.
+        /// The sway preset is the one thing carried over: it is a customer setting, not a tuning
+        /// leftover, so it has to survive this call or the choice would be lost on every start.</summary>
         public void ReleaseDefaults()
         {
-            posFloor = 0.40; posTau = 0.3;
+            ApplyPreset(preset);            // posFloor from the step, posTau fixed
             hdgFloor = 0.35; hdgTau = 0.8;
             leff = 0.0;                     // = wheelbase from the vehicle profile
             anchorTau = 2.5;

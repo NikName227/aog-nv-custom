@@ -23,6 +23,10 @@ namespace AgOpenGPS
             kinModel.mixPos = s.setSF_modelMixPos;
             kinModel.mixHdg = s.setSF_modelMixHdg;
 
+            //sway compensation step: a customer setting, so it is read on every install, not only
+            //in service mode. ApplyPreset() is what puts it into posFloor.
+            kinModel.ApplyPreset((CKinematicModel.SwayPreset)s.setSF_swayPreset);
+
             // The tunables are release constants unless this install is in service mode. Reading
             // them from the profile only in debug means a machine behaves identically on every
             // install regardless of what an earlier session left in its vehicle XML, and that a
@@ -50,6 +54,7 @@ namespace AgOpenGPS
             var s = Properties.VehicleSettings.Default;
 
             s.setSF_modelOn = kinModel.isOn;
+            s.setSF_swayPreset = (int)kinModel.preset;
             s.setSF_modelFloor = kinModel.posFloor;
             s.setSF_modelTau = kinModel.posTau;
             s.setSF_modelHFloor = kinModel.hdgFloor;

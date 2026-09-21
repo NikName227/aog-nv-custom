@@ -244,7 +244,8 @@ trajnog preklopa. Koriste se samo razlike, pa ta nula iz modela ispada.</p>
 
 <h2 id="postavke"><span class="num">3</span>Postavke</h2>
 
-<p>Na ekranu su <b>dva klizača</b>. Sve ostalo je izvedeno iz geometrije vozila i mjerenja.</p>
+<p>Na ekranu su <b>dva klizača i izbor kompenzacije njihanja</b> (§4). Sve ostalo je izvedeno
+iz geometrije vozila i mjerenja.</p>
 
 <div class="scroll"><table class="tbl">
 <tr><th>klizač</th><th>preporučeno</th><th>što radi</th></tr>
@@ -267,8 +268,9 @@ Advanced Sensor Fusion.</p>
 
 <h2 id="interaktivno"><span class="num">4</span>Interaktivno: progresivno pojačanje</h2>
 
-<p>Ovi parametri su zaključani u isporučenoj verziji i vide se samo u servisnom modu. Grafovi
-su tu da se razumije <i>zašto</i> su takvi kakvi jesu — povuci klizače i gledaj što se mijenja.</p>
+<p>Gumbi ispod su četiri stupnja iz prozora, s vrijednostima koje postavljaju. Grafovi
+su tu da se razumije <i>zašto</i> su takvi kakvi jesu — klikni stupanj ili povuci klizače i
+gledaj što se mijenja.</p>
 
 <div class="ctl">
   <div class="ctlgrid">
@@ -281,7 +283,8 @@ su tu da se razumije <i>zašto</i> su takvi kakvi jesu — povuci klizače i gle
       <input type="range" id="ta" min="0.1" max="2.0" step="0.1" value="0.3">
     </div>
   </div>
-  <div class="presets" id="pre"></div>
+  <p class="lede" style="margin:14px 0 4px;padding-top:13px;border-top:1px solid var(--rule)">Kompenzacija njihanja:</p>
+  <div class="presets" id="pre" style="margin-top:0;padding-top:0;border-top:0"></div>
 </div>
 
 <dl class="facts" id="read"></dl>
@@ -382,8 +385,9 @@ i time se model sam prilagodi svakom stroju u floti.</p></div>
 <tr><th>parametar</th><th>vrijednost</th><th>odakle</th></tr>
 <tr><td>sidro τ</td><td class="v">2,5 s</td><td>frekvencijska granica ΔWAS ↔ IMU. Pri 4,0 s ista
 točnost ali drift 1,45 → 2,37 °/s. 2,5 je koljeno.</td></tr>
-<tr><td>floor</td><td class="v">0,40</td><td>terenski potvrđeno; τ_ef 0,69 s = 36 % trajanja smetnje</td></tr>
-<tr><td>τ</td><td class="v">0,3 s</td><td>isto</td></tr>
+<tr><td>floor / τ</td><td class="v">0,55–0,14 / 0,3 s</td><td>bira se u prozoru, <b>Kompenzacija
+njihanja</b> — floor po stupnju, τ isti na svima. Zadano Srednje 0,40, terenski potvrđeno;
+τ_ef 0,69 s = 36 % trajanja smetnje. Vidi §4.</td></tr>
 <tr><td>h_floor / h_τ</td><td class="v">0,35 / 0,8 s</td><td>sidrenje unutarnjeg kursa na f2f;
 štiti položaj, ne izlazni kurs</td></tr>
 <tr><td>prag njihanja</td><td class="v">7,92 cm</td><td>p99 6,6 cm × 20 % rezerve</td></tr>
@@ -475,7 +479,8 @@ Mjere: <span class="mono">features/10_advanced-sensor-fusion/testdata/04_test sa
 const E0=7.92, DIST=1.9, DRIFT=0.21*Math.PI/180, V=2.44;
 const $=s=>document.querySelector(s);
 const fl=$('#fl'), ta=$('#ta');
-const PRE=[['isporučeno',0.40,0.3],['blaže',0.30,0.4],['agresivnije',0.20,0.3],['prefiltrirano',0.10,1.0]];
+const PRE=[['Slabo — 0,55 / 0,3 s',0.55,0.3],['Srednje — 0,40 / 0,3 s',0.40,0.3],
+           ['Jako — 0,27 / 0,3 s',0.27,0.3],['Ekstra jako — 0,14 / 0,3 s',0.14,0.3]];
 const gain=(cm,f)=>{const x=Math.abs(cm)/E0,q=x*x/(1+x*x);return f+(1-f)*q;};
 const teff=(cm,f,t)=>t/gain(cm,f);
 const nf=(v,d=2)=>v.toFixed(d).replace('.',',');
