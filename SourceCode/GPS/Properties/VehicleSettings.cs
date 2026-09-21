@@ -51,6 +51,9 @@ namespace AgOpenGPS.Properties
         public bool setSF_modelOn = false;
         public double setSF_modelFloor = 0.40;  // gain floor; tau/floor is the effective time const
         public double setSF_modelTau = 0.3;     // [s] correction time constant
+        public int setSF_swayPreset = 1;        // sway compensation step, drives the gain floor:
+                                                // 0 weak, 1 medium, 2 strong, 3 extra strong.
+                                                // Per vehicle - it describes the cabin suspension.
         public double setSF_modelHFloor = 0.35; // same, for the heading correction
         public double setSF_modelHTau = 0.8;    // [s]
         public double setSF_modelMixPos = 1.00; // model share into POSITION, 0..1
