@@ -62,6 +62,11 @@ namespace AgOpenGPS.Properties
         public double setSF_modelLeff = 0.0;    // [m] 0 = use the wheelbase from vehicle settings
         public double setSF_modelATau = 2.5;    // [s] yaw state -> IMU anchor (delta WAS drift bound)
 
+        // F10 — roll correction checked against the raw antenna (REQ 2026-09-30-1)
+        public bool setSF_rollCorrOn = false;   // off = AOG's own AntennaHeight * sin(roll)
+        public double setSF_rollReactionSec = 4.0; // [s] 1..8, how long an unconfirmed roll
+                                                // change is held back before it is believed
+
         // F10 — heading observer: retired from the window, kept only for L_eff learning
         public bool setSF_autoLog = false;      // start the raw logger with AOG
 

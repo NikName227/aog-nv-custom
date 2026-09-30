@@ -44,6 +44,9 @@ namespace AgOpenGPS
 
             kinModel.Reset();
 
+            rollCorr.isOn = s.setSF_rollCorrOn;
+            rollCorr.reactionSec = Math.Max(1.0, Math.Min(8.0, s.setSF_rollReactionSec));
+            rollCorr.Reset();
 
             //raw logger can start with AOG (handy when chasing a problem in the field)
             if (s.setSF_autoLog && !rawLog.isLogging) rawLog.Start();
@@ -63,7 +66,27 @@ namespace AgOpenGPS
             s.setSF_modelATau = kinModel.anchorTau;
             s.setSF_modelMixPos = kinModel.mixPos;
             s.setSF_modelMixHdg = kinModel.mixHdg;
+            s.setSF_rollCorrOn = rollCorr.isOn;
+            s.setSF_rollReactionSec = rollCorr.reactionSec;
             s.Save();
+        }
+
+        /// <summary>
+        /// Roll correction distance for the Fix/VTG/Dual paths (REQ 2026-09-30-1). Same sign and
+        /// meaning as AOG's own "Math.Sin(roll) * -AntennaHeight": with the switch off it returns
+        /// exactly that, with it on the correction checked against the raw antenna. Both are
+        /// computed on every fix so the raw log always carries the old and the new value.
+        /// </summary>
+        public double SensorFusionRollDistance(double headingRad)
+        {
+            double h = vehicle.VehicleConfig.AntennaHeight;
+            if (!rollCorr.isOn)
+            {
+                //keep the log columns alive, but return AOG's expression untouched
+                rollCorr.Update(pn.fix.easting, pn.fix.northing, ahrs.imuRoll, headingRad, h, sfDt, sfElapsed);
+                return Math.Sin(glm.toRadians(ahrs.imuRoll)) * -h;
+            }
+            return -rollCorr.Update(pn.fix.easting, pn.fix.northing, ahrs.imuRoll, headingRad, h, sfDt, sfElapsed);
         }
 
         /// <summary>Start of every fix: measure dt and remember the raw antenna position.</summary>
