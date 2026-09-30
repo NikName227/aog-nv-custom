@@ -59,7 +59,9 @@ namespace AgOpenGPS
                     "dt_s,xte_valid,xte_pgn_cm,head_err_deg,kin_yaw_rate,fusion_w,roll_filter," +
                     "wheelbase_m,ant_pivot_m,ant_height_m,is_sim," +
                     "mdl_on,mdl_force,mdl_act,mdl_innov_cm,mdl_reject,mdl_bias,mdl_yaw,mdl_kin,mdl_vtg," +
-                    "mdl_mixpos,mdl_mixhdg,mdl_yawstate,mdl_dwas,mdl_leff,mdl_preset");
+                    "mdl_mixpos,mdl_mixhdg,mdl_yawstate,mdl_dwas,mdl_leff,mdl_preset," +
+                    "roll_corr_on,roll_t_s,roll_corr_old_cm,roll_corr_new_cm,roll_lever_m," +
+                    "roll_lever_used_m,roll_event,roll_rejected_min");
                 rows = 0; bytes = 0;
                 isLogging = true;
                 return true;
@@ -88,8 +90,8 @@ namespace AgOpenGPS
             try
             {
                 sw.WriteLine(string.Format(CultureInfo.InvariantCulture,
-                    //61 fields, label in the 18th - keep in sync with the header in Start()
-                    "{0},{1:F3},MARK,,,,,,,,,,,,,,,{2},,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,",
+                    //69 fields, label in the 18th - keep in sync with the header in Start()
+                    "{0},{1:F3},MARK,,,,,,,,,,,,,,,{2},,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,",
                     DateTime.Now.ToString("HH:mm:ss.fff"), Elapsed.TotalSeconds, label));
             }
             catch { }
@@ -187,7 +189,18 @@ namespace AgOpenGPS
                 N(mf.kinModel.yawStateOut, 3);
                 N(mf.kinModel.dWasYaw, 3);
                 sb.Append(mf.kinModel.leffUsed.ToString("F3", CultureInfo.InvariantCulture)).Append(',');
-                sb.Append((int)mf.kinModel.preset);        // 0 weak .. 3 extra strong
+                sb.Append((int)mf.kinModel.preset).Append(',');   // 0 weak .. 3 extra strong
+
+                //F10: roll correction (REQ 2026-09-30-1) - old and new on every row, whatever the switch
+                var rc = mf.rollCorr;
+                sb.Append(rc.isOn ? 1 : 0).Append(',');
+                N(rc.reactionSec, 1);
+                N(rc.corrOld * 100.0, 2);
+                N(rc.corrNew * 100.0, 2);
+                N(rc.leverLearned, 3);
+                N(rc.leverUsed, 3);
+                sb.Append(rc.eventActive ? 1 : 0).Append(',');
+                sb.Append(rc.rejectedPerMin);
 
                 string line = sb.ToString();
                 sw.WriteLine(line);
