@@ -18,12 +18,12 @@ namespace AgOpenGPS
         private readonly bool hr;
         private readonly Timer poll = new Timer();
 
-        private CheckBox cbModel, cbForce, cbAutoLog;
-        private NumericUpDown nATau, nFloor, nTau, nLeff, nHFloor, nHTau, nMixPos, nMixHdg;
+        private CheckBox cbModel, cbForce, cbAutoLog, cbRoll;
+        private NumericUpDown nATau, nFloor, nTau, nLeff, nHFloor, nHTau, nMixPos, nMixHdg, nRollT;
         private ComboBox cboSway;
         private bool loading;               // guards the controls while they are being filled
-        private Label lblLogInfo, lblLiveModel, lblStatusTop;
-        private Button btnLog, btnFolder, btnClose, btnInfo, btnDocs;
+        private Label lblLogInfo, lblLiveModel, lblStatusTop, lblLiveRoll;
+        private Button btnLog, btnFolder, btnClose, btnInfo, btnDocs, btnRollReset;
         private Panel panInfo;
         private bool infoOpen;
         private readonly bool dbg = CFeatureLock.IsDebug;
@@ -46,6 +46,20 @@ namespace AgOpenGPS
 
             int y = 8;
             lblStatusTop = Lbl("", 12, y, 416, 18, 9f, Color.FromArgb(150, 200, 180)); y += 22;
+
+            // ---------------- roll correction (REQ 2026-09-30-1) ----------------
+            //Independent of the model: it decides what position the model is fed.
+            Sep(y - 2);
+            cbRoll = Chk(hr ? "KOREKCIJA ROLLA" : "ROLL CORRECTION", 12, y); y += 24;
+            Lbl(hr ? "vrijeme reakcije [s]" : "reaction time [s]", 20, y + 3, 150, 16);
+            nRollT = Num(176, y, 1.0m, 8.0m, 0.5m, 1);
+            btnRollReset = Btn("Reset", 300, y, 84, 26, Color.FromArgb(110, 83, 32)); y += 30;
+            lblLiveRoll = new Label
+            {
+                Location = new Point(16, y), Size = new Size(416, 46), AutoSize = false,
+                Font = new Font("Consolas", 8.5f), ForeColor = Color.FromArgb(200, 214, 206)
+            };
+            Controls.Add(lblLiveRoll); y += 52;
 
             // ---------------- kinematic model ----------------
             Sep(y - 2);
@@ -144,7 +158,7 @@ namespace AgOpenGPS
             };
             var lblInfo = new Label
             {
-                Text = InfoText(), Location = new Point(10, 8), Size = new Size(WWide - WNarrow - 34, 2100),
+                Text = InfoText(), Location = new Point(10, 8), Size = new Size(WWide - WNarrow - 34, 2400),
                 AutoSize = false, Font = new Font("Tahoma", 8.5f), ForeColor = Color.FromArgb(205, 218, 210)
             };
             panInfo.Controls.Add(lblInfo);
@@ -156,6 +170,14 @@ namespace AgOpenGPS
             LoadToControls();
 
             cbModel.CheckedChanged += (s, e) => { mf.kinModel.isOn = cbModel.Checked; mf.kinModel.Reset(); Store(); };
+            //switching needs no reset: both corrections run all the time, only the output changes
+            cbRoll.CheckedChanged += (s, e) => { if (!loading) { mf.rollCorr.isOn = cbRoll.Checked; Store(); } };
+            nRollT.ValueChanged += (s, e) => { if (!loading) { mf.rollCorr.reactionSec = (double)nRollT.Value; Store(); } };
+            btnRollReset.Click += (s, e) =>
+            {
+                mf.rollCorr.Reset();
+                if (mf.rawLog.isLogging) mf.rawLog.Mark("ROLL RESET");
+            };
             //force is a test aid: never stored, so it cannot be left on at a customer
             if (dbg) cbForce.CheckedChanged += (s, e) => { mf.kinModel.forceOn = cbForce.Checked; Store(); };
             cbAutoLog.CheckedChanged += (s, e) =>
@@ -261,6 +283,8 @@ namespace AgOpenGPS
         private void LoadToControls()
         {
             loading = true;
+            cbRoll.Checked = mf.rollCorr.isOn;
+            nRollT.Value = Clamp(mf.rollCorr.reactionSec, nRollT);
             cbModel.Checked = mf.kinModel.isOn;
             if (dbg) cbForce.Checked = mf.kinModel.forceOn;
             nMixPos.Value = Clamp(mf.kinModel.mixPos, nMixPos);
@@ -286,12 +310,14 @@ namespace AgOpenGPS
             if (mf.rawLog.isLogging)
                 mf.rawLog.Mark(string.Format(CultureInfo.InvariantCulture,
                     "SET model={0} force={1} mixpos={2:F2} mixhdg={3:F2} sway={11} " +
-                    "floor={4:F2} tau={5:F1} Leff={6:F2} hfloor={7:F2} htau={8:F1} atau={9:F1} dbg={10}",
+                    "floor={4:F2} tau={5:F1} Leff={6:F2} hfloor={7:F2} htau={8:F1} atau={9:F1} dbg={10} " +
+                    "roll={12} rollT={13:F1}",
                     mf.kinModel.isOn ? 1 : 0, mf.kinModel.forceOn ? 1 : 0,
                     mf.kinModel.mixPos, mf.kinModel.mixHdg,
                     mf.kinModel.posFloor, mf.kinModel.posTau, mf.kinModel.leff,
                     mf.kinModel.hdgFloor, mf.kinModel.hdgTau, mf.kinModel.anchorTau,
-                    dbg ? 1 : 0, (int)mf.kinModel.preset));
+                    dbg ? 1 : 0, (int)mf.kinModel.preset,
+                    mf.rollCorr.isOn ? 1 : 0, mf.rollCorr.reactionSec));
         }
 
         // ---------------------------------------------------------------- info panel
@@ -310,11 +336,32 @@ namespace AgOpenGPS
             if (!hr)
                 return "Antenna height (Config > Vehicle) and invert roll (Config > Data) come from the existing "
                      + "AOG settings and are NOT entered here.\n\n"
-                     + "Each item: what it does - typical range - how to get the value - what if it is wrong.";
+                     + "Each item: what it does - typical range - how to get the value - what if it is wrong.\n\n"
+                     + "ROLL CORRECTION: off = AOG as before (antenna height x sin(roll)). On = every fast roll "
+                     + "movement is checked against what the raw GPS antenna did; confirmed tilt is applied at once, "
+                     + "an unconfirmed roll change is taken in over the reaction time (1-8 s, default 4), slow roll "
+                     + "change keeps the full antenna height. Both corrections are always written to the raw log.";
 
             return
 "Visina antene (Config → Vozilo) i invert roll (Config → Data) uzimaju se iz postojećih\n" +
 "postavki AOG-a i ovdje se NE unose ponovno. Visina antene je ujedno poluga za nagib terena.\n" +
+"\n" +
+"── KOREKCIJA ROLLA ──────────────────────────────────\n" +
+"\n" +
+"Isključeno = AOG kao i dosad: pozicija se pomakne za visina antene × sin(roll).\n" +
+"Uključeno: svaki brzi pokret rolla usporedi se s onim što je SIROVA GPS antena napravila:\n" +
+"  • antena potvrdi (jama, stvarni nagib) → korekcija odmah, punom visinom\n" +
+"  • antena ne potvrdi (lažni skok senzora, kabina se zakrene) → prihvaća se postupno\n" +
+"  • spora promjena (padina, valovit teren) → punom visinom, kao dosad\n" +
+"\n" +
+"vrijeme reakcije [s]   1–8, zadano 4\n" +
+"Koliko dugo se roll koji antena ne potvrdi drži po strani prije nego se ipak prihvati.\n" +
+"Kraće = bliže starom ponašanju; duže = jače odbacivanje lažnog rolla, ali do ~1 cm više\n" +
+"na valovitom terenu.\n" +
+"poluga — naučeni omjer pomaka antene i rolla kod brzih pokreta (0 … visina antene).\n" +
+"  Uz IMU na šasiji trebala bi biti blizu visine antene. Reset je vraća na visinu antene.\n" +
+"odbačeni skokovi — pokreti od 1° ili više koje antena nije potvrdila ni do pola.\n" +
+"Obje korekcije (stara i nova) uvijek se upisuju u raw log.\n" +
 "\n" +
 "── KOMPENZACIJA KABINE ──────────────────────────────\n" +
 "\n" +
@@ -495,6 +542,19 @@ namespace AgOpenGPS
                     mf.rawLog.FileName, mf.rawLog.Elapsed, mf.rawLog.rows,
                     hr ? "redaka" : "rows", mf.rawLog.bytes / 1048576.0)
                 : (string.IsNullOrEmpty(mf.rawLog.FileName) ? "—" : (hr ? "spremljeno: " : "saved: ") + mf.rawLog.FileName);
+
+            var rc = mf.rollCorr;
+            lblLiveRoll.Text = string.Format(CultureInfo.InvariantCulture,
+                (hr ? "poluga      {0,6:F2} m      (naučeno){1}\n"
+                    + "korekcija   {2,6:F1} cm     stara {3,6:F1} cm   u upotrebi: {4}\n"
+                    + "odbačeni skokovi rolla   {5} / min"
+                    : "lever       {0,6:F2} m      (learned){1}\n"
+                    + "correction  {2,6:F1} cm     old {3,6:F1} cm   in use: {4}\n"
+                    + "rejected roll jumps   {5} / min"),
+                rc.leverLearned, rc.eventActive ? (hr ? "   · pokret" : "   · moving") : "",
+                rc.corrNew * 100, rc.corrOld * 100,
+                rc.isOn ? (hr ? "nova" : "new") : (hr ? "stara" : "old"),
+                rc.rejectedPerMin);
 
             var km = mf.kinModel;
             string state;
