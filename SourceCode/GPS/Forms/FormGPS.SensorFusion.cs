@@ -48,6 +48,16 @@ namespace AgOpenGPS
             rollCorr.reactionSec = Math.Max(1.0, Math.Min(8.0, s.setSF_rollReactionSec));
             rollCorr.Reset();
 
+            tm171.useRoll = s.setSF_tmUseRoll;
+            tm171.portName = s.setSF_tmPort ?? "";
+            tm171.baud = s.setSF_tmBaud > 0 ? s.setSF_tmBaud : 115200;
+            tm171.usePitchAsRoll = s.setSF_tmPitchAsRoll;
+            tm171.invert = s.setSF_tmInvert;
+            tm171.zeroDeg = s.setSF_tmZero;
+            //the port is read whenever one is set, so the window and the log show the chassis
+            //roll before it is switched into the position
+            if (tm171.portName.Length > 0) tm171.Start(); else tm171.Stop();
+
             //raw logger can start with AOG (handy when chasing a problem in the field)
             if (s.setSF_autoLog && !rawLog.isLogging) rawLog.Start();
         }
@@ -68,8 +78,54 @@ namespace AgOpenGPS
             s.setSF_modelMixHdg = kinModel.mixHdg;
             s.setSF_rollCorrOn = rollCorr.isOn;
             s.setSF_rollReactionSec = rollCorr.reactionSec;
+            s.setSF_tmUseRoll = tm171.useRoll;
+            s.setSF_tmPort = tm171.portName;
+            s.setSF_tmBaud = tm171.baud;
+            s.setSF_tmPitchAsRoll = tm171.usePitchAsRoll;
+            s.setSF_tmInvert = tm171.invert;
+            s.setSF_tmZero = tm171.zeroDeg;
             s.Save();
         }
+
+        public double sfCabRoll = double.NaN;      // PANDA roll (BNO in the cab), for the log
+        public int sfRollSource;                    // 0 PANDA, 1 TM171, 2 TM171 on but stale -> none
+
+        /// <summary>
+        /// End of the PANDA block, before UpdateFixPosition (REQ 2026-10-02-1). With the TM171
+        /// switch on, its chassis roll replaces the PANDA roll; stale or missing data means NO
+        /// roll (88888), never a quiet fall back to the BNO - another mounting, another zero.
+        /// With the switch off nothing here touches ahrs.
+        /// </summary>
+        public void SensorFusionChassisRoll()
+        {
+            sfCabRoll = ahrs.imuRollRaw;
+            if (!tm171.useRoll)
+            {
+                //just switched back: the PANDA path blended its filter into our values (or 88888),
+                //so restart it from the BNO's own reading
+                if (sfRollSource != 0) ahrs.imuRoll = ahrs.imuRollRaw;
+                sfRollSource = 0; sfTmFiltered = double.NaN;
+                return;
+            }
+
+            if (tm171.IsFresh)
+            {
+                //own filter state: ahrs.imuRoll was just blended with the BNO by the PANDA path
+                double r = tm171.Roll;
+                sfTmFiltered = double.IsNaN(sfTmFiltered) ? r
+                    : sfTmFiltered * ahrs.rollFilter + r * (1 - ahrs.rollFilter);
+                ahrs.imuRollRaw = r;
+                ahrs.imuRoll = sfTmFiltered;
+                sfRollSource = 1;
+            }
+            else
+            {
+                ahrs.imuRoll = 88888;
+                sfTmFiltered = double.NaN;
+                sfRollSource = 2;
+            }
+        }
+        private double sfTmFiltered = double.NaN;
 
         /// <summary>
         /// Roll correction distance for the Fix/VTG/Dual paths (REQ 2026-09-30-1). Same sign and
