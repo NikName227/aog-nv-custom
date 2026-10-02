@@ -61,7 +61,8 @@ namespace AgOpenGPS
                     "mdl_on,mdl_force,mdl_act,mdl_innov_cm,mdl_reject,mdl_bias,mdl_yaw,mdl_kin,mdl_vtg," +
                     "mdl_mixpos,mdl_mixhdg,mdl_yawstate,mdl_dwas,mdl_leff,mdl_preset," +
                     "roll_corr_on,roll_t_s,roll_corr_old_cm,roll_corr_new_cm,roll_lever_m," +
-                    "roll_lever_used_m,roll_event,roll_rejected_min");
+                    "roll_lever_used_m,roll_event,roll_rejected_min," +
+                    "tm_use_roll,roll_src,cab_roll_deg,tm_roll_deg,tm_pitch_deg,tm_yaw_deg,tm_age_ms,tm_hz");
                 rows = 0; bytes = 0;
                 isLogging = true;
                 return true;
@@ -90,8 +91,8 @@ namespace AgOpenGPS
             try
             {
                 sw.WriteLine(string.Format(CultureInfo.InvariantCulture,
-                    //69 fields, label in the 18th - keep in sync with the header in Start()
-                    "{0},{1:F3},MARK,,,,,,,,,,,,,,,{2},,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,",
+                    //77 fields, label in the 18th - keep in sync with the header in Start()
+                    "{0},{1:F3},MARK,,,,,,,,,,,,,,,{2},,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,",
                     DateTime.Now.ToString("HH:mm:ss.fff"), Elapsed.TotalSeconds, label));
             }
             catch { }
@@ -200,7 +201,21 @@ namespace AgOpenGPS
                 N(rc.leverLearned, 3);
                 N(rc.leverUsed, 3);
                 sb.Append(rc.eventActive ? 1 : 0).Append(',');
-                sb.Append(rc.rejectedPerMin);
+                sb.Append(rc.rejectedPerMin).Append(',');
+
+                //F10: chassis IMU (REQ 2026-10-02-1) - cab and chassis roll side by side.
+                //roll_src: 0 PANDA, 1 TM171, 2 TM171 switched on but stale (no roll used)
+                var tm = mf.tm171;
+                bool tmFresh = tm.IsFresh;
+                sb.Append(tm.useRoll ? 1 : 0).Append(',');
+                sb.Append(mf.sfRollSource).Append(',');
+                N(mf.sfCabRoll, 2);
+                N(tmFresh ? tm.Roll : double.NaN, 3);
+                N(tmFresh ? tm.Pitch : double.NaN, 3);
+                N(tmFresh ? tm.Yaw : double.NaN, 3);
+                double age = tm.AgeMs;
+                N(double.IsInfinity(age) ? double.NaN : age, 0);
+                sb.Append(tm.RateHz.ToString("F1", CultureInfo.InvariantCulture));
 
                 string line = sb.ToString();
                 sw.WriteLine(line);
