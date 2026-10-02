@@ -288,6 +288,15 @@ istom pokretu:</p>
 <td>Koliko dugo se roll koji antena ne potvrdi drži po strani prije nego se ipak prihvati.
 Kraće = bliže današnjem; duže = jače odbacivanje lažnog rolla, ali do ~1 cm više na valovitom terenu.</td></tr>
 </table></div>
+<h3 id="tm171-usb">Roll sa šasije (TM171 preko USB-a)</h3>
+<p>TM171 montiran na <b>šasiju</b> i spojen USB-om na tablet. AOG čita njegov COM port i, kad je
+kvačica uključena, koristi njegov roll umjesto rolla iz PANDA (BNO u kabini). BNO ostaje na
+Teensyju, pa raw log ima <b>oba</b> rolla — vidi se koliko kabina dodaje. Os, invert i nula su
+vlastiti (montaža na šasiji je drukčija); postavke rolla u Config → Data ostaju za BNO.
+Bez podataka 250 ms roll se isključi (kao bez IMU-a) — nema tihog prelaska na BNO. TM171
+tvornički šalje 25 Hz; u njegovom alatu treba podići na 50 Hz (ispod 45 Hz prozor upozori).
+Izmjereno na laptopu 02.10.2026.: 50 Hz bez rupa, šum 0,013°, paketi stižu u grupama svakih ~50 ms.</p>
+
 <p>Offline na logu od 21.09. i sintetičkim slučajevima: lažni roll 3,5° / 2 s 18,0 → 5,7 cm
 (4 s); jama, padina i valovit teren unutar ~1 cm od današnjeg; najveći pomak izlaza u 1 s
 18,3 → 12,3 cm (sama sirova antena se u 1 s pomakne do 13 cm).</p>

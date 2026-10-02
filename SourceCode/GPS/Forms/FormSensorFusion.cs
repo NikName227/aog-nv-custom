@@ -18,7 +18,10 @@ namespace AgOpenGPS
         private readonly bool hr;
         private readonly Timer poll = new Timer();
 
-        private CheckBox cbModel, cbForce, cbAutoLog, cbRoll;
+        private CheckBox cbModel, cbForce, cbAutoLog, cbRoll, cbTm, cbTmInvert;
+        private ComboBox cboTmPort, cboTmBaud, cboTmAxis;
+        private Button btnTmRefresh, btnTmZero;
+        private Label lblLiveTm;
         private NumericUpDown nATau, nFloor, nTau, nLeff, nHFloor, nHTau, nMixPos, nMixHdg, nRollT;
         private ComboBox cboSway;
         private bool loading;               // guards the controls while they are being filled
@@ -60,6 +63,31 @@ namespace AgOpenGPS
                 Font = new Font("Consolas", 8.5f), ForeColor = Color.FromArgb(200, 214, 206)
             };
             Controls.Add(lblLiveRoll); y += 52;
+
+            // ---------------- chassis IMU over USB (REQ 2026-10-02-1) ----------------
+            //The port is read as soon as one is chosen; the checkbox decides whether its roll
+            //replaces the PANDA (cab) roll. Axis/invert/zero belong to this sensor only.
+            Sep(y - 2);
+            cbTm = Chk(hr ? "ROLL SA ŠASIJE (TM171 USB)" : "CHASSIS ROLL (TM171 USB)", 12, y); y += 26;
+            Lbl("port", 20, y + 4, 34, 16);
+            cboTmPort = Cbo(56, y, 92);
+            btnTmRefresh = Btn("↻", 152, y, 30, 26, Color.FromArgb(60, 71, 64));
+            Lbl("baud", 196, y + 4, 36, 16);
+            cboTmBaud = Cbo(234, y, 92);
+            cboTmBaud.Items.AddRange(new object[] { "115200", "230400", "460800", "921600" });
+            y += 30;
+            Lbl(hr ? "os" : "axis", 20, y + 4, 34, 16);
+            cboTmAxis = Cbo(56, y, 92);
+            cboTmAxis.Items.AddRange(new object[] { "roll", "pitch" });
+            cbTmInvert = Chk("invert", 160, y + 3);
+            cbTmInvert.Font = new Font("Tahoma", 9f);
+            btnTmZero = Btn(hr ? "Nula" : "Zero", 300, y, 84, 26, Color.FromArgb(110, 83, 32)); y += 30;
+            lblLiveTm = new Label
+            {
+                Location = new Point(16, y), Size = new Size(416, 46), AutoSize = false,
+                Font = new Font("Consolas", 8.5f), ForeColor = Color.FromArgb(200, 214, 206)
+            };
+            Controls.Add(lblLiveTm); y += 52;
 
             // ---------------- kinematic model ----------------
             Sep(y - 2);
@@ -158,7 +186,7 @@ namespace AgOpenGPS
             };
             var lblInfo = new Label
             {
-                Text = InfoText(), Location = new Point(10, 8), Size = new Size(WWide - WNarrow - 34, 2400),
+                Text = InfoText(), Location = new Point(10, 8), Size = new Size(WWide - WNarrow - 34, 2650),
                 AutoSize = false, Font = new Font("Tahoma", 8.5f), ForeColor = Color.FromArgb(205, 218, 210)
             };
             panInfo.Controls.Add(lblInfo);
@@ -177,6 +205,41 @@ namespace AgOpenGPS
             {
                 mf.rollCorr.Reset();
                 if (mf.rawLog.isLogging) mf.rawLog.Mark("ROLL RESET");
+            };
+
+            //chassis IMU: a new port or baud reopens the reader at once
+            cbTm.CheckedChanged += (s, e) => { if (!loading) { mf.tm171.useRoll = cbTm.Checked; Store(); } };
+            cboTmPort.SelectedIndexChanged += (s, e) =>
+            {
+                if (loading) return;
+                string p = cboTmPort.SelectedItem as string;
+                mf.tm171.portName = (p == null || p == "—") ? "" : p;
+                if (mf.tm171.portName.Length > 0) mf.tm171.Start(); else mf.tm171.Stop();
+                Store();
+            };
+            cboTmBaud.SelectedIndexChanged += (s, e) =>
+            {
+                if (loading) return;
+                int b;
+                if (int.TryParse(cboTmBaud.SelectedItem as string, out b)) mf.tm171.baud = b;
+                if (mf.tm171.portName.Length > 0) mf.tm171.Start();
+                Store();
+            };
+            btnTmRefresh.Click += (s, e) => FillPorts();
+            cboTmAxis.SelectedIndexChanged += (s, e) => { if (!loading) { mf.tm171.usePitchAsRoll = cboTmAxis.SelectedIndex == 1; Store(); } };
+            cbTmInvert.CheckedChanged += (s, e) => { if (!loading) { mf.tm171.invert = cbTmInvert.Checked; Store(); } };
+            btnTmZero.Click += (s, e) =>
+            {
+                if (!mf.tm171.IsFresh)
+                {
+                    MessageBox.Show(this, hr ? "TM171 ne šalje podatke - nula nije postavljena."
+                                             : "TM171 is not sending - zero not set.");
+                    return;
+                }
+                mf.tm171.SetZero();
+                Store();
+                if (mf.rawLog.isLogging)
+                    mf.rawLog.Mark(string.Format(CultureInfo.InvariantCulture, "TM ZERO {0:F2}", mf.tm171.zeroDeg));
             };
             //force is a test aid: never stored, so it cannot be left on at a customer
             if (dbg) cbForce.CheckedChanged += (s, e) => { mf.kinModel.forceOn = cbForce.Checked; Store(); };
@@ -261,6 +324,34 @@ namespace AgOpenGPS
             Controls.Add(n); return n;
         }
 
+        private ComboBox Cbo(int x, int y, int w)
+        {
+            var c = new ComboBox
+            {
+                Location = new Point(x, y), Size = new Size(w, 24),
+                DropDownStyle = ComboBoxStyle.DropDownList, Font = new Font("Tahoma", 9.5f),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.FromArgb(38, 48, 43), ForeColor = Color.White
+            };
+            Controls.Add(c); return c;
+        }
+
+        /// <summary>COM ports present now, plus the saved one even if it is unplugged.</summary>
+        private void FillPorts()
+        {
+            bool was = loading; loading = true;
+            cboTmPort.Items.Clear();
+            cboTmPort.Items.Add("—");
+            string[] ports;
+            try { ports = System.IO.Ports.SerialPort.GetPortNames(); } catch { ports = new string[0]; }
+            Array.Sort(ports);
+            foreach (string p in ports) cboTmPort.Items.Add(p);
+            string cur = mf.tm171.portName;
+            if (cur.Length > 0 && !cboTmPort.Items.Contains(cur)) cboTmPort.Items.Add(cur);
+            cboTmPort.SelectedItem = cur.Length > 0 ? (object)cur : "—";
+            loading = was;
+        }
+
         private Button Btn(string t, int x, int y, int w, int h, Color back)
         {
             var b = new Button
@@ -283,6 +374,13 @@ namespace AgOpenGPS
         private void LoadToControls()
         {
             loading = true;
+            cbTm.Checked = mf.tm171.useRoll;
+            FillPorts();
+            loading = true;
+            cboTmBaud.SelectedItem = mf.tm171.baud.ToString(CultureInfo.InvariantCulture);
+            if (cboTmBaud.SelectedIndex < 0) cboTmBaud.SelectedIndex = 0;
+            cboTmAxis.SelectedIndex = mf.tm171.usePitchAsRoll ? 1 : 0;
+            cbTmInvert.Checked = mf.tm171.invert;
             cbRoll.Checked = mf.rollCorr.isOn;
             nRollT.Value = Clamp(mf.rollCorr.reactionSec, nRollT);
             cbModel.Checked = mf.kinModel.isOn;
@@ -311,13 +409,16 @@ namespace AgOpenGPS
                 mf.rawLog.Mark(string.Format(CultureInfo.InvariantCulture,
                     "SET model={0} force={1} mixpos={2:F2} mixhdg={3:F2} sway={11} " +
                     "floor={4:F2} tau={5:F1} Leff={6:F2} hfloor={7:F2} htau={8:F1} atau={9:F1} dbg={10} " +
-                    "roll={12} rollT={13:F1}",
+                    "roll={12} rollT={13:F1} tm={14} tmport={15} tmbaud={16} tmaxis={17} tminv={18} tmzero={19:F2}",
                     mf.kinModel.isOn ? 1 : 0, mf.kinModel.forceOn ? 1 : 0,
                     mf.kinModel.mixPos, mf.kinModel.mixHdg,
                     mf.kinModel.posFloor, mf.kinModel.posTau, mf.kinModel.leff,
                     mf.kinModel.hdgFloor, mf.kinModel.hdgTau, mf.kinModel.anchorTau,
                     dbg ? 1 : 0, (int)mf.kinModel.preset,
-                    mf.rollCorr.isOn ? 1 : 0, mf.rollCorr.reactionSec));
+                    mf.rollCorr.isOn ? 1 : 0, mf.rollCorr.reactionSec,
+                    mf.tm171.useRoll ? 1 : 0, mf.tm171.portName.Length > 0 ? mf.tm171.portName : "-",
+                    mf.tm171.baud, mf.tm171.usePitchAsRoll ? "pitch" : "roll", mf.tm171.invert ? 1 : 0,
+                    mf.tm171.zeroDeg));
         }
 
         // ---------------------------------------------------------------- info panel
@@ -340,7 +441,12 @@ namespace AgOpenGPS
                      + "ROLL CORRECTION: off = AOG as before (antenna height x sin(roll)). On = every fast roll "
                      + "movement is checked against what the raw GPS antenna did; confirmed tilt is applied at once, "
                      + "an unconfirmed roll change is taken in over the reaction time (1-8 s, default 4), slow roll "
-                     + "change keeps the full antenna height. Both corrections are always written to the raw log.";
+                     + "change keeps the full antenna height. Both corrections are always written to the raw log.\n\n"
+                     + "CHASSIS ROLL (TM171 USB): TM171 on the chassis, USB to the tablet. The port is read as soon as "
+                     + "it is chosen; the checkbox puts its roll into the position instead of the PANDA (cab) roll. "
+                     + "Axis/invert: side tilt must move the chosen axis, right side down = positive. Zero: tractor on "
+                     + "level ground. No data for 250 ms = roll OFF, no fall back to the BNO. Below 45 Hz = warning "
+                     + "(factory output is 25 Hz).";
 
             return
 "Visina antene (Config → Vozilo) i invert roll (Config → Data) uzimaju se iz postojećih\n" +
@@ -362,6 +468,19 @@ namespace AgOpenGPS
 "  Uz IMU na šasiji trebala bi biti blizu visine antene. Reset je vraća na visinu antene.\n" +
 "odbačeni skokovi — pokreti od 1° ili više koje antena nije potvrdila ni do pola.\n" +
 "Obje korekcije (stara i nova) uvijek se upisuju u raw log.\n" +
+"\n" +
+"── ROLL SA ŠASIJE (TM171 USB) ───────────────────────\n" +
+"\n" +
+"TM171 spojen USB-om na tablet, montiran na ŠASIJU. Port se čita čim je odabran;\n" +
+"kvačica odlučuje ide li njegov roll u poziciju umjesto rolla iz PANDA (BNO u kabini).\n" +
+"Oba rolla se uvijek upisuju u raw log, pa se vidi koliko dodaje kabina.\n" +
+"os / invert — kako je senzor montiran. Bočni nagib mora mijenjati odabranu os, a desna\n" +
+"  strana dolje mora dati POZITIVAN roll (konvencija AOG-a).\n" +
+"Nula — traktor na ravnom: trenutni roll postaje 0. Postavke rolla u Config → Data\n" +
+"  ostaju za BNO i ovdje se ne koriste.\n" +
+"Nema podataka 250 ms → roll se ISKLJUČI (kao bez IMU-a), nema prelaska na BNO jer je\n" +
+"  drukčije montiran. U prozoru piše upozorenje.\n" +
+"Ispod 45 Hz → upozorenje: TM171 tvornički šalje 25 Hz, u njegovom alatu digni na 50 Hz.\n" +
 "\n" +
 "── KOMPENZACIJA KABINE ──────────────────────────────\n" +
 "\n" +
@@ -555,6 +674,28 @@ namespace AgOpenGPS
                 rc.corrNew * 100, rc.corrOld * 100,
                 rc.isOn ? (hr ? "nova" : "new") : (hr ? "stara" : "old"),
                 rc.rejectedPerMin);
+
+            var tm = mf.tm171;
+            string warn = "";
+            if (tm.portName.Length == 0) warn = hr ? "port nije odabran" : "no port chosen";
+            else if (!tm.IsFresh) warn = (hr ? "⚠ nema podataka" : "⚠ no data")
+                    + (tm.useRoll ? (hr ? " - roll ISKLJUČEN" : " - roll OFF") : "")
+                    + "  (" + tm.State + ")";
+            else if (tm.RateHz > 1 && tm.RateHz < CImuSerialTM171.LowRateHz)
+                warn = hr ? "⚠ ispod 45 Hz - u TM171 alatu digni izlaz na 50 Hz"
+                          : "⚠ below 45 Hz - raise the output to 50 Hz in the TM171 tool";
+            double tmAge = tm.AgeMs;
+            lblLiveTm.Text = string.Format(CultureInfo.InvariantCulture,
+                (hr ? "{0,5:F1} Hz  starost {1} ms  rupe {2}  CRC {3}   izvor: {4}\n"
+                    + "roll šasija {5}°  kabina {6:+0.00;-0.00}°  {7}"
+                    : "{0,5:F1} Hz  age {1} ms  gaps {2}  CRC {3}   source: {4}\n"
+                    + "roll chassis {5}°  cab {6:+0.00;-0.00}°  {7}"),
+                tm.RateHz, double.IsInfinity(tmAge) ? "—" : tmAge.ToString("F0", CultureInfo.InvariantCulture),
+                tm.Gaps, tm.CrcErrors,
+                mf.sfRollSource == 1 ? "TM171" : (mf.sfRollSource == 2 ? (hr ? "NEMA" : "NONE") : "PANDA"),
+                tm.IsFresh ? tm.Roll.ToString("+0.00;-0.00", CultureInfo.InvariantCulture) : "—",
+                mf.sfCabRoll, warn);
+            lblLiveTm.ForeColor = warn.StartsWith("⚠") ? Color.FromArgb(230, 150, 60) : Color.FromArgb(200, 214, 206);
 
             var km = mf.kinModel;
             string state;
