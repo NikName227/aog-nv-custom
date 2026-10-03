@@ -85,6 +85,9 @@ namespace AgOpenGPS
 
         public bool IsFresh { get { return AgeMs < FreshMs; } }
 
+        /// <summary>At least one angle packet since AOG started, fresh or not.</summary>
+        public bool HasData { get { lock (sync) return lastRxTicks != 0; } }
+
         /// <summary>Roll with axis, invert and zero applied [deg]. Right side down = positive
         /// once invert is set right for the mounting.</summary>
         public double Roll { get { lock (sync) return Mounted(); } }

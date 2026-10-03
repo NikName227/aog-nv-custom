@@ -443,9 +443,9 @@ namespace AgOpenGPS
                      + "an unconfirmed roll change is taken in over the reaction time (1-8 s, default 4), slow roll "
                      + "change keeps the full antenna height. Both corrections are always written to the raw log.\n\n"
                      + "CHASSIS ROLL (TM171 USB): TM171 on the chassis, USB to the tablet. The port is read as soon as "
-                     + "it is chosen; the checkbox puts its roll into the position instead of the PANDA (cab) roll. "
+                     + "it is chosen; the checkbox puts its roll and heading in place of the PANDA (cab) ones (testing). "
                      + "Axis/invert: side tilt must move the chosen axis, right side down = positive. Zero: tractor on "
-                     + "level ground. No data for 250 ms = roll OFF, no fall back to the BNO. Below 45 Hz = warning "
+                     + "level ground. No data for 250 ms = roll 0 and the last heading, no fall back to the BNO. Below 45 Hz = warning "
                      + "(factory output is 25 Hz).";
 
             return
@@ -472,13 +472,14 @@ namespace AgOpenGPS
 "── ROLL SA ŠASIJE (TM171 USB) ───────────────────────\n" +
 "\n" +
 "TM171 spojen USB-om na tablet, montiran na ŠASIJU. Port se čita čim je odabran;\n" +
-"kvačica odlučuje ide li njegov roll u poziciju umjesto rolla iz PANDA (BNO u kabini).\n" +
+"kvačica odlučuje idu li njegov roll i heading umjesto onih iz PANDA (BNO u kabini) — za testiranje.\n" +
+"Heading se okreće kao AOG-ov, nulu poravna AOG s GPS-om; BNO heading ide u raw log.\n" +
 "Oba rolla se uvijek upisuju u raw log, pa se vidi koliko dodaje kabina.\n" +
 "os / invert — kako je senzor montiran. Bočni nagib mora mijenjati odabranu os, a desna\n" +
 "  strana dolje mora dati POZITIVAN roll (konvencija AOG-a).\n" +
 "Nula — traktor na ravnom: trenutni roll postaje 0. Postavke rolla u Config → Data\n" +
 "  ostaju za BNO i ovdje se ne koriste.\n" +
-"Nema podataka 250 ms → roll se ISKLJUČI (kao bez IMU-a), nema prelaska na BNO jer je\n" +
+"Nema podataka 250 ms → roll 0, heading ostaje zadnja vrijednost; nema prelaska na BNO jer je\n" +
 "  drukčije montiran. U prozoru piše upozorenje.\n" +
 "Ispod 45 Hz → upozorenje: TM171 tvornički šalje 25 Hz, u njegovom alatu digni na 50 Hz.\n" +
 "\n" +
@@ -679,7 +680,7 @@ namespace AgOpenGPS
             string warn = "";
             if (tm.portName.Length == 0) warn = hr ? "port nije odabran" : "no port chosen";
             else if (!tm.IsFresh) warn = (hr ? "⚠ nema podataka" : "⚠ no data")
-                    + (tm.useRoll ? (hr ? " - roll ISKLJUČEN" : " - roll OFF") : "")
+                    + (tm.useRoll ? (hr ? " - roll 0, zadnji heading" : " - roll 0, last heading") : "")
                     + "  (" + tm.State + ")";
             else if (tm.RateHz > 1 && tm.RateHz < CImuSerialTM171.LowRateHz)
                 warn = hr ? "⚠ ispod 45 Hz - u TM171 alatu digni izlaz na 50 Hz"
@@ -692,7 +693,7 @@ namespace AgOpenGPS
                     + "roll chassis {5}°  cab {6:+0.00;-0.00}°  {7}"),
                 tm.RateHz, double.IsInfinity(tmAge) ? "—" : tmAge.ToString("F0", CultureInfo.InvariantCulture),
                 tm.Gaps, tm.CrcErrors,
-                mf.sfRollSource == 1 ? "TM171" : (mf.sfRollSource == 2 ? (hr ? "NEMA" : "NONE") : "PANDA"),
+                mf.sfRollSource == 1 ? "TM171" : (mf.sfRollSource == 2 ? (hr ? "TM171 STAO" : "TM171 STALE") : "PANDA"),
                 tm.IsFresh ? tm.Roll.ToString("+0.00;-0.00", CultureInfo.InvariantCulture) : "—",
                 mf.sfCabRoll, warn);
             lblLiveTm.ForeColor = warn.StartsWith("⚠") ? Color.FromArgb(230, 150, 60) : Color.FromArgb(200, 214, 206);

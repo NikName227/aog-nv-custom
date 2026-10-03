@@ -88,20 +88,23 @@ namespace AgOpenGPS
         }
 
         public double sfCabRoll = double.NaN;      // PANDA roll (BNO in the cab), for the log
-        public int sfRollSource;                    // 0 PANDA, 1 TM171, 2 TM171 on but stale -> none
+        public double sfCabHeading = double.NaN;   // PANDA heading (BNO in the cab), for the log
+        public int sfRollSource;                    // 0 PANDA, 1 TM171, 2 TM171 on but stale -> roll 0
 
         /// <summary>
-        /// End of the PANDA block, before UpdateFixPosition (REQ 2026-10-02-1). With the TM171
-        /// switch on, its chassis roll replaces the PANDA roll; stale or missing data means NO
-        /// roll (88888), never a quiet fall back to the BNO - another mounting, another zero.
+        /// End of the PANDA block, before UpdateFixPosition (REQ 2026-10-02-1, 2026-10-03-1). With
+        /// the TM171 switch on, its chassis roll and heading replace the PANDA ones; never a quiet
+        /// fall back to the BNO - another mounting, another zero. Testing only, so no more checks:
+        /// stale data means roll 0, the heading keeps the last value the TM171 sent.
         /// With the switch off nothing here touches ahrs.
         /// </summary>
         public void SensorFusionChassisRoll()
         {
             sfCabRoll = ahrs.imuRollRaw;
+            sfCabHeading = ahrs.imuHeading;
             if (!tm171.useRoll)
             {
-                //just switched back: the PANDA path blended its filter into our values (or 88888),
+                //just switched back: the PANDA path blended its filter into our values (or 0),
                 //so restart it from the BNO's own reading
                 if (sfRollSource != 0) ahrs.imuRoll = ahrs.imuRollRaw;
                 sfRollSource = 0; sfTmFiltered = double.NaN;
@@ -120,9 +123,18 @@ namespace AgOpenGPS
             }
             else
             {
-                ahrs.imuRoll = 88888;
+                ahrs.imuRollRaw = 0;
+                ahrs.imuRoll = 0;
                 sfTmFiltered = double.NaN;
                 sfRollSource = 2;
+            }
+
+            //heading: turns the same way as AOG's, its zero is lined up by imuGPS_Offset
+            if (tm171.HasData)
+            {
+                double h = tm171.Yaw % 360.0;
+                if (h < 0) h += 360.0;
+                ahrs.imuHeading = h;
             }
         }
         private double sfTmFiltered = double.NaN;
