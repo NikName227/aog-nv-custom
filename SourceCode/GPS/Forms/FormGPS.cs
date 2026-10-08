@@ -328,6 +328,8 @@ namespace AgOpenGPS
 
         //F10 Advanced Sensor Fusion: cabin compensation + heading observer + raw logger
         public CKinematicModel kinModel;
+        public CRollCorrection rollCorr;
+        public CImuSerialTM171 tm171;
         public CRawLogger rawLog;
 
         /// <summary>
@@ -541,6 +543,8 @@ namespace AgOpenGPS
 
             //F10
             kinModel = new CKinematicModel();
+            rollCorr = new CRollCorrection();
+            tm171 = new CImuSerialTM171();
             rawLog = new CRawLogger(this);
             LoadSensorFusionSettings();
 
@@ -833,6 +837,9 @@ namespace AgOpenGPS
             {
                 btnSectionMasterAuto.PerformClick();
             }
+
+            //F10: release the TM171 COM port before the process goes (REQ 2026-10-02-1)
+            tm171?.Stop();
 
             // Execute shutdown with proper exception handling
             try

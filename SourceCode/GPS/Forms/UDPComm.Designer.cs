@@ -163,6 +163,9 @@ namespace AgOpenGPS
 
                                 sentenceCounter = 0;
 
+                                //F10: chassis roll from the TM171 when switched on (REQ 2026-10-02-1)
+                                SensorFusionChassisRoll();
+
                                 UpdateFixPosition();
                             }
                         }

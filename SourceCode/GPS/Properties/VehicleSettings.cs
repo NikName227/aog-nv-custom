@@ -62,6 +62,19 @@ namespace AgOpenGPS.Properties
         public double setSF_modelLeff = 0.0;    // [m] 0 = use the wheelbase from vehicle settings
         public double setSF_modelATau = 2.5;    // [s] yaw state -> IMU anchor (delta WAS drift bound)
 
+        // F10 — roll correction checked against the raw antenna (REQ 2026-09-30-1)
+        public bool setSF_rollCorrOn = false;   // off = AOG's own AntennaHeight * sin(roll)
+        public double setSF_rollReactionSec = 4.0; // [s] 1..8, how long an unconfirmed roll
+                                                // change is held back before it is believed
+
+        // F10 — TM171 on the chassis, read over USB (REQ 2026-10-02-1)
+        public bool setSF_tmUseRoll = false;    // chassis roll replaces the PANDA (cabin) roll
+        public string setSF_tmPort = "";        // e.g. "COM16"
+        public int setSF_tmBaud = 115200;
+        public bool setSF_tmPitchAsRoll = false; // sensor mounted turned 90 deg
+        public bool setSF_tmInvert = false;
+        public double setSF_tmZero = 0.0;       // [deg] after axis and invert
+
         // F10 — heading observer: retired from the window, kept only for L_eff learning
         public bool setSF_autoLog = false;      // start the raw logger with AOG
 

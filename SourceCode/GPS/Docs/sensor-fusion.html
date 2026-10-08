@@ -266,6 +266,42 @@ Model zarađuje na položaju; na kursu samo odmaže.</p></div>
 <p>Model je nakon instalacije <b>isključen</b>. Uključuje se svjesno, kvačicom u prozoru
 Advanced Sensor Fusion.</p>
 
+<h3 id="korekcija-rolla">Korekcija rolla (provjera prema anteni)</h3>
+<p>Neovisno o modelu. AOG svaki fix pomakne antenu natrag za <code>visina antene × sin(roll)</code>.
+Kad se cijeli traktor nagne, antena se <b>mora</b> pomaknuti upravo toliko. Kad roll skoči, a
+sirova GPS antena stoji (lažni izlet IMU-a, kabina koja se zakrene oko visoke osi), ta korekcija
+unese pomak kojeg nema: na terenu 21.09.2026. roll +3,8° uz mirnu antenu dao je skok od 20 cm
+u jednoj sekundi.</p>
+<p>Uključena korekcija svaki brzi pokret rolla usporedi s onim što je sirova antena napravila u
+istom pokretu:</p>
+<ul>
+<li><b>antena potvrdi</b> (jama, stvarni nagib) → korekcija odmah, punom visinom, kao danas;</li>
+<li><b>antena djelomično potvrdi</b> (kabina se zakrene oko više osi) → onoliko koliko se antena stvarno pomaknula;</li>
+<li><b>antena ne potvrdi</b> → taj dio se prihvaća postupno, kroz <b>vrijeme reakcije</b>;</li>
+<li><b>spora promjena</b> (padina, valovit teren) → punom visinom, odmah, kao danas.</li>
+</ul>
+<div class="scroll"><table class="tbl">
+<tr><th>postavka</th><th>zadano</th><th>što radi</th></tr>
+<tr><td>KOREKCIJA ROLLA</td><td class="v">isključeno</td>
+<td>Isključeno = točno današnji izraz. Obje korekcije se svejedno upisuju u raw log.</td></tr>
+<tr><td>vrijeme reakcije</td><td class="v">4 s</td>
+<td>Koliko dugo se roll koji antena ne potvrdi drži po strani prije nego se ipak prihvati.
+Kraće = bliže današnjem; duže = jače odbacivanje lažnog rolla, ali do ~1 cm više na valovitom terenu.</td></tr>
+</table></div>
+<h3 id="tm171-usb">Roll sa šasije (TM171 preko USB-a)</h3>
+<p>TM171 montiran na <b>šasiju</b> i spojen USB-om na tablet. AOG čita njegov COM port i, kad je
+kvačica uključena, koristi njegov roll i heading umjesto onih iz PANDA (BNO u kabini) — za testiranje. BNO ostaje na
+Teensyju, pa raw log ima <b>oba</b> rolla — vidi se koliko kabina dodaje. Os, invert i nula su
+vlastiti (montaža na šasiji je drukčija); postavke rolla u Config → Data ostaju za BNO.
+Bez podataka 250 ms roll je 0, a heading ostaje zadnja primljena vrijednost — nema tihog prelaska na BNO.
+Heading se okreće kao AOG-ov; nulu poravna AOG s GPS-om, BNO heading ide u raw log. TM171
+tvornički šalje 25 Hz; u njegovom alatu treba podići na 50 Hz (ispod 45 Hz prozor upozori).
+Izmjereno na laptopu 02.10.2026.: 50 Hz bez rupa, šum 0,013°, paketi stižu u grupama svakih ~50 ms.</p>
+
+<p>Offline na logu od 21.09. i sintetičkim slučajevima: lažni roll 3,5° / 2 s 18,0 → 5,7 cm
+(4 s); jama, padina i valovit teren unutar ~1 cm od današnjeg; najveći pomak izlaza u 1 s
+18,3 → 12,3 cm (sama sirova antena se u 1 s pomakne do 13 cm).</p>
+
 <h2 id="interaktivno"><span class="num">4</span>Interaktivno: progresivno pojačanje</h2>
 
 <p>Gumbi ispod su četiri stupnja iz prozora, s vrijednostima koje postavljaju. Grafovi

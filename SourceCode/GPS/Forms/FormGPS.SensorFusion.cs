@@ -44,6 +44,19 @@ namespace AgOpenGPS
 
             kinModel.Reset();
 
+            rollCorr.isOn = s.setSF_rollCorrOn;
+            rollCorr.reactionSec = Math.Max(1.0, Math.Min(8.0, s.setSF_rollReactionSec));
+            rollCorr.Reset();
+
+            tm171.useRoll = s.setSF_tmUseRoll;
+            tm171.portName = s.setSF_tmPort ?? "";
+            tm171.baud = s.setSF_tmBaud > 0 ? s.setSF_tmBaud : 115200;
+            tm171.usePitchAsRoll = s.setSF_tmPitchAsRoll;
+            tm171.invert = s.setSF_tmInvert;
+            tm171.zeroDeg = s.setSF_tmZero;
+            //the port is read whenever one is set, so the window and the log show the chassis
+            //roll before it is switched into the position
+            if (tm171.portName.Length > 0) tm171.Start(); else tm171.Stop();
 
             //raw logger can start with AOG (handy when chasing a problem in the field)
             if (s.setSF_autoLog && !rawLog.isLogging) rawLog.Start();
@@ -63,7 +76,85 @@ namespace AgOpenGPS
             s.setSF_modelATau = kinModel.anchorTau;
             s.setSF_modelMixPos = kinModel.mixPos;
             s.setSF_modelMixHdg = kinModel.mixHdg;
+            s.setSF_rollCorrOn = rollCorr.isOn;
+            s.setSF_rollReactionSec = rollCorr.reactionSec;
+            s.setSF_tmUseRoll = tm171.useRoll;
+            s.setSF_tmPort = tm171.portName;
+            s.setSF_tmBaud = tm171.baud;
+            s.setSF_tmPitchAsRoll = tm171.usePitchAsRoll;
+            s.setSF_tmInvert = tm171.invert;
+            s.setSF_tmZero = tm171.zeroDeg;
             s.Save();
+        }
+
+        public double sfCabRoll = double.NaN;      // PANDA roll (BNO in the cab), for the log
+        public double sfCabHeading = double.NaN;   // PANDA heading (BNO in the cab), for the log
+        public int sfRollSource;                    // 0 PANDA, 1 TM171, 2 TM171 on but stale -> roll 0
+
+        /// <summary>
+        /// End of the PANDA block, before UpdateFixPosition (REQ 2026-10-02-1, 2026-10-03-1). With
+        /// the TM171 switch on, its chassis roll and heading replace the PANDA ones; never a quiet
+        /// fall back to the BNO - another mounting, another zero. Testing only, so no more checks:
+        /// stale data means roll 0, the heading keeps the last value the TM171 sent.
+        /// With the switch off nothing here touches ahrs.
+        /// </summary>
+        public void SensorFusionChassisRoll()
+        {
+            sfCabRoll = ahrs.imuRollRaw;
+            sfCabHeading = ahrs.imuHeading;
+            if (!tm171.useRoll)
+            {
+                //just switched back: the PANDA path blended its filter into our values (or 0),
+                //so restart it from the BNO's own reading
+                if (sfRollSource != 0) ahrs.imuRoll = ahrs.imuRollRaw;
+                sfRollSource = 0; sfTmFiltered = double.NaN;
+                return;
+            }
+
+            if (tm171.IsFresh)
+            {
+                //own filter state: ahrs.imuRoll was just blended with the BNO by the PANDA path
+                double r = tm171.Roll;
+                sfTmFiltered = double.IsNaN(sfTmFiltered) ? r
+                    : sfTmFiltered * ahrs.rollFilter + r * (1 - ahrs.rollFilter);
+                ahrs.imuRollRaw = r;
+                ahrs.imuRoll = sfTmFiltered;
+                sfRollSource = 1;
+            }
+            else
+            {
+                ahrs.imuRollRaw = 0;
+                ahrs.imuRoll = 0;
+                sfTmFiltered = double.NaN;
+                sfRollSource = 2;
+            }
+
+            //heading: turns the same way as AOG's, its zero is lined up by imuGPS_Offset
+            if (tm171.HasData)
+            {
+                double h = tm171.Yaw % 360.0;
+                if (h < 0) h += 360.0;
+                ahrs.imuHeading = h;
+            }
+        }
+        private double sfTmFiltered = double.NaN;
+
+        /// <summary>
+        /// Roll correction distance for the Fix/VTG/Dual paths (REQ 2026-09-30-1). Same sign and
+        /// meaning as AOG's own "Math.Sin(roll) * -AntennaHeight": with the switch off it returns
+        /// exactly that, with it on the correction checked against the raw antenna. Both are
+        /// computed on every fix so the raw log always carries the old and the new value.
+        /// </summary>
+        public double SensorFusionRollDistance(double headingRad)
+        {
+            double h = vehicle.VehicleConfig.AntennaHeight;
+            if (!rollCorr.isOn)
+            {
+                //keep the log columns alive, but return AOG's expression untouched
+                rollCorr.Update(pn.fix.easting, pn.fix.northing, ahrs.imuRoll, headingRad, h, sfDt, sfElapsed);
+                return Math.Sin(glm.toRadians(ahrs.imuRoll)) * -h;
+            }
+            return -rollCorr.Update(pn.fix.easting, pn.fix.northing, ahrs.imuRoll, headingRad, h, sfDt, sfElapsed);
         }
 
         /// <summary>Start of every fix: measure dt and remember the raw antenna position.</summary>

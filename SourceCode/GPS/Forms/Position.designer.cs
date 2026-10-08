@@ -356,12 +356,14 @@ namespace AgOpenGPS
                         if (ahrs.imuRoll != 88888)
                         {
                             //change for roll to the right is positive times -1
-                            rollCorrectionDistance = Math.Sin(glm.toRadians(ahrs.imuRoll)) * -vehicle.VehicleConfig.AntennaHeight;
+                            //F10: switch off = AOG's own Sin(roll) * -AntennaHeight (REQ 2026-09-30-1)
+                            rollCorrectionDistance = SensorFusionRollDistance(gpsHeading);
                             correctionDistanceGraph = rollCorrectionDistance;
 
                             pn.fix.easting = (Math.Cos(-gpsHeading) * rollCorrectionDistance) + pn.fix.easting;
                             pn.fix.northing = (Math.Sin(-gpsHeading) * rollCorrectionDistance) + pn.fix.northing;
                         }
+                        else rollCorr.Reset();
 
                         #endregion
 
@@ -702,13 +704,15 @@ namespace AgOpenGPS
                         if (ahrs.imuRoll != 88888)
                         {
                             //change for roll to the right is positive times -1
-                            rollCorrectionDistance = Math.Sin(glm.toRadians(ahrs.imuRoll)) * -vehicle.VehicleConfig.AntennaHeight;
+                            //F10: switch off = AOG's own Sin(roll) * -AntennaHeight (REQ 2026-09-30-1)
+                            rollCorrectionDistance = SensorFusionRollDistance(fixHeading);
                             correctionDistanceGraph = rollCorrectionDistance;
 
                             // roll to right is positive  **** important!!
                             pn.fix.easting = (Math.Cos(-fixHeading) * rollCorrectionDistance) + pn.fix.easting;
                             pn.fix.northing = (Math.Sin(-fixHeading) * rollCorrectionDistance) + pn.fix.northing;
                         }
+                        else rollCorr.Reset();
 
                         fixHeading = SensorFusionModel(fixHeading);   //F10: kinematic model (no-op when off)
 
@@ -745,12 +749,14 @@ namespace AgOpenGPS
                         {
 
                             //change for roll to the right is positive times -1
-                            rollCorrectionDistance = Math.Sin(glm.toRadians(ahrs.imuRoll)) * -vehicle.VehicleConfig.AntennaHeight;
+                            //F10: switch off = AOG's own Sin(roll) * -AntennaHeight (REQ 2026-09-30-1)
+                            rollCorrectionDistance = SensorFusionRollDistance(gpsHeading);
                             correctionDistanceGraph = rollCorrectionDistance;
 
                             pn.fix.easting = (Math.Cos(-gpsHeading) * rollCorrectionDistance) + pn.fix.easting;
                             pn.fix.northing = (Math.Sin(-gpsHeading) * rollCorrectionDistance) + pn.fix.northing;
                         }
+                        else rollCorr.Reset();
 
                         fixHeading = SensorFusionModel(fixHeading);   //F10: kinematic model (no-op when off)
 
