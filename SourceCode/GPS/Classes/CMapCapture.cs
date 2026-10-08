@@ -116,10 +116,10 @@ namespace AgOpenGPS
         /// <summary>
         /// The field's background at the current quality setting, ready to store. Null when
         /// there is no boundary to frame by or the download failed - the caller keeps whatever
-        /// background the field already has.
+        /// background the field already has. forceLow: Low resolution whatever the setting (HUD button).
         /// </summary>
         public static AgOpenGPS.Core.Models.BingMap CaptureField(FormGPS mf,
-            Action<int, int> progress, out string error, out bool tooLarge)
+            Action<int, int> progress, out string error, out bool tooLarge, bool forceLow = false)
         {
             error = null;
             if (!FieldLatLonBox(mf, out double minLat, out double minLon,
@@ -129,7 +129,7 @@ namespace AgOpenGPS
                 return null;
             }
 
-            bool high = Properties.Settings.Default.setMap_captureHighQuality;
+            bool high = !forceLow && Properties.Settings.Default.setMap_captureHighQuality;
             Bitmap bmp = Capture(minLat, minLon, maxLat, maxLon, TargetPx(high), progress, out error);
             if (bmp == null) return null;
 

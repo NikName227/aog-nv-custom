@@ -275,6 +275,7 @@ namespace AgOpenGPS
                 pendingCapture = false;
                 captureTimer.Stop();
                 SetAndSaveBingMap(null);
+                mf.MapHudReset();     // file gone -> the HUD button must not bring back a hidden copy
                 mf.parcels.Clear();   // map off -> parcels off too
                 lblStatus.Text = gStr.gsBackgroundRemoved;
             }

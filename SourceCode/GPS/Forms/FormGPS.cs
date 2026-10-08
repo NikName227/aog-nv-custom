@@ -1235,6 +1235,7 @@ namespace AgOpenGPS
             // via Map App ON, which then loads from the per-field cache (or the internet).
             parcels.Clear();
             Properties.Settings.Default.setMap_showParcelsOnMain = false;
+            MapHudReset();
 
             btnFieldStats.Visible = true;
 
@@ -1548,6 +1549,7 @@ namespace AgOpenGPS
             PanelsAndOGLSize();
             SetZoom();
             worldGrid.BingMap = null;
+            MapHudReset();
 
             panelSim.Top = Height - 60;
 
