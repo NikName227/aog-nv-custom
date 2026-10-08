@@ -2803,6 +2803,14 @@ namespace AgOpenGPS
                 XyCoord menuShowHideCoord = new XyCoord(center, hite - 32);
                 ScreenTextures.MenuShowHide.Draw(menuShowHideCoord, menuShowHideCoord + sizeDelta);
 
+                //F01 map + parcels toggle, above the grid "x2" (blinks while downloading)
+                if (IsMapHudVisible && (!mapHudCapturing || (DateTime.Now.Millisecond / 250) % 2 == 0))
+                {
+                    XyCoord mapCoord = new XyCoord(center, hite - 72 - 50);
+                    (IsMapHudOn ? ScreenTextures.MapOn : ScreenTextures.MapOff)
+                        .Draw(mapCoord, mapCoord + sizeDelta);
+                }
+
                 center += 50;
                 font.DrawText(center - 56, hite - 72, "x" + gridToolSpacing.ToString(), 1);
             }

@@ -1428,6 +1428,13 @@ namespace AgOpenGPS
 
                         if (isJobStarted)
                         {
+                            //F01 map + parcels toggle (drawn at Height-152 .. Height-120)
+                            if (IsMapHudVisible && point.Y > oglMain.Height - 156 && point.Y < oglMain.Height - 116)
+                            {
+                                MapHudToggle();
+                                return;
+                            }
+
                             if (point.Y > oglMain.Height - 60 && point.Y < oglMain.Height - 30)
                             {
                                 isPanelBottomHidden = !isPanelBottomHidden;
