@@ -66,6 +66,16 @@ namespace AgOpenGPS
         private bool AddSnap => addStage != 0;
         private const double BoundarySnapDist = 4.0; // metres
 
+        // Parcel lines (only while they are shown, i.e. satellite ON): a new point snaps to
+        // them too, the boundary always wins within BoundarySnapDist. Curve by Boundary / Smart
+        // Curve follow the parcel lines when neither point is near the boundary.
+        private bool ParcelsActive => satVisual != null && mf.parcels.Segments != null && mf.parcels.Segments.Length >= 2;
+        private CParcelPath parcelNet;
+        private GeoCoord[] parcelNetFrom;
+        private CTrk parcelRefTrack;            // line built along parcels (Check / Smart measure against it)
+        private List<double[]> parcelRef;       // ...and the parcel path it was built from
+        private bool lastBndParcels;            // last Curve by Boundary base came from parcels
+
         // Mouse drag state.
         private int dragIndex = -1;
         private bool panning;
@@ -493,7 +503,7 @@ namespace AgOpenGPS
                 if (AddActive)
                 {
                     vec2 np = ScreenToWorld(e.X, e.Y);
-                    np = SnapToBoundary(np, BoundarySnapDist); // snap to boundary if within range
+                    np = SnapAddPoint(np);  // boundary within range, else a shown parcel line
                     pts.Add(np);
                     RecomputeAB();
                     UpdateLineButtons();
@@ -958,7 +968,7 @@ namespace AgOpenGPS
             checkBoxes.Clear();
             int show = (mode == LineMode.Browse) ? activeIdx : workIdx;
             if (show < 0 || show >= gTemp.Count) { lblActiveOp.Text = "No line"; oglSelf.Invalidate(); return; }
-            if (mf.bnd.bndList.Count == 0) { lblActiveOp.Text = "No boundary"; oglSelf.Invalidate(); return; }
+            if (mf.bnd.bndList.Count == 0 && !IsParcelLine(gTemp[show])) { lblActiveOp.Text = "No boundary"; oglSelf.Invalidate(); return; }
 
             int cm = checkCm;
             double thr = cm / 100.0;
@@ -978,7 +988,7 @@ namespace AgOpenGPS
 
             foreach (var p in chk)
             {
-                double d = DistToBoundary(p);
+                double d = DistToReference(p, gTemp[show]);
                 if (d > thr && d < 3.0) checkBoxes.Add(p); // ignore the far side of the field (> 3 m)
             }
             lblActiveOp.Text = checkBoxes.Count + " spots > " + cm + " cm off boundary";
@@ -1085,6 +1095,80 @@ namespace AgOpenGPS
                 }
             }
             return res;
+        }
+
+        // ── Parcel lines (snap + Curve by Parcels) ────────────────────────
+        private CParcelPath ParcelNet()
+        {
+            var s = mf.parcels.Segments;
+            if (parcelNet == null || !ReferenceEquals(parcelNetFrom, s))
+            {
+                var flat = new double[s.Length / 2 * 4];
+                for (int i = 0; i + 1 < s.Length; i += 2)
+                {
+                    flat[2 * i] = s[i].Easting; flat[2 * i + 1] = s[i].Northing;
+                    flat[2 * i + 2] = s[i + 1].Easting; flat[2 * i + 3] = s[i + 1].Northing;
+                }
+                parcelNet = new CParcelPath(flat);
+                parcelNetFrom = s;
+            }
+            return parcelNet;
+        }
+
+        // Boundary within range wins (it is drawn with more care); else the nearest shown parcel line.
+        private vec2 SnapAddPoint(vec2 p)
+        {
+            if (DistToBoundary(p) <= BoundarySnapDist) return SnapToBoundary(p, BoundarySnapDist);
+            if (ParcelsActive && ParcelNet().Snap(p.easting, p.northing, BoundarySnapDist,
+                    out double cx, out double cy, out _))
+                return new vec2(cx, cy);
+            return p;
+        }
+
+        // Curve by Boundary along the parcel lines: only when parcels are shown, neither point is
+        // near the boundary and both are on a parcel line. False = not for parcels (boundary path).
+        private bool TryParcelCurve()
+        {
+            if (!ParcelsActive || pts.Count != 2) return false;
+            vec2 a = pts[aIndex], b = pts[bIndex];
+            if (DistToBoundary(a) <= BoundarySnapDist || DistToBoundary(b) <= BoundarySnapDist) return false;
+
+            var net = ParcelNet();
+            if (!net.Snap(a.easting, a.northing, BoundarySnapDist, out _, out _, out _)
+                || !net.Snap(b.easting, b.northing, BoundarySnapDist, out _, out _, out _)) return false;
+
+            var path = net.Path(a.easting, a.northing, b.easting, b.northing, BoundarySnapDist, 1.0);
+            if (path == null) { lblActiveOp.Text = "Točke nisu povezane linijom čestica"; oglSelf.Invalidate(); return true; }
+
+            var des = new List<vec3>(path.Count);
+            foreach (var q in path) des.Add(new vec3(q[0], q[1], 0));
+            if (des.Count < 4) { lblActiveOp.Text = "Curve by parcels: too short"; oglSelf.Invalidate(); return true; }
+
+            CABCurve.CalculateHeadings(ref des);
+            double head = des[des.Count / 2].heading;
+            vec3 a0 = des[0], bN = des[des.Count - 1];
+            ExtendEnds(des, ExtendMeters);
+            CABCurve.CalculateHeadings(ref des);
+
+            var t = new CTrk { mode = TrackMode.Curve, heading = head, isVisible = true };
+            t.ptA = new vec2(a0.easting, a0.northing);
+            t.ptB = new vec2(bN.easting, bN.northing);
+            t.name = LineName("CuPar", head);
+            foreach (vec3 p in des) t.curvePts.Add(p);
+            StoreGenerated(t);
+            parcelRefTrack = t;
+            parcelRef = path;
+            lastBndParcels = true;
+            lblActiveOp.Text = "Curve by Parcels";
+            return true;
+        }
+
+        private bool IsParcelLine(CTrk t) => t != null && ReferenceEquals(t, parcelRefTrack) && parcelRef != null;
+
+        // Deviation reference: the parcel path for a line built along parcels, else the boundary.
+        private double DistToReference(vec2 p, CTrk t)
+        {
+            return IsParcelLine(t) ? CParcelPath.DistToPolyline(p.easting, p.northing, parcelRef) : DistToBoundary(p);
         }
 
         private static double ClosestOnSeg(double px, double py, double ax, double ay, double bx, double by,
@@ -1442,8 +1526,10 @@ namespace AgOpenGPS
             if (pts.Count != 2) return;
             ExitSmartMode();
             lastMake = "Bnd";
+            lastBndParcels = false;
             try
             {
+                if (TryParcelCurve()) return;
                 if (mf.bnd.bndList.Count == 0) { lblActiveOp.Text = "No boundary"; return; }
 
                 // snap A and B to the nearest boundary vertex
@@ -1528,7 +1614,7 @@ namespace AgOpenGPS
             {
                 int mid = (lo + hi) / 2;
                 var sm = (mid < 2) ? smartBase : SmoothPoints(smartBase, mid * 2);
-                if (MaxCoreDeviation(sm, a, b) <= tol) { bestS = mid; lo = mid + 1; }
+                if (MaxCoreDeviation(sm, a, b, gTemp[show]) <= tol) { bestS = mid; lo = mid + 1; }
                 else hi = mid - 1;
             }
 
@@ -1538,12 +1624,12 @@ namespace AgOpenGPS
             var cp = gTemp[show].curvePts; CABCurve.CalculateHeadings(ref cp);
             ctrlPts[show] = null;                    // curve no longer matches the control points
             smoothVal = -1; smoothLine = null; checkBoxes.Clear();
-            lblActiveOp.Text = "Smart curve  (smooth " + bestS + ", within " + checkCm + " cm)";
+            lblActiveOp.Text = "Smart curve" + (lastBndParcels ? " (parcels)" : "") + "  (smooth " + bestS + ", within " + checkCm + " cm)";
             oglSelf.Invalidate();
         }
 
         // Max distance of the curve CORE (A->B, 150 m tails excluded) from the boundary.
-        private double MaxCoreDeviation(List<vec3> curve, vec2 a, vec2 b)
+        private double MaxCoreDeviation(List<vec3> curve, vec2 a, vec2 b, CTrk track)
         {
             var flat = new List<vec2>(curve.Count);
             foreach (vec3 p in curve) flat.Add(new vec2(p.easting, p.northing));
@@ -1551,7 +1637,7 @@ namespace AgOpenGPS
             double max = 0;
             foreach (var p in core)
             {
-                double d = DistToBoundary(p);
+                double d = DistToReference(p, track);
                 if (d < 3.0 && d > max) max = d;     // ignore the far side of the field
             }
             return max;
