@@ -26,6 +26,8 @@ namespace AgOpenGPS.Classes
         private Texture2D _questionMark;
         private Texture2D _zoomIn;
         private Texture2D _zoomOut;
+        private Texture2D _mapOn;
+        private Texture2D _mapOff;
         private Texture2D _headlandLight;
         private Texture2D _headlandDark;
 
@@ -210,6 +212,24 @@ namespace AgOpenGPS.Classes
             {
                 if (_zoomIn == null) _zoomIn = new Texture2D(Resources.ZoomIn48);
                 return _zoomIn;
+            }
+        }
+
+        public Texture2D MapOn
+        {
+            get
+            {
+                if (_mapOn == null) _mapOn = new Texture2D(Resources.MappingOn);
+                return _mapOn;
+            }
+        }
+
+        public Texture2D MapOff
+        {
+            get
+            {
+                if (_mapOff == null) _mapOff = new Texture2D(Resources.MappingOff);
+                return _mapOff;
             }
         }
 
