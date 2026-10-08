@@ -64,8 +64,8 @@ namespace AgOpenGPS.Properties
 
         // F10 — roll correction checked against the raw antenna (REQ 2026-09-30-1)
         public bool setSF_rollCorrOn = false;   // off = AOG's own AntennaHeight * sin(roll)
-        public double setSF_rollReactionSec = 4.0; // [s] 1..8, how long an unconfirmed roll
-                                                // change is held back before it is believed
+        // [s] 1..8, how long an unconfirmed roll change is held back before it is believed
+        public double setSF_rollReactionSec = 4.0;
 
         // F10 — TM171 on the chassis, read over USB (REQ 2026-10-02-1)
         public bool setSF_tmUseRoll = false;    // chassis roll replaces the PANDA (cabin) roll
