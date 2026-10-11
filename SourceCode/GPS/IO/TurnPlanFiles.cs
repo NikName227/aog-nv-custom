@@ -29,6 +29,9 @@ namespace AgOpenGPS.IO
         public double builtWidth;
         // orchard: first inter-row the plan starts from (1 = from the beginning)
         public int startZone = 1;
+        // REQ 2026-10-11-2: automatic zone borders on/off + the driver's own zone cuts
+        public bool autoZones = true;
+        public List<vec2> zoneCuts = new List<vec2>();
         public List<CPlanEntry> entries = new List<CPlanEntry>();
     }
 
@@ -109,10 +112,23 @@ namespace AgOpenGPS.IO
                     }
 
                     var kv = line.Split(',');
+
+                    // ZoneCut,<easting>,<northing> - one driver's zone border
+                    if (kv.Length == 3 && kv[0] == "ZoneCut")
+                    {
+                        if (double.TryParse(kv[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double ce) &&
+                            double.TryParse(kv[2], NumberStyles.Float, CultureInfo.InvariantCulture, out double cn))
+                            data.zoneCuts.Add(new vec2(ce, cn));
+                        continue;
+                    }
+
                     if (kv.Length == 2)
                     {
                         switch (kv[0].Trim())
                         {
+                            case "AutoZones":
+                                if (bool.TryParse(kv[1].Trim(), out bool az)) data.autoZones = az;
+                                continue;
                             case "FollowPlan":
                                 if (bool.TryParse(kv[1].Trim(), out bool f)) data.followPlan = f;
                                 continue;
@@ -208,6 +224,10 @@ namespace AgOpenGPS.IO
                     writer.WriteLine("ZoneOrder," + plan.zoneOrder);
                 if (!string.IsNullOrEmpty(plan.trackName))
                     writer.WriteLine("Track," + plan.trackName);
+                writer.WriteLine("AutoZones," + plan.autoZones);
+                foreach (var c in plan.zoneCuts)
+                    writer.WriteLine("ZoneCut," + FileIoUtils.FormatDouble(c.easting, 3) + ","
+                        + FileIoUtils.FormatDouble(c.northing, 3));
 
                 foreach (var p in plan.entries)
                 {
