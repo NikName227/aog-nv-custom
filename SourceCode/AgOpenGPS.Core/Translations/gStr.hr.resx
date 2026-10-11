@@ -1916,4 +1916,10 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsZonesAddedByRule" xml:space="preserve">
     <value>zona dodano (pravilo 10 m)</value>
   </data>
+  <data name="gsTurnOffset" xml:space="preserve">
+    <value>Odmak</value>
+  </data>
+  <data name="gsTurnLinesAuto" xml:space="preserve">
+    <value>Linije okretanja napravljene iz prve AB linije - po potrebi podesi odmak</value>
+  </data>
 </root>

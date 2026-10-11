@@ -2283,4 +2283,10 @@ USE AT OWN RISK.</value>
   <data name="gsZonesAddedByRule" xml:space="preserve">
     <value>zones added (10 m rule)</value>
   </data>
+  <data name="gsTurnOffset" xml:space="preserve">
+    <value>Offset</value>
+  </data>
+  <data name="gsTurnLinesAuto" xml:space="preserve">
+    <value>Turn lines created from the first AB line - adjust the offset if needed</value>
+  </data>
 </root>

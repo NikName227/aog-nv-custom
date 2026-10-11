@@ -163,6 +163,11 @@ namespace AgOpenGPS.Properties
         // them at runtime any more.
         public bool set_turnParamsMovedToProfiles = false;
 
+        // REQ 2026-10-11-1: turn master switch + trigger mode (immediate / after stop). The
+        // driver's choice, kept until changed - not tied to a field or an implement.
+        public bool setTurn_isActive = false;
+        public bool setTurn_isAfterStop = false;
+
         // Turn limit lines (NV custom) — per-vehicle turn shape parameters.
         // Radii of 0 mean "use the general turn radius (set_youTurnRadius)".
         public double set_turnK_exitRadius = 8;         // K: exit arc radius
