@@ -50,6 +50,9 @@ namespace AgOpenGPS
             public readonly List<PointLatLng> pts = new List<PointLatLng>();
             public GMapRoute route;
             public readonly List<CornerMarker> markers = new List<CornerMarker>();
+            // REQ 2026-10-11-1: pivot offset per implement profile, travels with the line
+            public Dictionary<string, double> offsets = new Dictionary<string, double>();
+            public OffsetLabel label;
         }
 
         private readonly List<EditLine> editLines = new List<EditLine>();
@@ -81,6 +84,36 @@ namespace AgOpenGPS
                 g.FillEllipse(Brushes.White, LocalPosition.X - r, LocalPosition.Y - r, 2 * r, 2 * r);
                 using (var pen = new Pen(Color.OrangeRed, 2.5f))
                     g.DrawEllipse(pen, LocalPosition.X - r, LocalPosition.Y - r, 2 * r, 2 * r);
+            }
+        }
+
+        // REQ 2026-10-11-1: "Offset_N: x m" beside each line; a tap opens the keypad
+        private class OffsetLabel : GMapMarker
+        {
+            public readonly EditLine line;
+            public readonly string text;
+            public Rectangle box;
+
+            public OffsetLabel(PointLatLng pos, EditLine l, string t) : base(pos)
+            {
+                line = l;
+                text = t;
+            }
+
+            public override void OnRender(Graphics g)
+            {
+                using (var f = new Font("Tahoma", 12f, FontStyle.Bold))
+                {
+                    SizeF sz = g.MeasureString(text, f);
+                    box = new Rectangle(LocalPosition.X - (int)(sz.Width / 2) - 6,
+                        LocalPosition.Y - (int)(sz.Height / 2) - 4,
+                        (int)sz.Width + 12, (int)sz.Height + 8);
+                    using (var back = new SolidBrush(Color.FromArgb(225, Color.White)))
+                        g.FillRectangle(back, box);
+                    using (var pen = new Pen(Color.DarkOrange, 3f))
+                        g.DrawRectangle(pen, box);
+                    g.DrawString(text, f, Brushes.Black, box.X + 6, box.Y + 4);
+                }
             }
         }
 
@@ -152,7 +185,6 @@ namespace AgOpenGPS
             lblMinRS.Text = gStr.gsMinTurnRadius;
             lblTolerance.Text = gStr.gsTriggerTolBefore;
             lblToleranceAfter.Text = gStr.gsTriggerTolAfter;
-            lblBndOffset.Text = gStr.gsBndOffsetExtra;
             lblOvershootU.Text = gStr.gsOvershootDist;
         }
 
@@ -265,6 +297,8 @@ namespace AgOpenGPS
             if (mf.plan.HasPlan)
                 mf.plan.RebuildGeometry();
             DrawPlanOverlay();   // also highlights the active AB line even without a plan
+
+            TryAutoLines();
 
             // path planning is the DEFAULT view (redesign 2026-07-16)
             wizStep = 0;
@@ -434,6 +468,7 @@ namespace AgOpenGPS
                 var el = new EditLine();
                 for (int i = 0; i < ln.pts.Count; i++)
                     el.pts.Add(LocalToLatLng(ln.pts[i].easting, ln.pts[i].northing));
+                el.offsets = new Dictionary<string, double>(ln.offsets);
                 editLines.Add(el);
                 BuildLineVisuals(el);
             }
@@ -689,6 +724,13 @@ namespace AgOpenGPS
         {
             if (e.Button != MouseButtons.Left) return;
             if (measureOn) return;   // measure uses drag (MouseDown/Move), not taps
+
+            //REQ 2026-10-11-1: an offset caption beats every tap mode - it sits off the line
+            if (HitTestOffsetLabel(e.X, e.Y, out EditLine offLine))
+            {
+                EditOffset(offLine);
+                return;
+            }
 
             //PATH tab: the zone badges are the way the processing order is edited
             if (activeTab == ViewTab.Path && HitTestZoneBadge(e.X, e.Y, out int zoneIdx))
@@ -979,6 +1021,7 @@ namespace AgOpenGPS
         {
             previewOverlay.Routes.Clear();
             previewOverlay.Polygons.Clear();
+            RefreshOffsetLabels();
 
             //orchard fields may have no boundary - no preview then
             if (mf.bnd.bndList.Count == 0 || mf.bnd.bndList[0].fenceLine.Count < 3) return;
@@ -992,12 +1035,7 @@ namespace AgOpenGPS
 
             // scratch copy so the live field state is untouched until Save
             var scratch = new CTurnLimitLines(mf);
-            foreach (var el in editLines)
-            {
-                var tll = new CTurnLimitLine();
-                foreach (var p in el.pts) tll.pts.Add(LatLngToLocal(p));
-                scratch.lines.Add(tll);
-            }
+            foreach (var el in editLines) scratch.lines.Add(ToLimitLine(el));
             scratch.BuildEffectiveLines();
 
             // field centroid for the "toward the field" direction
@@ -1078,18 +1116,13 @@ namespace AgOpenGPS
             foreach (var el in editLines)
             {
                 if (el.pts.Count < 2) continue;
-                var tll = new CTurnLimitLine();
-                foreach (var p in el.pts) tll.pts.Add(LatLngToLocal(p));
-                mf.tnl.lines.Add(tll);
+                mf.tnl.lines.Add(ToLimitLine(el));
             }
 
+            //REQ 2026-10-11-1: app settings - they stay as picked, whatever field comes next
             mf.tnl.isTurnActive = activateState >= 1;
             mf.tnl.isAfterStop = afterStopMode;
-            mf.tnl.isAutomatic = true;   // trigger is always automatic (2-state toggle picks HOW)
-            // redesign 2026-07-16: the K-only / combined choice is gone from the UI -
-            // the maneuver is always combined U/K (auto pick by available space)
-            mf.tnl.isKPrimary = false;
-            mf.tnl.isCombined = true;
+            Properties.Settings.Default.Save();
             mf.tnl.BuildEffectiveLines();
             //IsFeatureOn just changed, and it decides the turn line inset (CTurn.cs:128)
             mf.bnd.BuildTurnLines();
@@ -1105,6 +1138,110 @@ namespace AgOpenGPS
             mf.FileSaveTurnLines();
             isDirty = false;
             UpdateSaveState();
+        }
+
+        // ── offsets (REQ 2026-10-11-1) ────────────────────────────────────
+        // One caption per line, numbered in list order - the same numbers the main map and
+        // the HUD button use. Rebuilt on every preview, so it follows edits and deletions.
+        private void RefreshOffsetLabels()
+        {
+            for (int i = lineOverlay.Markers.Count - 1; i >= 0; i--)
+                if (lineOverlay.Markers[i] is OffsetLabel) lineOverlay.Markers.RemoveAt(i);
+
+            for (int i = 0; i < editLines.Count; i++)
+            {
+                var el = editLines[i];
+                el.label = null;
+                if (el.pts.Count < 2) continue;
+
+                var local = new List<vec3>(el.pts.Count);
+                foreach (var p in el.pts) local.Add(LatLngToLocal(p));
+                vec3 mid = CTurnLimitLines.PolylineMidpoint(local);
+
+                // a few metres toward the field, so the caption does not cover the line and
+                // a tap on the line itself still reaches the edit modes
+                if (mf.bnd.bndList.Count > 0 && mf.bnd.bndList[0].fenceLine.Count > 2)
+                {
+                    double ce = 0, cn = 0;
+                    var fence = mf.bnd.bndList[0].fenceLine;
+                    foreach (var v in fence) { ce += v.easting; cn += v.northing; }
+                    ce /= fence.Count; cn /= fence.Count;
+                    double dx = ce - mid.easting, dy = cn - mid.northing;
+                    double len = Math.Sqrt(dx * dx + dy * dy);
+                    if (len > 1) { mid.easting += dx / len * 8.0; mid.northing += dy / len * 8.0; }
+                }
+
+                el.label = new OffsetLabel(LocalToLatLng(mid.easting, mid.northing), el,
+                    CTurnLimitLines.OffsetCaption(i, CTurnLimitLines.GetOffset(el.offsets)));
+                lineOverlay.Markers.Add(el.label);
+            }
+        }
+
+        private bool HitTestOffsetLabel(int x, int y, out EditLine line)
+        {
+            line = null;
+            foreach (var el in editLines)
+            {
+                if (el.label == null || el.label.box.Width == 0) continue;
+                if (el.label.box.Contains(x, y)) { line = el; return true; }
+            }
+            return false;
+        }
+
+        private void EditOffset(EditLine el)
+        {
+            double current = CTurnLimitLines.GetOffset(el.offsets);
+            using (var f = new FormNumeric(-CTurnLimitLines.maxOffset, CTurnLimitLines.maxOffset, current))
+            {
+                if (f.ShowDialog(this) != DialogResult.OK) return;
+                CTurnLimitLines.SetOffset(el.offsets, Math.Round(f.ReturnValue, 2));
+            }
+            MarkDirty();
+            UpdatePreview();
+        }
+
+        /// <summary>
+        /// A field opened here without any turn line gets them on its own (REQ 2026-10-11-1):
+        /// one per end, on the boundary, from the first AB line/curve. Saved right away - on a
+        /// plain field the driver never has to come back to them.
+        /// </summary>
+        private void TryAutoLines()
+        {
+            if (editLines.Count > 0 || mf.tool.isToolOrchard) return;
+            if (mf.bnd.bndList.Count == 0 || mf.bnd.bndList[0].fenceLine.Count < 3) return;
+
+            CTrk reference = null;
+            foreach (var t in mf.trk.gArr)
+            {
+                if (t.isOrchardDerived) continue;
+                if (t.mode == TrackMode.AB || (t.mode == TrackMode.Curve && t.curvePts.Count > 1))
+                {
+                    reference = t;
+                    break;
+                }
+            }
+            if (reference == null) return;
+
+            var auto = CTurnLimitLines.AutoLinesFromTrack(mf.bnd.bndList[0].fenceLine, reference);
+            if (auto.Count == 0) return;
+
+            foreach (var pts in auto)
+            {
+                var el = new EditLine();
+                foreach (var v in pts) el.pts.Add(LocalToLatLng(v.easting, v.northing));
+                editLines.Add(el);
+                BuildLineVisuals(el);
+            }
+            SaveAll();
+            UpdatePreview();
+            mf.TimedMessageBox(2000, gStr.gsTurnLimitLines, gStr.gsTurnLinesAuto);
+        }
+
+        private CTurnLimitLine ToLimitLine(EditLine el)
+        {
+            var tll = new CTurnLimitLine { offsets = new Dictionary<string, double>(el.offsets) };
+            foreach (var p in el.pts) tll.pts.Add(LatLngToLocal(p));
+            return tll;
         }
 
         private void btnSave_Click(object sender, EventArgs e)
@@ -2626,7 +2763,6 @@ namespace AgOpenGPS
             SetNud(nudOvershootU, v.setTurn_U_overshootDist);
             SetNud(nudTolerance, t.setTurn_triggerTolerance);
             SetNud(nudToleranceAfter, t.setTurn_triggerToleranceAfter);
-            SetNud(nudBndOffset, t.setTurn_boundaryOffset);
 
             btnStyleK.Checked = true;
             ShowStyle(pnlK);
@@ -2663,7 +2799,6 @@ namespace AgOpenGPS
         private void btnApplyParams_Click(object sender, EventArgs e)
         {
             SaveTurnParams();
-            mf.tnl.BuildEffectiveLines();   //the drawn wheel limit moves with the offset
             paramsDirty = false;
             UpdateApplyButton();
             gMapControl.Invalidate();
@@ -2675,7 +2810,7 @@ namespace AgOpenGPS
             var nuds = new System.Windows.Forms.NumericUpDown[]
             {
                 nudExitK, nudDistK, nudAngleK, nudTransK, nudOutU, nudInU,
-                nudOvershootU, nudTolerance, nudToleranceAfter, nudBndOffset
+                nudOvershootU, nudTolerance, nudToleranceAfter
             };
             foreach (var n in nuds) n.ValueChanged += (s, e) => MarkParamsDirty();
 
@@ -2698,18 +2833,9 @@ namespace AgOpenGPS
             v.Save();
 
             var t = Properties.ToolSettings.Default;
-            double oldOffset = t.setTurn_boundaryOffset;
             t.setTurn_triggerTolerance = (double)nudTolerance.Value;
             t.setTurn_triggerToleranceAfter = (double)nudToleranceAfter.Value;
-            t.setTurn_boundaryOffset = (double)nudBndOffset.Value;
             t.Save();
-
-            //the dashed wheel limit is drawn with this offset baked in - redraw it at once
-            if (Math.Abs(oldOffset - t.setTurn_boundaryOffset) > 0.001)
-            {
-                mf.tnl.BuildEffectiveLines();
-                mf.yt.ReloadTurnSettings();
-            }
         }
 
         // right-hand diagram area inside a style panel (left side holds the number inputs + steppers)
@@ -2732,7 +2858,6 @@ namespace AgOpenGPS
             MakeKeypadField(nudOvershootU, 0.5);
             MakeKeypadField(nudTolerance, 0.2);
             MakeKeypadField(nudToleranceAfter, 0.2);
-            MakeKeypadField(nudBndOffset, 0.1);
             MakeKeypadField(nudZones, 1, zoneSteppers);   //wizard step 2 shows/hides these
 
             WireParamChangeTracking();

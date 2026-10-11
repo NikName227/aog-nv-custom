@@ -1,5 +1,7 @@
 // TurnLinesFiles.cs - per-field turn limit lines (TurnLines.txt).
-// Header flags + a list of polylines (local plane easting,northing points).
+// A list of polylines (local plane easting,northing points) + per-implement offsets.
+// REQ 2026-10-11-1: the old Active/Automatic/AfterStop flags moved to the app settings;
+// they are still in older files and simply skipped on read.
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -9,8 +11,9 @@ namespace AgOpenGPS.IO
 {
     public class TurnLinesData
     {
-        public bool active, automatic, kPrimary, combined, afterStop;
         public List<List<vec3>> lines = new List<List<vec3>>();
+        // per line (same index as lines): implement profile -> pivot offset (m)
+        public List<Dictionary<string, double>> offsets = new List<Dictionary<string, double>>();
     }
 
     public static class TurnLinesFiles
@@ -45,25 +48,34 @@ namespace AgOpenGPS.IO
                         }
                         if (--pendingPoints == 0)
                         {
-                            if (current.Count > 1) data.lines.Add(current);
+                            if (current.Count > 1)
+                            {
+                                data.lines.Add(current);
+                                data.offsets.Add(new Dictionary<string, double>());
+                            }
                             current = null;
                         }
                         continue;
                     }
 
-                    var kv = line.Split(',');
-                    if (kv.Length == 2 && bool.TryParse(kv[1].Trim(), out bool flag))
+                    // Offset,<line index>,<metres>,<implement profile> - the profile name goes
+                    // last so a comma inside it cannot shift the numbers
+                    if (line.StartsWith("Offset,", StringComparison.Ordinal))
                     {
-                        switch (kv[0].Trim())
+                        var op = line.Split(new[] { ',' }, 4);
+                        if (op.Length == 4
+                            && int.TryParse(op[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int li)
+                            && double.TryParse(op[2], NumberStyles.Float, CultureInfo.InvariantCulture, out double off)
+                            && li >= 0 && li < data.offsets.Count)
                         {
-                            case "Active": data.active = flag; break;
-                            case "Automatic": data.automatic = flag; break;
-                            case "KPrimary": data.kPrimary = flag; break;
-                            case "Combined": data.combined = flag; break;
-                            case "AfterStop": data.afterStop = flag; break;
+                            data.offsets[li][op[3]] = off;
                         }
                         continue;
                     }
+
+                    //old header flags (Active,True ...) - now app settings, skipped
+                    var kv = line.Split(',');
+                    if (kv.Length == 2 && bool.TryParse(kv[1].Trim(), out _)) continue;
 
                     // a bare integer starts a new polyline with that many points
                     if (int.TryParse(line, NumberStyles.Integer, CultureInfo.InvariantCulture, out int count) && count > 0)
@@ -84,21 +96,30 @@ namespace AgOpenGPS.IO
             using (var writer = new StreamWriter(path, false))
             {
                 writer.WriteLine("$TurnLines");
-                writer.WriteLine("Active," + tnl.isTurnActive);
-                writer.WriteLine("Automatic," + tnl.isAutomatic);
-                writer.WriteLine("KPrimary," + tnl.isKPrimary);
-                writer.WriteLine("Combined," + tnl.isCombined);
-                writer.WriteLine("AfterStop," + tnl.isAfterStop);
 
+                //offsets are written after ALL the lines: on read a line has to exist before
+                //its offset can attach to it
+                var written = new List<CTurnLimitLine>();
                 foreach (var ln in tnl.lines)
                 {
                     if (ln.pts.Count < 2) continue;
+                    written.Add(ln);
                     writer.WriteLine(ln.pts.Count.ToString(CultureInfo.InvariantCulture));
                     for (int i = 0; i < ln.pts.Count; i++)
                     {
                         writer.WriteLine(
                             FileIoUtils.FormatDouble(ln.pts[i].easting, 3) + "," +
                             FileIoUtils.FormatDouble(ln.pts[i].northing, 3));
+                    }
+                }
+
+                for (int li = 0; li < written.Count; li++)
+                {
+                    foreach (var kv in written[li].offsets)
+                    {
+                        if (kv.Value == 0) continue;
+                        writer.WriteLine("Offset," + li.ToString(CultureInfo.InvariantCulture) + ","
+                            + FileIoUtils.FormatDouble(kv.Value, 3) + "," + kv.Key);
                     }
                 }
             }

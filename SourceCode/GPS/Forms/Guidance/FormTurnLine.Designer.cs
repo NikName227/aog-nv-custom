@@ -87,9 +87,7 @@
             this.nudInU = new System.Windows.Forms.NumericUpDown();
             this.nudMinRS = new System.Windows.Forms.NumericUpDown();
             this.lblTolerance = new System.Windows.Forms.Label();
-            this.lblBndOffset = new System.Windows.Forms.Label();
             this.btnApplyParams = new System.Windows.Forms.Button();
-            this.nudBndOffset = new AgOpenGPS.NudlessNumericUpDown();
             this.nudTolerance = new System.Windows.Forms.NumericUpDown();
             this.lblToleranceAfter = new System.Windows.Forms.Label();
             this.nudToleranceAfter = new System.Windows.Forms.NumericUpDown();
@@ -432,8 +430,6 @@
             this.pnlParams.Controls.Add(this.btnStyleU);
             this.pnlParams.Controls.Add(this.btnStyleRS);
             this.pnlParams.Controls.Add(this.btnApplyParams);
-            this.pnlParams.Controls.Add(this.lblBndOffset);
-            this.pnlParams.Controls.Add(this.nudBndOffset);
             this.pnlParams.Controls.Add(this.lblTolerance);
             this.pnlParams.Controls.Add(this.nudTolerance);
             this.pnlParams.Controls.Add(this.lblToleranceAfter);
@@ -918,24 +914,6 @@
             this.btnApplyParams.UseVisualStyleBackColor = false;
             this.btnApplyParams.Click += new System.EventHandler(this.btnApplyParams_Click);
             //
-            this.lblBndOffset.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
-            this.lblBndOffset.Location = new System.Drawing.Point(556, 8);
-            this.lblBndOffset.Name = "lblBndOffset";
-            this.lblBndOffset.Size = new System.Drawing.Size(236, 30);
-            this.lblBndOffset.TabIndex = 30;
-            this.lblBndOffset.Text = "Extra boundary offset (m)";
-            this.lblBndOffset.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
-            //
-            this.nudBndOffset.DecimalPlaces = 1;
-            this.nudBndOffset.Font = new System.Drawing.Font("Tahoma", 12F);
-            this.nudBndOffset.Increment = new decimal(new int[] { 1, 0, 0, 65536 });
-            this.nudBndOffset.Location = new System.Drawing.Point(802, 4);
-            this.nudBndOffset.Maximum = new decimal(new int[] { 20, 0, 0, 0 });
-            this.nudBndOffset.Name = "nudBndOffset";
-            this.nudBndOffset.Size = new System.Drawing.Size(110, 34);
-            this.nudBndOffset.TabIndex = 31;
-            this.nudBndOffset.Value = new decimal(new int[] { 5, 0, 0, 65536 });
-            //
             this.lblToleranceAfter.Font = new System.Drawing.Font("Tahoma", 11.25F, System.Drawing.FontStyle.Bold);
             this.lblToleranceAfter.Location = new System.Drawing.Point(586, 44);
             this.lblToleranceAfter.Name = "lblToleranceAfter";
@@ -975,7 +953,6 @@
             ((System.ComponentModel.ISupportInitialize)(this.nudOutU)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudInU)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudMinRS)).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)(this.nudBndOffset)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudTolerance)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudToleranceAfter)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudOvershootU)).BeginInit();
@@ -1020,7 +997,6 @@
             ((System.ComponentModel.ISupportInitialize)(this.nudOutU)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudInU)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudMinRS)).EndInit();
-            ((System.ComponentModel.ISupportInitialize)(this.nudBndOffset)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudTolerance)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudToleranceAfter)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.nudOvershootU)).EndInit();
@@ -1100,9 +1076,7 @@
         private System.Windows.Forms.NumericUpDown nudInU;
         private System.Windows.Forms.NumericUpDown nudMinRS;
         private System.Windows.Forms.Label lblTolerance;
-        private System.Windows.Forms.Label lblBndOffset;
         private System.Windows.Forms.Button btnApplyParams;
-        private AgOpenGPS.NudlessNumericUpDown nudBndOffset;
         private System.Windows.Forms.NumericUpDown nudTolerance;
         private System.Windows.Forms.Label lblToleranceAfter;
         private System.Windows.Forms.NumericUpDown nudToleranceAfter;

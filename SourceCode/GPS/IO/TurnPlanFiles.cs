@@ -42,7 +42,6 @@ namespace AgOpenGPS.IO
             // 2026-08-12: the whole turn shape lives on the implement, so the signature is
             // read from one profile instead of two
             var v = AgOpenGPS.Properties.ToolSettings.Default;
-            var t = AgOpenGPS.Properties.ToolSettings.Default;
 
             return string.Join("/", new[]
             {
@@ -54,8 +53,9 @@ namespace AgOpenGPS.IO
                 v.setTurn_K_transitionRadius.ToString("0.000", CultureInfo.InvariantCulture),
                 v.setTurn_U_exitRadius.ToString("0.000", CultureInfo.InvariantCulture),
                 v.setTurn_U_entryRadius.ToString("0.000", CultureInfo.InvariantCulture),
-                v.setTurn_U_overshootDist.ToString("0.000", CultureInfo.InvariantCulture),
-                t.setTurn_boundaryOffset.ToString("0.000", CultureInfo.InvariantCulture)
+                v.setTurn_U_overshootDist.ToString("0.000", CultureInfo.InvariantCulture)
+                //REQ 2026-10-11-1: the turn line offset is NOT part of it - the passes do not
+                //depend on it, and setting it from the HUD mid-job must not wipe the plan
             });
         }
 

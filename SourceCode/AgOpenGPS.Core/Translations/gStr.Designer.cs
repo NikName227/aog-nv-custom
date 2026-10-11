@@ -5718,5 +5718,17 @@ public static string gsOrchPlanterBehind {
             }
         }
         
+        public static string gsTurnOffset {
+            get {
+                return ResourceManager.GetString("gsTurnOffset", resourceCulture);
+            }
+        }
+        
+        public static string gsTurnLinesAuto {
+            get {
+                return ResourceManager.GetString("gsTurnLinesAuto", resourceCulture);
+            }
+        }
+        
 }
 }

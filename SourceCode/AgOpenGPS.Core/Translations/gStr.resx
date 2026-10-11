@@ -2268,4 +2268,10 @@ USE AT OWN RISK.</value>
   <data name="gsMinTurnRadiusIs" xml:space="preserve">
     <value>min turn radius is</value>
   </data>
+  <data name="gsTurnOffset" xml:space="preserve">
+    <value>Offset</value>
+  </data>
+  <data name="gsTurnLinesAuto" xml:space="preserve">
+    <value>Turn lines created from the first AB line - adjust the offset if needed</value>
+  </data>
 </root>
