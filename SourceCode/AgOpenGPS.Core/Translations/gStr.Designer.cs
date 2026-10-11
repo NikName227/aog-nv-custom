@@ -5718,5 +5718,35 @@ public static string gsOrchPlanterBehind {
             }
         }
         
+        public static string gsPlanMode {
+            get {
+                return ResourceManager.GetString("gsPlanMode", resourceCulture);
+            }
+        }
+        
+        public static string gsAutoZones {
+            get {
+                return ResourceManager.GetString("gsAutoZones", resourceCulture);
+            }
+        }
+        
+        public static string gsDeleteAllPoints {
+            get {
+                return ResourceManager.GetString("gsDeleteAllPoints", resourceCulture);
+            }
+        }
+        
+        public static string gsNoZonesRowByRow {
+            get {
+                return ResourceManager.GetString("gsNoZonesRowByRow", resourceCulture);
+            }
+        }
+        
+        public static string gsZonesAddedByRule {
+            get {
+                return ResourceManager.GetString("gsZonesAddedByRule", resourceCulture);
+            }
+        }
+        
 }
 }

@@ -1901,4 +1901,19 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsMinTurnRadiusIs" xml:space="preserve">
     <value>min radijus okreta je</value>
   </data>
+  <data name="gsPlanMode" xml:space="preserve">
+    <value>Način plana</value>
+  </data>
+  <data name="gsAutoZones" xml:space="preserve">
+    <value>Automatska podjela</value>
+  </data>
+  <data name="gsDeleteAllPoints" xml:space="preserve">
+    <value>Obriši sve</value>
+  </data>
+  <data name="gsNoZonesRowByRow" xml:space="preserve">
+    <value>Red po red - bez zona</value>
+  </data>
+  <data name="gsZonesAddedByRule" xml:space="preserve">
+    <value>zona dodano (pravilo 10 m)</value>
+  </data>
 </root>

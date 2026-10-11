@@ -230,9 +230,15 @@ namespace AgOpenGPS
 
             // path planning: current per-field plan state
             FillTrackCombo();
+            if (!mf.tool.isToolOrchard) BuildFieldPlanControls();
+            syncingModeButtons = true;
+            if (btnMode4 != null) btnMode4.Checked = mf.plan.mode == CTurnPlan.ModeMinUTurn;
             btnMode1.Checked = mf.plan.mode == CTurnPlan.ModeSequential;
             btnMode2.Checked = mf.plan.mode == CTurnPlan.ModeContour;
-            btnMode3.Checked = mf.plan.mode == CTurnPlan.ModeZones;
+            btnMode3.Checked = mf.plan.mode == CTurnPlan.ModeZones
+                || (mf.plan.mode != CTurnPlan.ModeSequential && mf.plan.mode != CTurnPlan.ModeContour
+                    && !(btnMode4 != null && btnMode4.Checked));
+            syncingModeButtons = false;
             if (mf.plan.zoneCount >= (int)nudZones.Minimum && mf.plan.zoneCount <= (int)nudZones.Maximum)
                 nudZones.Value = mf.plan.zoneCount;
             //saved processing order, if the field has one; blank falls back to the default
@@ -260,6 +266,7 @@ namespace AgOpenGPS
             BuildOrchardStartControls();
             ResetStartFrom();
             BuildMinRadiusNote();
+            if (!mf.tool.isToolOrchard) ApplyNarrowPathLayout();
 
             UpdatePlanInfo();
             if (mf.plan.HasPlan)
@@ -623,7 +630,7 @@ namespace AgOpenGPS
         {
             gMapControl.DragButton =
                 (btnAddPoint.Checked || btnDeletePoint.Checked || btnDeleteLine.Checked
-                 || btnBorderLine.Checked)
+                 || btnBorderLine.Checked || ZoneCutModeOn)
                 ? MouseButtons.Right : MouseButtons.Left;
         }
 
@@ -689,6 +696,13 @@ namespace AgOpenGPS
         {
             if (e.Button != MouseButtons.Left) return;
             if (measureOn) return;   // measure uses drag (MouseDown/Move), not taps
+
+            //REQ 2026-10-11-2: zone step border tools
+            if (activeTab == ViewTab.Path && ZoneCutModeOn)
+            {
+                ZoneCutTap(e.X, e.Y);
+                return;
+            }
 
             //PATH tab: the zone badges are the way the processing order is edited
             if (activeTab == ViewTab.Path && HitTestZoneBadge(e.X, e.Y, out int zoneIdx))
@@ -1679,6 +1693,8 @@ namespace AgOpenGPS
             if (lblManualPass != null) lblManualPass.Visible = false;
             if (lblStartFrom != null) foreach (Control c in StartFromControls()) c.Visible = false;
             btnResetPath.Visible = false;      // only where it means something: step 0 with a plan
+            if (btnMode4 != null) btnMode4.Visible = false;
+            SetZoneCutControlsVisible(false);
             HidePrereqChecklist();
 
             if (!PlanPrereqsOk()) wizStep = -1;
@@ -1721,27 +1737,42 @@ namespace AgOpenGPS
                     break;
 
                 case 2:
-                    lblWizTitle.Text = gStr.gsZones;
+                    // REQ 2026-10-11-2: HOW first - the mode decides what the zone step holds.
+                    // Four pictograms 2x2 + the headland clip (it shapes the passes, not zones).
+                    lblWizTitle.Text = gStr.gsPlanMode;
+                    btnMode1.Visible = btnMode2.Visible = btnMode3.Visible = true;
+                    if (btnMode4 != null) btnMode4.Visible = true;
                     chkHeadlandClip.Visible = true;
-                    lblZones.Visible = nudZones.Visible = true;
-                    SetZoneStepperVisible(true);
-                    SetZoneOrderVisible(true);
-                    lblPlanInfo.Visible = true;
                     btnWizBack.Visible = btnWizNext.Visible = btnWizCancel.Visible = true;
                     btnWizNext.Enabled = true;
-                    UpdatePlanInfo();
                     break;
 
                 case 3:
-                    lblWizTitle.Text = gStr.gsRowByRow + " / " + gStr.gsContour + " / " + gStr.gsZonesSkip;
-                    btnMode1.Visible = btnMode2.Visible = btnMode3.Visible = true;
+                    // zones as the mode wants them: none for row by row, the field shape only
+                    // for min turn, field shape + count for contour / zones. Manual passes last.
+                    lblWizTitle.Text = gStr.gsZones;
+                    bool seq = mf.plan.mode == CTurnPlan.ModeSequential;
+                    bool counted = mf.plan.mode == CTurnPlan.ModeZones || mf.plan.mode == CTurnPlan.ModeContour;
+                    if (seq)
+                    {
+                        lblNoZones.Visible = true;
+                    }
+                    else
+                    {
+                        SetZoneCutControlsVisible(true);
+                        lblZones.Visible = nudZones.Visible = counted;
+                        SetZoneStepperVisible(counted);
+                        SetZoneOrderVisible(true);
+                    }
+                    lblPlanInfo.Visible = true;
                     lblManualPass.Visible = true;                // "Ručno dodavanje prolaza"
                     lstLines.Visible = true;                     // manual pass target line
-                    lstLines.Top = 244; lstLines.Height = 152;   // shrunk to fit the caption above
+                    lstLines.Top = 322; lstLines.Height = 78;    // shrunk to fit the zone tools above
                     btnAddPath.Visible = btnDeletePath.Visible = true;
                     btnWizBack.Visible = btnWizCancel.Visible = true;
                     btnWizNext.Visible = true;                   // repurposed as "Završi" (same as OK)
                     btnWizNext.Text = gStr.gsFinish;
+                    UpdatePlanInfo();
                     break;
             }
 
@@ -2040,7 +2071,9 @@ namespace AgOpenGPS
 
             mf.plan.mode = btnMode1.Checked ? CTurnPlan.ModeSequential
                          : btnMode2.Checked ? CTurnPlan.ModeContour
+                         : Mode4On ? CTurnPlan.ModeMinUTurn
                          : CTurnPlan.ModeZones;
+            if (chkAutoZones != null) mf.plan.autoZones = chkAutoZones.Checked;
             mf.plan.zoneCount = (int)nudZones.Value;
             mf.plan.trackName = cboTrack.SelectedItem?.ToString() ?? "";
             mf.plan.clipToHeadland = chkHeadlandClip.Enabled && chkHeadlandClip.Checked;
@@ -2056,6 +2089,8 @@ namespace AgOpenGPS
             mf.FileSaveTurnPlan();
             DrawPlanOverlay();
             UpdatePlanInfo();
+            if (mf.plan.zonesAddedByRule > 0)
+                lblPlanStatus.Text += "\n+" + mf.plan.zonesAddedByRule + " " + gStr.gsZonesAddedByRule;
         }
 
         private void btnTabMap_Click(object sender, EventArgs e)
@@ -2082,10 +2117,18 @@ namespace AgOpenGPS
 
         // three-way exclusive mode toggle (Sequential / Contour / Zones); always one
         // on. In wizard step 3 a mode click regenerates the plan immediately.
+        private bool Mode4On { get { return btnMode4 != null && btnMode4.Checked; } }
+
         private void btnMode1_CheckedChanged(object sender, EventArgs e)
         {
-            if (btnMode1.Checked) { btnMode2.Checked = false; btnMode3.Checked = false; ModePicked(); }
-            else if (!btnMode2.Checked && !btnMode3.Checked) btnMode1.Checked = true;
+            if (btnMode1.Checked) { btnMode2.Checked = false; btnMode3.Checked = false; if (btnMode4 != null) btnMode4.Checked = false; ModePicked(); }
+            else if (!btnMode2.Checked && !btnMode3.Checked && !Mode4On) btnMode1.Checked = true;
+        }
+
+        private void btnMode4_CheckedChanged(object sender, EventArgs e)
+        {
+            if (btnMode4.Checked) { btnMode1.Checked = false; btnMode2.Checked = false; btnMode3.Checked = false; ModePicked(); }
+            else if (!btnMode1.Checked && !btnMode2.Checked && !btnMode3.Checked) btnMode4.Checked = true;
         }
 
         private void ModePicked()
@@ -2104,27 +2147,28 @@ namespace AgOpenGPS
                 return;
             }
 
-            if (wizStep == 3) GenerateFromWizard();
+            //REQ 2026-10-11-2: the mode is step 2 now (it decides what the zone step shows)
+            if (wizStep == 2) GenerateFromWizard();
         }
 
         private void btnMode2_CheckedChanged(object sender, EventArgs e)
         {
-            if (btnMode2.Checked) { btnMode1.Checked = false; btnMode3.Checked = false; ModePicked(); }
-            else if (!btnMode1.Checked && !btnMode3.Checked) btnMode2.Checked = true;
+            if (btnMode2.Checked) { btnMode1.Checked = false; btnMode3.Checked = false; if (btnMode4 != null) btnMode4.Checked = false; ModePicked(); }
+            else if (!btnMode1.Checked && !btnMode3.Checked && !Mode4On) btnMode2.Checked = true;
         }
 
         private void btnMode3_CheckedChanged(object sender, EventArgs e)
         {
-            if (btnMode3.Checked) { btnMode1.Checked = false; btnMode2.Checked = false; ModePicked(); }
-            else if (!btnMode1.Checked && !btnMode2.Checked) btnMode3.Checked = true;
+            if (btnMode3.Checked) { btnMode1.Checked = false; btnMode2.Checked = false; if (btnMode4 != null) btnMode4.Checked = false; ModePicked(); }
+            else if (!btnMode1.Checked && !btnMode2.Checked && !Mode4On) btnMode3.Checked = true;
         }
 
         private void nudZones_ValueChanged(object sender, EventArgs e)
         {
             //a hand-picked order cannot survive a different zone count - back to default
             mf.plan.zoneOrder = "";
-            //step 2 is interactive: the zone split redraws on every change
-            if (wizStep == 2) GenerateFromWizard();
+            //the zone step is interactive: the zone split redraws on every change
+            if (wizStep == 3) GenerateFromWizard();
             UpdatePlanInfo();
         }
 
@@ -2234,6 +2278,238 @@ namespace AgOpenGPS
 
             return gStr.gsZoneWidth + ": " + zoneWidth.ToString("N1") + " m\n"
                  + passesPerZone + " " + gStr.gsPassesPerZone;
+        }
+
+        // ── field plan controls (REQ 2026-10-11-2) ─────────────────────────
+        // A fourth order (min turn, the F50 walk), the zone tools of the zone step and the
+        // narrower left panel. Built at runtime like the other wizard extras, field tools only:
+        // the orchard wizard keeps its own two-button layout untouched.
+        private CheckBox btnMode4, chkAutoZones, btnCutAdd, btnCutDel;
+        private Button btnCutClear;
+        private Label lblNoZones;
+        private const int narrowPanelWidth = 244;     // was 348
+        private const int contentWidth = 224;         // 10 .. 234
+
+        private void BuildFieldPlanControls()
+        {
+            btnMode4 = new CheckBox
+            {
+                Appearance = Appearance.Button,
+                BackColor = btnMode1.BackColor,
+                FlatStyle = FlatStyle.Flat,
+                Font = btnMode1.Font,
+                Text = gStr.gsMinUTurn,
+                TextAlign = ContentAlignment.BottomCenter,
+                TextImageRelation = TextImageRelation.ImageAboveText,
+                UseVisualStyleBackColor = false,
+                Visible = false
+            };
+            btnMode4.FlatAppearance.CheckedBackColor = Color.Gold;
+            btnMode4.CheckedChanged += btnMode4_CheckedChanged;
+            pnlPath.Controls.Add(btnMode4);
+            btnMode4.BringToFront();
+
+            var bold = new Font("Tahoma", 10F, FontStyle.Bold);
+            chkAutoZones = new CheckBox
+            {
+                Appearance = Appearance.Button,
+                BackColor = Color.AliceBlue,
+                FlatStyle = FlatStyle.Flat,
+                Font = bold,
+                Text = gStr.gsAutoZones,
+                TextAlign = ContentAlignment.MiddleCenter,
+                UseVisualStyleBackColor = false,
+                Checked = mf.plan.autoZones,
+                Visible = false
+            };
+            chkAutoZones.FlatAppearance.CheckedBackColor = Color.MediumAquamarine;
+            chkAutoZones.CheckedChanged += (s, e) =>
+            {
+                mf.plan.autoZones = chkAutoZones.Checked;
+                if (wizStep == 3) GenerateFromWizard();
+            };
+
+            btnCutAdd = MkCutToggle(gStr.gsAddPoint);
+            btnCutDel = MkCutToggle(gStr.gsDeletePoint);
+            btnCutAdd.CheckedChanged += (s, e) => { if (btnCutAdd.Checked) btnCutDel.Checked = false; UpdateDragButton(); };
+            btnCutDel.CheckedChanged += (s, e) => { if (btnCutDel.Checked) btnCutAdd.Checked = false; UpdateDragButton(); };
+
+            btnCutClear = new Button
+            {
+                Text = gStr.gsDeleteAllPoints,
+                Font = new Font("Tahoma", 9F, FontStyle.Bold),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.Gainsboro,
+                UseVisualStyleBackColor = false,
+                Visible = false
+            };
+            btnCutClear.Click += (s, e) =>
+            {
+                if (mf.plan.zoneCuts.Count == 0) return;
+                mf.plan.zoneCuts.Clear();
+                GenerateFromWizard();
+            };
+
+            lblNoZones = new Label
+            {
+                Text = gStr.gsNoZonesRowByRow,
+                Font = new Font("Tahoma", 11.25F, FontStyle.Bold),
+                TextAlign = ContentAlignment.MiddleLeft,
+                Visible = false
+            };
+
+            pnlPath.Controls.AddRange(new Control[] { chkAutoZones, btnCutAdd, btnCutDel, btnCutClear, lblNoZones });
+            foreach (Control c in new Control[] { chkAutoZones, btnCutAdd, btnCutDel, btnCutClear, lblNoZones })
+                c.BringToFront();
+        }
+
+        private CheckBox MkCutToggle(string text)
+        {
+            var b = new CheckBox
+            {
+                Appearance = Appearance.Button,
+                BackColor = Color.AliceBlue,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Tahoma", 9F, FontStyle.Bold),
+                Text = text,
+                TextAlign = ContentAlignment.MiddleCenter,
+                UseVisualStyleBackColor = false,
+                Visible = false
+            };
+            b.FlatAppearance.CheckedBackColor = Color.Gold;
+            return b;
+        }
+
+        private void SetZoneCutControlsVisible(bool vis)
+        {
+            if (chkAutoZones == null) return;
+            chkAutoZones.Visible = btnCutAdd.Visible = btnCutDel.Visible = btnCutClear.Visible = vis;
+            lblNoZones.Visible = false;
+            if (vis) chkAutoZones.Checked = mf.plan.autoZones;
+            else { btnCutAdd.Checked = false; btnCutDel.Checked = false; }
+        }
+
+        private bool ZoneCutModeOn
+        {
+            get { return btnCutAdd != null && btnCutAdd.Visible && (btnCutAdd.Checked || btnCutDel.Checked); }
+        }
+
+        /// <summary>
+        /// The left panel narrowed for field tools (user 2026-10-11: "it does not need to be
+        /// that wide"), and the 2x2 mode grid: row by row | min turn / contour | zones.
+        /// </summary>
+        private void ApplyNarrowPathLayout()
+        {
+            pnlPath.Width = narrowPanelWidth;
+            const int x = 10, w = contentWidth;
+
+            lblWizTitle.Width = w;
+            lstLines.Width = w;
+            btnGeneratePlan.Width = w;
+            lblPlanInfo.Width = w;
+            lblPlanStatus.Width = w;
+            lblZoneOrderRead.Width = w;
+            btnResetPath.Width = Math.Min(btnResetPath.Width, w);
+            if (lblManualPass != null) lblManualPass.Width = w;
+            if (prereqLabels != null) foreach (var l in prereqLabels) l.Width = w;
+
+            // 2x2 mode grid, buttons keep their width (104), lower than before
+            const int bw = 104, bh = 100, gap = 8;
+            var icon = new Size(72, 64);
+            btnMode1.SetBounds(x, 64, bw, bh);
+            btnMode4.SetBounds(x + bw + gap + 8, 64, bw, bh);
+            btnMode2.SetBounds(x, 64 + bh + gap, bw, bh);
+            btnMode3.SetBounds(x + bw + gap + 8, 64 + bh + gap, bw, bh);
+            btnMode1.Image = TurnModeIcons.Make(CTurnPlan.ModeSequential, icon.Width, icon.Height);
+            btnMode4.Image = TurnModeIcons.Make(CTurnPlan.ModeMinUTurn, icon.Width, icon.Height);
+            btnMode2.Image = TurnModeIcons.Make(CTurnPlan.ModeContour, icon.Width, icon.Height);
+            btnMode3.Image = TurnModeIcons.Make(CTurnPlan.ModeZones, icon.Width, icon.Height);
+            chkHeadlandClip.SetBounds(x, 64 + 2 * bh + 2 * gap + 6, w, 40);
+
+            // zone step: auto split, zone count, the three zone border tools
+            chkAutoZones.SetBounds(x, 64, w, 38);
+            lblZones.SetBounds(x, 110, 70, 34);
+            nudZones.Location = new Point(x + 72, 108);
+            if (zoneSteppers.Count == 2)
+            {
+                zoneSteppers[0].SetBounds(nudZones.Right + 4, 105, 34, 40);
+                zoneSteppers[1].SetBounds(nudZones.Right + 42, 105, 34, 40);
+            }
+            int cw = (w - 2 * 6) / 3;
+            btnCutAdd.SetBounds(x, 152, cw, 40);
+            btnCutDel.SetBounds(x + cw + 6, 152, cw, 40);
+            btnCutClear.SetBounds(x + 2 * (cw + 6), 152, cw, 40);
+            lblNoZones.SetBounds(x, 64, w, 60);
+            lblPlanInfo.SetBounds(x, 198, w, 66);
+            lblZoneOrderRead.SetBounds(x, 268, w, 24);
+            lblManualPass.SetBounds(x, 294, w, 26);
+            int hw = (w - 8) / 2;
+            btnAddPath.SetBounds(x, 404, hw, 42);
+            btnDeletePath.SetBounds(x + hw + 8, 404, hw, 42);
+
+            // start-from (step 0) rows pulled in to the narrower width
+            lblSfZone.Width = lblSfPass.Width = 70;
+            lblSfZoneVal.Left = lblSfPassVal.Left = 84;
+            btnSfZoneUp.Left = btnSfPassUp.Left = 136;
+            btnSfZoneDown.Left = btnSfPassDown.Left = 182;
+            btnSfApply.Width = w;
+            lblStartFrom.Width = w;
+
+            // Back / Next / Cancel
+            int bb = (w - 2 * 7) / 3;
+            btnWizBack.SetBounds(x, btnWizBack.Top, bb, btnWizBack.Height);
+            btnWizNext.SetBounds(x + bb + 7, btnWizNext.Top, bb, btnWizNext.Height);
+            btnWizCancel.SetBounds(x + 2 * (bb + 7), btnWizCancel.Top, bb, btnWizCancel.Height);
+            btnWizCancel.Font = btnWizBack.Font;
+        }
+
+        // driver's zone borders on the map: a magenta ring at each tapped point
+        private class ZoneCutMarker : GMapMarker
+        {
+            public ZoneCutMarker(PointLatLng pos) : base(pos) { }
+
+            public override void OnRender(Graphics g)
+            {
+                const float r = 11f;
+                using (var pen = new Pen(Color.Magenta, 4f))
+                {
+                    g.DrawEllipse(pen, LocalPosition.X - r, LocalPosition.Y - r, 2 * r, 2 * r);
+                    g.DrawLine(pen, LocalPosition.X, LocalPosition.Y - r - 8, LocalPosition.X, LocalPosition.Y + r + 8);
+                }
+            }
+        }
+
+        private void DrawZoneCuts()
+        {
+            foreach (var c in mf.plan.zoneCuts)
+                planOverlay.Markers.Add(new ZoneCutMarker(LocalToLatLng(c.easting, c.northing)));
+        }
+
+        /// <summary>Zone step tap: add a border at the point, or remove the nearest one.</summary>
+        private void ZoneCutTap(int x, int y)
+        {
+            if (btnCutAdd.Checked)
+            {
+                vec3 p = LatLngToLocal(gMapControl.FromLocalToLatLng(x, y));
+                mf.plan.zoneCuts.Add(new vec2(p.easting, p.northing));
+            }
+            else
+            {
+                int best = -1;
+                double bestD = 24;   // px
+                for (int i = 0; i < mf.plan.zoneCuts.Count; i++)
+                {
+                    var c = mf.plan.zoneCuts[i];
+                    GPoint sp = gMapControl.FromLatLngToLocal(LocalToLatLng(c.easting, c.northing));
+                    double d = Math.Sqrt((sp.X - x) * (sp.X - x) + (sp.Y - y) * (sp.Y - y));
+                    if (d < bestD) { bestD = d; best = i; }
+                }
+                if (best < 0) return;
+                mf.plan.zoneCuts.RemoveAt(best);
+            }
+            //a hand-picked order cannot survive a different zone layout
+            mf.plan.zoneOrder = "";
+            GenerateFromWizard();
         }
 
         // ── Orchard mode (F50 phase 3): the PATH tab plans from rows + tool ──
@@ -2426,6 +2702,7 @@ namespace AgOpenGPS
             }
 
             DrawZoneBadges();
+            DrawZoneCuts();
             gMapControl.Invalidate();
         }
 
