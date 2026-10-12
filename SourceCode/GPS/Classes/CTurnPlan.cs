@@ -12,6 +12,10 @@ namespace AgOpenGPS
     public class CPlanEntry
     {
         public int offsetIdx;
+        // REQ 2026-10-12-1: where the field boundary cuts the pass in two or more, each part
+        // is an entry of its own; piece = which part, counted A->B over ALL parts of the pass
+        // (short ones too), so the same number finds the same part again after a rebuild
+        public int piece;
         public int order;
         public int zone;                 // 1-based zone number
         public bool isSameWay;           // drive along ref heading (visual, alternates)
@@ -61,7 +65,7 @@ namespace AgOpenGPS
         public List<CPlanEntry> entries = new List<CPlanEntry>();
 
         // REQ 2026-10-11-2: zones follow the shape of the field. autoZones on = a zone border
-        // wherever the end of the field jumps (physicalJump or more between neighbour passes)
+        // wherever the end of the field jumps (maxEndStep or more between neighbour passes)
         // and the 10 m rule below; off = the driver cuts the zones alone with zoneCuts.
         public bool autoZones = true;
         // driver's zone borders, local plane points; each one cuts between the two passes
@@ -71,8 +75,10 @@ namespace AgOpenGPS
         public int zonesAddedByRule;
 
         // a neighbour pass whose end sits this far further along (or back) starts a new zone,
-        // and no turn in a zone may step the end along by more than this (m)
-        public const double physicalJump = 10.0;
+        // and no turn in a zone may step the end along by more than this (m). REQ 2026-10-12-1:
+        // per field, set in the last wizard step ("Najveći pomak kraja"), 20 m by default
+        public double maxEndStep = defaultMaxEndStep;
+        public const double defaultMaxEndStep = 20.0, minMaxEndStep = 5.0, maxMaxEndStep = 100.0;
 
         // Working width the passes were laid out for. The plan file is per width and its
         // signature is checked on load, but only THEN: change the implement while the field
@@ -99,6 +105,7 @@ namespace AgOpenGPS
             autoZones = true;
             zoneCuts.Clear();
             zonesAddedByRule = 0;
+            maxEndStep = defaultMaxEndStep;
             builtWidth = 0;
             orchardStartZone = 1;
             orchardSeqFallback = false;
@@ -122,6 +129,7 @@ namespace AgOpenGPS
             orchardStartZone = data.startZone > 0 ? data.startZone : 1;
             autoZones = data.autoZones;
             zoneCuts.AddRange(data.zoneCuts);
+            maxEndStep = Math.Max(minMaxEndStep, Math.Min(maxMaxEndStep, data.maxEndStep));
             entries.AddRange(data.entries);
         }
 
@@ -144,7 +152,8 @@ namespace AgOpenGPS
         private List<List<CPlanEntry>> BuildSpatialZones(List<CPlanEntry> passes, int zones,
             out int leftZones)
         {
-            return BuildZones(passes, zones, ZoneBorders(passes), null, out leftZones, out _);
+            return BuildZones(new List<List<CPlanEntry>> { passes }, zones, null,
+                out leftZones, out _, out _);
         }
 
         /// <summary>
@@ -163,7 +172,7 @@ namespace AgOpenGPS
                 {
                     var a = passes[i];
                     var b = passes[i + 1];
-                    if (EndStep(a, b, true) >= physicalJump || EndStep(a, b, false) >= physicalJump)
+                    if (EndStep(a, b, true) >= maxEndStep || EndStep(a, b, false) >= maxEndStep)
                         cuts.Add(a.offsetIdx);
                 }
             }
@@ -245,12 +254,18 @@ namespace AgOpenGPS
         /// sides of 60 m and 50 m over 4 zones give 2x30 and 2x25 rather than 1x50 against
         /// 3x20. extra (per piece, may be null) adds zones on top, for the 10 m rule.
         /// Without borders this is exactly the old left/right split.
+        /// REQ 2026-10-12-1: cells[0] is the main part of the field and gets the old
+        /// treatment; every further cell (a part the boundary cuts off - BuildCells) is a piece
+        /// of its own with at least one zone, and its zones come after the main ones (mainZones).
         /// </summary>
-        private List<List<CPlanEntry>> BuildZones(List<CPlanEntry> passes, int zones,
-            HashSet<int> cuts, int[] extra, out int leftZones, out List<int> pieceOfZone)
+        private List<List<CPlanEntry>> BuildZones(List<List<CPlanEntry>> cells, int zones,
+            int[] extra, out int leftZones, out List<int> pieceOfZone, out int mainZones)
         {
             leftZones = 0;
+            mainZones = 0;
             pieceOfZone = new List<int>();
+            var passes = cells.Count > 0 ? cells[0] : new List<CPlanEntry>();
+            var cuts = ZoneBorders(passes);
 
             var left = new List<CPlanEntry>();
             var right = new List<CPlanEntry>();
@@ -284,6 +299,9 @@ namespace AgOpenGPS
                 }
                 pieces.AddRange(SplitAtCuts(single, cuts));
             }
+            int mainPieces = pieces.Count;
+            for (int c = 1; c < cells.Count; c++)
+                pieces.AddRange(SplitAtCuts(cells[c], ZoneBorders(cells[c])));
 
             var nz = new int[pieces.Count];
             for (int i = 0; i < nz.Length; i++) nz[i] = 1;
@@ -313,7 +331,12 @@ namespace AgOpenGPS
             }
             leftZones = spatial.Count;
             if (!sides) leftZones = 0;
-            for (int i = leftPieces; i < pieces.Count; i++)
+            for (int i = leftPieces; i < mainPieces; i++)
+            {
+                foreach (var z in BuildContiguousZones(pieces[i], nz[i])) { spatial.Add(z); pieceOfZone.Add(i); }
+            }
+            mainZones = spatial.Count;
+            for (int i = mainPieces; i < pieces.Count; i++)
             {
                 foreach (var z in BuildContiguousZones(pieces[i], nz[i])) { spatial.Add(z); pieceOfZone.Add(i); }
             }
@@ -342,10 +365,15 @@ namespace AgOpenGPS
         /// it does not depend on where the vehicle happens to stand); on a tie the left side
         /// goes first. Inside a side the zone touching the reference line is worked first.
         /// Without a side split it is simply left to right, as before.
+        /// mainCount (REQ 2026-10-12-1): zones from that index on lie in parts the boundary
+        /// cuts off - they always come last, in their spatial order. -1 = all are main zones.
         /// </summary>
-        public static int[] DefaultZoneOrder(int count, int leftZones)
+        public static int[] DefaultZoneOrder(int count, int leftZones, int mainCount = -1)
         {
             var order = new int[count];
+            if (mainCount < 0 || mainCount > count) mainCount = count;
+            for (int i = mainCount; i < count; i++) order[i] = i + 1;
+            count = mainCount;                    // the rest below works on the main zones only
             if (leftZones <= 0 || leftZones >= count)
             {
                 for (int i = 0; i < count; i++) order[i] = i + 1;
@@ -589,21 +617,29 @@ namespace AgOpenGPS
             if (!TryOffsetRange(out int minIdx, out int maxIdx))
             { error = "No active AB line or curve"; return false; }
 
-            // collect the passes that really exist (enough length inside the field)
+            // collect the passes that really exist (enough length inside the field). Where the
+            // boundary cuts a pass, every part is a pass of its own (REQ 2026-10-12-1) - the
+            // tractor cannot drive across the neighbour's field or the canal to the next part
             var passes = new List<CPlanEntry>();
             for (int k = minIdx; k <= maxIdx; k++)
             {
                 if (!BuildPassGeometry(track, k, clipToHeadland, out List<List<vec3>> segs,
                         out double len, out bool split))
                     continue;
-                if (len < minPassLength) continue;
-                passes.Add(new CPlanEntry
+                var parts = SplitAtFenceGaps(segs);
+                for (int g = 0; g < parts.Count; g++)
                 {
-                    offsetIdx = k,
-                    segments = segs,
-                    crossesObstacle = split,
-                    passLength = len
-                });
+                    double plen = SegmentsLength(parts[g]);
+                    if (plen < minPassLength) continue;
+                    passes.Add(new CPlanEntry
+                    {
+                        offsetIdx = k,
+                        piece = g,
+                        segments = parts[g],
+                        crossesObstacle = split && parts[g].Count > 1,
+                        passLength = plen
+                    });
+                }
             }
 
             if (passes.Count == 0)
@@ -616,7 +652,7 @@ namespace AgOpenGPS
             // REQ 2026-10-11-2: the zone count asked for depends on the mode - row by row has
             // none, min turn takes only what the field shape dictates
             int asked = mode == ModeZones || mode == ModeContour ? zoneCount : 1;
-            var cuts = ZoneBorders(passes);
+            var cells = BuildCells(passes);
             int[] extra = null;
             List<List<CPlanEntry>> zoneLists;
             int[] zoneOrderById;
@@ -625,15 +661,15 @@ namespace AgOpenGPS
             string keptOrder = zoneOrder;
 
             // the 10 m rule: no turn inside a zone may step the field end along by more than
-            // physicalJump. Where one does, that piece gets one more (narrower) zone and the
+            // maxEndStep. Where one does, that piece gets one more (narrower) zone and the
             // plan is laid out again - until it holds or a zone is down to one pass.
             for (int round = 0; ; round++)
             {
-                zoneLists = BuildZones(passes, asked, cuts, extra, out int leftZones,
-                    out List<int> pieceOfZone);
+                zoneLists = BuildZones(cells, asked, extra, out int leftZones,
+                    out List<int> pieceOfZone, out int mainZones);
 
                 // processing order per SPATIAL zone; the user may have reordered it
-                zoneOrderById = DefaultZoneOrder(zoneLists.Count, leftZones);
+                zoneOrderById = DefaultZoneOrder(zoneLists.Count, leftZones, mainZones);
                 if (TryParseZoneOrder(keptOrder, zoneLists.Count, out int[] wanted, out _))
                     zoneOrderById = wanted;
 
@@ -796,13 +832,182 @@ namespace AgOpenGPS
                 if (track == null) continue;
 
                 if (BuildPassGeometry(track, p.offsetIdx, useHeadland,
-                        out List<List<vec3>> segs, out double len, out bool split))
+                        out List<List<vec3>> segs, out double len, out bool split)
+                    && TakePiece(p, ref segs, ref len))
                 {
                     p.segments = segs;
-                    p.crossesObstacle = split;
+                    p.crossesObstacle = split && segs.Count > 1;
                     p.passLength = len;
                 }
             }
+        }
+
+        // ── parts of a pass the boundary cuts apart (REQ 2026-10-12-1) ──────────
+
+        /// <summary>
+        /// Group the clipped segments of one pass into parts. A new part starts where the gap
+        /// between two segments leaves the field (outside the fence): an obstacle or the
+        /// headland leave the gap inside and keep the segments together, as before.
+        /// </summary>
+        private List<List<List<vec3>>> SplitAtFenceGaps(List<List<vec3>> segs)
+        {
+            var parts = new List<List<List<vec3>>>();
+            if (segs == null || segs.Count == 0) return parts;
+            bool haveFence = mf.bnd.bndList.Count > 0 && mf.bnd.bndList[0].fenceLineEar.Count > 2;
+
+            var cur = new List<List<vec3>> { segs[0] };
+            parts.Add(cur);
+            for (int i = 1; i < segs.Count; i++)
+            {
+                var prev = segs[i - 1];
+                if (haveFence && prev.Count > 0 && segs[i].Count > 0
+                    && GapLeavesField(prev[prev.Count - 1], segs[i][0]))
+                {
+                    cur = new List<List<vec3>>();
+                    parts.Add(cur);
+                }
+                cur.Add(segs[i]);
+            }
+            return parts;
+        }
+
+        // any point of the straight gap a..b (every metre) outside the outer fence
+        private bool GapLeavesField(vec3 a, vec3 b)
+        {
+            var fence = mf.bnd.bndList[0].fenceLineEar;
+            double dx = b.easting - a.easting, dy = b.northing - a.northing;
+            int n = Math.Max(2, (int)Math.Ceiling(Math.Sqrt(dx * dx + dy * dy)));
+            for (int j = 1; j < n; j++)
+            {
+                double f = (double)j / n;
+                if (!fence.IsPointInPolygon(new vec2(a.easting + dx * f, a.northing + dy * f)))
+                    return true;
+            }
+            return false;
+        }
+
+        private static double SegmentsLength(List<List<vec3>> segs)
+        {
+            double len = 0;
+            foreach (var s in segs)
+                for (int i = 1; i < s.Count; i++) len += glm.Distance(s[i - 1], s[i]);
+            return len;
+        }
+
+        // keep only this entry's part of a freshly built pass; false = the part is gone
+        private bool TakePiece(CPlanEntry p, ref List<List<vec3>> segs, ref double len)
+        {
+            if (p.IsManual) return true;              // closing passes stay whole
+            var parts = SplitAtFenceGaps(segs);
+            if (parts.Count <= 1 && p.piece == 0) return true;
+            if (p.piece < 0 || p.piece >= parts.Count) return false;
+            segs = parts[p.piece];
+            len = SegmentsLength(segs);
+            return true;
+        }
+
+        /// <summary>
+        /// Cells of the field (boustrophedon decomposition): neighbour passes stay in one cell
+        /// only while their parts pair up one to one. Where one pass has a part the next one
+        /// has two of (a pocket the boundary cuts off begins) every side starts a cell of its
+        /// own - this is what keeps two pockets apart even when both touch the main field.
+        /// Each cell is sorted by offsetIdx and holds one part per pass; the cell with the most
+        /// passes comes first (the main field), the rest by position.
+        /// </summary>
+        private List<List<CPlanEntry>> BuildCells(List<CPlanEntry> passes)
+        {
+            var byIdx = new SortedDictionary<int, List<CPlanEntry>>();
+            foreach (var p in passes)
+            {
+                if (!byIdx.TryGetValue(p.offsetIdx, out var l)) byIdx[p.offsetIdx] = l = new List<CPlanEntry>();
+                l.Add(p);
+            }
+
+            var parent = new Dictionary<CPlanEntry, CPlanEntry>();
+            foreach (var p in passes) parent[p] = p;
+            CPlanEntry Find(CPlanEntry x)
+            {
+                while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; }
+                return x;
+            }
+
+            double w = WorkWidth();
+            List<CPlanEntry> prev = null;
+            int prevIdx = 0;
+            foreach (var kv in byIdx)
+            {
+                if (prev != null)
+                {
+                    double reach = Math.Abs(kv.Key - prevIdx) * w * 1.25 + 3.0;
+                    var touch = new bool[prev.Count, kv.Value.Count];
+                    var na = new int[prev.Count];
+                    var nb = new int[kv.Value.Count];
+                    for (int i = 0; i < prev.Count; i++)
+                        for (int j = 0; j < kv.Value.Count; j++)
+                            if (PartsTouch(prev[i], kv.Value[j], reach))
+                            {
+                                touch[i, j] = true; na[i]++; nb[j]++;
+                            }
+                    for (int i = 0; i < prev.Count; i++)
+                        for (int j = 0; j < kv.Value.Count; j++)
+                            if (touch[i, j] && na[i] == 1 && nb[j] == 1)
+                                parent[Find(kv.Value[j])] = Find(prev[i]);
+                }
+                prev = kv.Value;
+                prevIdx = kv.Key;
+            }
+
+            var groups = new Dictionary<CPlanEntry, List<CPlanEntry>>();
+            var cells = new List<List<CPlanEntry>>();
+            foreach (var kv in byIdx)
+                foreach (var p in kv.Value)
+                {
+                    var r = Find(p);
+                    if (!groups.TryGetValue(r, out var c)) { groups[r] = c = new List<CPlanEntry>(); cells.Add(c); }
+                    c.Add(p);                         // byIdx order = sorted by offsetIdx
+                }
+
+            // main field first; the rest left to right, then A->B
+            int main = 0;
+            for (int i = 1; i < cells.Count; i++)
+                if (cells[i].Count > cells[main].Count) main = i;
+            var first = cells[main];
+            cells.RemoveAt(main);
+            cells.Sort((a, b) => a[0].offsetIdx != b[0].offsetIdx
+                ? a[0].offsetIdx.CompareTo(b[0].offsetIdx) : a[0].piece.CompareTo(b[0].piece));
+            cells.Insert(0, first);
+            return cells;
+        }
+
+        // two parts of neighbour passes lie side by side somewhere (points within reach)
+        private static bool PartsTouch(CPlanEntry a, CPlanEntry b, double reach)
+        {
+            double r2 = reach * reach;
+            foreach (var sa in a.segments)
+                for (int i = 0; i < sa.Count; i += 2)
+                    foreach (var sb in b.segments)
+                        for (int j = 0; j < sb.Count; j += 2)
+                        {
+                            double dx = sa[i].easting - sb[j].easting;
+                            if (dx > reach || dx < -reach) continue;
+                            double dy = sa[i].northing - sb[j].northing;
+                            if (dx * dx + dy * dy <= r2) return true;
+                        }
+            return false;
+        }
+
+        // squared distance from a point to the nearest point of an entry's geometry
+        private static double DistToEntry2(CPlanEntry p, double e, double n)
+        {
+            double best = double.MaxValue;
+            foreach (var s in p.segments)
+                foreach (var q in s)
+                {
+                    double dx = q.easting - e, dy = q.northing - n;
+                    double d = dx * dx + dy * dy;
+                    if (d < best) best = d;
+                }
+            return best;
         }
 
         // mode 1: plain sequence; mode 3: first half interleaved with the second half
@@ -840,14 +1045,14 @@ namespace AgOpenGPS
 
         /// <summary>
         /// 10 m rule check for the passes of one zone, which start at ordered[start]: no turn
-        /// between two of them may step the field end along by more than physicalJump.
+        /// between two of them may step the field end along by more than maxEndStep.
         /// </summary>
-        private static bool TransitionsHold(List<CPlanEntry> ordered, int start)
+        private bool TransitionsHold(List<CPlanEntry> ordered, int start)
         {
             for (int i = start; i < ordered.Count - 1; i++)
             {
                 double step = EndStep(ordered[i], ordered[i + 1], TurnsAtB(i + 1));
-                if (step > physicalJump) return false;
+                if (step > maxEndStep) return false;
             }
             return true;
         }
@@ -856,7 +1061,7 @@ namespace AgOpenGPS
         /// REQ 2026-10-11-2 - min turn for the field, the F50 walk (OrderOrchardPasses) on
         /// field passes. A move is workable when the passes are far enough apart for a clean
         /// U (the turn builder's own span + minTurnSafety) AND the field end does not step
-        /// along by more than physicalJump. Of the workable ones the EARLIEST still-to-do pass
+        /// along by more than maxEndStep. Of the workable ones the EARLIEST still-to-do pass
         /// is taken, but never one that leaves nothing workable after it (one look ahead).
         /// Nothing workable left = the nearest pass, and the K-turn covers it - or the driver
         /// takes over. already = passes ordered before this zone (keeps the alternation).
@@ -873,7 +1078,7 @@ namespace AgOpenGPS
             {
                 if (Math.Abs(lst[from].offsetIdx - lst[to].offsetIdx) * w < span) return false;
                 double st = EndStep(lst[from], lst[to], TurnsAtB(fromPos));
-                return st < 0 || st <= physicalJump;
+                return st < 0 || st <= maxEndStep;
             }
 
             var used = new bool[m];
@@ -1320,11 +1525,14 @@ namespace AgOpenGPS
             if (cur == null) return true;
 
             string curName = CurrentTrackName();
+            // the part the plan goes to next (a cut pass has several on this offset)
             CPlanEntry target = null;
             foreach (var p in entries)
             {
-                if (p.offsetIdx == targetIdx && EntryTrackName(p) == curName)
-                { target = p; break; }
+                if (p.offsetIdx != targetIdx || EntryTrackName(p) != curName) continue;
+                bool open = !p.isWorked && !p.isSkipped;
+                bool tOpen = target != null && !target.isWorked && !target.isSkipped;
+                if (target == null || (open && (!tOpen || p.order < target.order))) target = p;
             }
             if (target == null) return true;
 
@@ -1467,11 +1675,27 @@ namespace AgOpenGPS
                 ? mf.ABLine.howManyPathsAway
                 : mf.curve.howManyPathsAway;
 
+            // REQ 2026-10-12-1: a pass the boundary cuts apart has one entry per part - the
+            // one the vehicle is on is the nearest
+            CPlanEntry found = null;
+            double best = double.MaxValue;
+            int matches = 0;
             foreach (var p in entries)
             {
-                if (p.offsetIdx == idx && EntryTrackName(p) == cur) return p;
+                if (p.offsetIdx != idx || EntryTrackName(p) != cur) continue;
+                matches++;
+                if (found == null) found = p;
+                if (matches == 1) continue;
+                if (matches == 2)
+                {
+                    EnsureGeometry(found);
+                    best = DistToEntry2(found, mf.pivotAxlePos.easting, mf.pivotAxlePos.northing);
+                }
+                EnsureGeometry(p);
+                double d = DistToEntry2(p, mf.pivotAxlePos.easting, mf.pivotAxlePos.northing);
+                if (d < best) { best = d; found = p; }
             }
-            return null;
+            return found;
         }
 
         /// <summary>
@@ -1727,11 +1951,12 @@ namespace AgOpenGPS
             if (track == null && !p.IsManual) TryResolveTrack(out track);
 
             if (BuildPassGeometry(track, p.offsetIdx, !p.IsManual && clipToHeadland,
-                    out List<List<vec3>> segs, out double len, out bool split))
+                    out List<List<vec3>> segs, out double len, out bool split)
+                && TakePiece(p, ref segs, ref len))
             {
                 p.segments = segs;
                 p.passLength = len;
-                p.crossesObstacle = split;
+                p.crossesObstacle = split && segs.Count > 1;
             }
         }
 

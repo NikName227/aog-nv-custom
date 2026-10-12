@@ -2289,4 +2289,7 @@ USE AT OWN RISK.</value>
   <data name="gsTurnLinesAuto" xml:space="preserve">
     <value>Turn lines created from the first AB line - adjust the offset if needed</value>
   </data>
+  <data name="gsMaxEndStep" xml:space="preserve">
+    <value>Max end step (m)</value>
+  </data>
 </root>

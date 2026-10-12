@@ -897,15 +897,7 @@ namespace AgOpenGPS
                 }
             }
 
-            // REQ 2026-10-11-1: which offset is which, right on the map
-            for (int li = 0; li < lines.Count; li++)
-            {
-                if (lines[li].pts.Count < 2) continue;
-                vec3 mid = PolylineMidpoint(lines[li].pts);
-                GL.Color4(1.0f, 0.85f, 0.2f, 0.95f);
-                mf.font.DrawText3D(mid.easting, mid.northing,
-                    OffsetCaption(li, GetOffset(lines[li])), mf.camHeading);
-            }
+            // REQ 2026-10-12-1: the Offset_N captions live only in the Turn window now
             GL.LineWidth(1);
         }
     }

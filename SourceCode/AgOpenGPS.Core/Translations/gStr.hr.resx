@@ -1922,4 +1922,7 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsTurnLinesAuto" xml:space="preserve">
     <value>Linije okretanja napravljene iz prve AB linije - po potrebi podesi odmak</value>
   </data>
+  <data name="gsMaxEndStep" xml:space="preserve">
+    <value>Najveći pomak kraja (m)</value>
+  </data>
 </root>
