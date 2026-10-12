@@ -1604,13 +1604,41 @@ namespace AgOpenGPS
         /// Geometry of the currently selected reference line (offset 0), used to
         /// highlight which AB line the plan is built on. Display only - the outer
         /// ends run past the boundary so the line reads clearly. False = no usable track.
+        /// Not clipped to the boundary (field 2026-10-13): the first line is usually driven
+        /// along the field edge, and clipping left nothing of it. An AB line runs across the
+        /// field's extent along it, a curve is drawn whole.
         /// </summary>
         public bool TryGetActiveLineGeometry(out List<List<vec3>> segs)
         {
             segs = null;
             if (!TryResolveTrack(out CTrk track)) return false;
-            if (!BuildOffsetGeometry(track, 0.0, false, out segs, out _, out _)) return false;
-            segs = ExtendForDisplay(segs, displayOverhang);
+
+            if (track.mode != TrackMode.AB)
+            {
+                if (track.curvePts.Count < 2) return false;
+                segs = new List<List<vec3>> { new List<vec3>(track.curvePts) };
+                return true;
+            }
+
+            if (mf.bnd.bndList.Count == 0 || mf.bnd.bndList[0].fenceLine.Count < 3) return false;
+            double hx = Math.Sin(track.heading), hy = Math.Cos(track.heading);
+            double tMin = double.MaxValue, tMax = double.MinValue;
+            foreach (var f in mf.bnd.bndList[0].fenceLine)
+            {
+                double t = (f.easting - track.ptA.easting) * hx + (f.northing - track.ptA.northing) * hy;
+                if (t < tMin) tMin = t;
+                if (t > tMax) tMax = t;
+            }
+            tMin -= displayOverhang;
+            tMax += displayOverhang;
+            segs = new List<List<vec3>>
+            {
+                new List<vec3>
+                {
+                    new vec3(track.ptA.easting + hx * tMin, track.ptA.northing + hy * tMin, track.heading),
+                    new vec3(track.ptA.easting + hx * tMax, track.ptA.northing + hy * tMax, track.heading)
+                }
+            };
             return true;
         }
 
