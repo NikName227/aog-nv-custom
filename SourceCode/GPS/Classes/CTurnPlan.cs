@@ -54,7 +54,7 @@ namespace AgOpenGPS
         public const double minPassLength = 10.0;
 
         public bool isFollowPlan;        // master switch (runtime hookup = phase 3.2)
-        public int mode = ModeZones;
+        public int mode = ModeMinUTurn;   // default for field and orchard (2026-10-13)
         public int zoneCount = 2;
         // processing order of the zones, laid out spatially ("3 | 2 | 1 || 4 | 5").
         // Empty = use the default order. Kept as text because that is what the driver
@@ -97,7 +97,7 @@ namespace AgOpenGPS
         {
             entries.Clear();
             isFollowPlan = false;
-            mode = ModeZones;
+            mode = ModeMinUTurn;
             zoneCount = 2;
             zoneOrder = "";
             trackName = "";
