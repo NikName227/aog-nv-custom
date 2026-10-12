@@ -2281,7 +2281,7 @@ USE AT OWN RISK.</value>
     <value>Row by row - no zones</value>
   </data>
   <data name="gsZonesAddedByRule" xml:space="preserve">
-    <value>zones added (10 m rule)</value>
+    <value>zones added (max end step)</value>
   </data>
   <data name="gsTurnOffset" xml:space="preserve">
     <value>Offset</value>
