@@ -1914,7 +1914,7 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
     <value>Red po red - bez zona</value>
   </data>
   <data name="gsZonesAddedByRule" xml:space="preserve">
-    <value>zona dodano (pravilo 10 m)</value>
+    <value>zona dodano (najveći pomak kraja)</value>
   </data>
   <data name="gsMaxEndStep" xml:space="preserve">
     <value>Najveći pomak kraja (m)</value>
