@@ -2622,23 +2622,6 @@ namespace AgOpenGPS
             planOverlay.Routes.Clear();
             planOverlay.Markers.Clear();
 
-            // highlight which AB line the plan is built on (red dashed) - only
-            // once the user explicitly picked it in the combo
-            if (cboTrack.SelectedIndex >= 0
-                && mf.plan.TryGetActiveLineGeometry(out List<List<vec3>> lineSegs))
-            {
-                foreach (var seg in lineSegs)
-                {
-                    var route = new List<PointLatLng>(seg.Count);
-                    for (int i = 0; i < seg.Count; i++)
-                        route.Add(LocalToLatLng(seg[i].easting, seg[i].northing));
-                    planOverlay.Routes.Add(new GMapRoute(route, "activeLine")
-                    {
-                        Stroke = new Pen(Color.Red, 3f) { DashStyle = DashStyle.Dash }
-                    });
-                }
-            }
-
             foreach (var p in mf.plan.entries)
             {
                 if (p.segments.Count == 0) continue;
@@ -2699,6 +2682,28 @@ namespace AgOpenGPS
                 {
                     Stroke = new Pen(c, 3f)
                 });
+            }
+
+            // highlight which AB line the plan is built on (red dashed) - only once the user
+            // explicitly picked it in the combo. Drawn after the passes, thick and on a white
+            // halo: the first pass lies right on it and used to hide it
+            if (cboTrack.SelectedIndex >= 0
+                && mf.plan.TryGetActiveLineGeometry(out List<List<vec3>> lineSegs))
+            {
+                foreach (var seg in lineSegs)
+                {
+                    var route = new List<PointLatLng>(seg.Count);
+                    for (int i = 0; i < seg.Count; i++)
+                        route.Add(LocalToLatLng(seg[i].easting, seg[i].northing));
+                    planOverlay.Routes.Add(new GMapRoute(route, "activeLineHalo")
+                    {
+                        Stroke = new Pen(Color.White, 9f)
+                    });
+                    planOverlay.Routes.Add(new GMapRoute(new List<PointLatLng>(route), "activeLine")
+                    {
+                        Stroke = new Pen(Color.Red, 6f) { DashStyle = DashStyle.Dash }
+                    });
+                }
             }
 
             DrawZoneBadges();
