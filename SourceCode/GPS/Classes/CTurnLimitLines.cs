@@ -543,16 +543,23 @@ namespace AgOpenGPS
 
         // ── automatic lines (REQ 2026-10-11-1) ────────────────────────────
 
-        // spacing of the editable points on a generated line (m)
-        public const double autoPointSpacing = 10.0;
+        // a generated line keeps a boundary point only where leaving it out would move the
+        // line more than this (m) - so a straight side is just its two corners
+        public const double autoTolerance = 0.5;
+
+        // a boundary turn sharper than this (deg) is a corner of the field: the end side
+        // stops there. Also the most a side may drift from its start direction in total,
+        // so a rounded corner drawn as many small turns stops as well.
+        public const double autoCornerAngle = 40.0;
 
         /// <summary>
-        /// Turn lines for a field that has none: one per end of the field, ON the boundary,
-        /// following its shape. Parallels of the reference line are cast across the field
-        /// every metre; where each one leaves the boundary at an end is a point of that end's
-        /// line, so a stepped end gets its steps and a slanted end a slanted line. The result
-        /// is thinned to its corners plus a point every autoPointSpacing metres, to stay easy
-        /// to edit. [0] = the end the A point of the reference line faces, [1] = the B end.
+        /// Turn lines for a field that has none: one per end of the field, ON the boundary.
+        /// The parallel of the reference line through the middle of the field picks where each
+        /// end is; from there the line follows the (simplified) boundary both ways until the
+        /// boundary turns by more than autoCornerAngle - the end of that side of the polygon.
+        /// Its points are the boundary's own points (Douglas-Peucker, autoTolerance).
+        /// A stepped end gives only the step the middle parallel hits; the rest is drawn by
+        /// hand. [0] = the end the A point of the reference line faces, [1] = the B end.
         /// Empty when the fence or the line cannot give two ends.
         /// </summary>
         public static List<List<vec3>> AutoLinesFromTrack(List<vec3> fence, CTrk trk)
@@ -581,103 +588,170 @@ namespace AgOpenGPS
             double ux = Math.Sin(h), uy = Math.Cos(h);   // along the passes
             double vx = uy, vy = -ux;                    // across them
 
-            int n = fence.Count;
+            // GPS noise of a driven boundary would read as false corners - simplify first
+            var ring = SimplifyRing(fence, autoTolerance);
+            int n = ring.Count;
+            if (n < 3) return result;
+
             double vMin = double.MaxValue, vMax = double.MinValue;
             var fv = new double[n];
             var fu = new double[n];
             for (int i = 0; i < n; i++)
             {
-                double de = fence[i].easting - oe, dn = fence[i].northing - on;
+                double de = ring[i].easting - oe, dn = ring[i].northing - on;
                 fv[i] = de * vx + dn * vy;
                 fu[i] = de * ux + dn * uy;
                 if (fv[i] < vMin) vMin = fv[i];
                 if (fv[i] > vMax) vMax = fv[i];
             }
-            double width = vMax - vMin;
-            if (width < 1.0) return result;
+            if (vMax - vMin < 1.0) return result;
 
-            double step = Math.Max(1.0, width / 5000.0);
-            var endA = new List<vec3>();
-            var endB = new List<vec3>();
-            for (double o = vMin + 0.05; o <= vMax - 0.05 + 1e-9; o += step)
+            // where the middle parallel leaves the field at each end - the reference line
+            // itself often lies on the boundary or runs into a corner
+            double o = (vMin + vMax) * 0.5;
+            double tMin = double.MaxValue, tMax = double.MinValue;
+            int eA = -1, eB = -1;
+            for (int i = 0; i < n; i++)
             {
-                double tMin = double.MaxValue, tMax = double.MinValue;
-                for (int i = 0; i < n; i++)
-                {
-                    int j = (i + 1) % n;
-                    double da = fv[i] - o, db = fv[j] - o;
-                    if ((da > 0) == (db > 0) || da == db) continue;
-                    double t = fu[i] + (fu[j] - fu[i]) * da / (da - db);
-                    if (t < tMin) tMin = t;
-                    if (t > tMax) tMax = t;
-                }
-                if (tMin > tMax) continue;
-                endA.Add(new vec3(oe + vx * o + ux * tMin, on + vy * o + uy * tMin, 0));
-                endB.Add(new vec3(oe + vx * o + ux * tMax, on + vy * o + uy * tMax, 0));
+                int j = (i + 1) % n;
+                double da = fv[i] - o, db = fv[j] - o;
+                if ((da > 0) == (db > 0) || da == db) continue;
+                double t = fu[i] + (fu[j] - fu[i]) * da / (da - db);
+                if (t < tMin) { tMin = t; eA = i; }
+                if (t > tMax) { tMax = t; eB = i; }
             }
+            if (eA < 0 || eB < 0 || eA == eB) return result;
 
-            var a = ThinLine(endA);
-            var b = ThinLine(endB);
+            var a = EndSide(ring, eA, vx, vy);
+            var b = EndSide(ring, eB, vx, vy);
             if (a.Count < 2 || b.Count < 2) return result;
             result.Add(a);
             result.Add(b);
             return result;
         }
 
-        // corners (Douglas-Peucker, 0.3 m) + every segment cut into pieces of at most
-        // autoPointSpacing, so a straight end still has handles to drag
-        private static List<vec3> ThinLine(List<vec3> dense)
+        // The side of the polygon that holds edge e: walk the ring both ways from it while
+        // every turn stays within autoCornerAngle and the direction stays within it of edge e.
+        // Returned across the passes (v increasing), like the lines a user draws.
+        private static List<vec3> EndSide(List<vec3> ring, int e, double vx, double vy)
         {
-            var outp = new List<vec3>();
-            if (dense.Count < 2) return outp;
+            int n = ring.Count;
+            var side = new List<vec3> { ring[e], ring[(e + 1) % n] };
+            Dir(ring[e], ring[(e + 1) % n], out double d0x, out double d0y);
 
-            var keep = new bool[dense.Count];
-            keep[0] = keep[dense.Count - 1] = true;
+            // forward from the far end of edge e
+            double px = d0x, py = d0y;
+            int k = (e + 1) % n;
+            for (int guard = 0; guard < n - 2; guard++)
+            {
+                int nx = (k + 1) % n;
+                if (nx == e) break;
+                Dir(ring[k], ring[nx], out double dx, out double dy);
+                if (Angle(px, py, dx, dy) > autoCornerAngle || Angle(d0x, d0y, dx, dy) > autoCornerAngle) break;
+                side.Add(ring[nx]);
+                px = dx; py = dy; k = nx;
+            }
+            int forwardEnd = k;
+
+            // backward from the near end of edge e
+            px = d0x; py = d0y;
+            k = e;
+            for (int guard = 0; guard < n - 2; guard++)
+            {
+                int pv = (k - 1 + n) % n;
+                if (pv == forwardEnd) break;
+                Dir(ring[pv], ring[k], out double dx, out double dy);
+                if (Angle(px, py, dx, dy) > autoCornerAngle || Angle(d0x, d0y, dx, dy) > autoCornerAngle) break;
+                side.Insert(0, ring[pv]);
+                px = dx; py = dy; k = pv;
+            }
+
+            var first = side[0];
+            var last = side[side.Count - 1];
+            if (first.easting * vx + first.northing * vy > last.easting * vx + last.northing * vy)
+                side.Reverse();
+            return side;
+        }
+
+        private static void Dir(vec3 a, vec3 b, out double dx, out double dy)
+        {
+            dx = b.easting - a.easting; dy = b.northing - a.northing;
+            double len = Math.Sqrt(dx * dx + dy * dy);
+            if (len > 1e-9) { dx /= len; dy /= len; }
+        }
+
+        // unsigned angle between two unit directions, degrees
+        private static double Angle(double ax, double ay, double bx, double by)
+        {
+            double c = Math.Max(-1.0, Math.Min(1.0, ax * bx + ay * by));
+            return Math.Acos(c) * 180.0 / Math.PI;
+        }
+
+        // The fence as a closed ring with only the points that matter (Douglas-Peucker).
+        // Split at point 0 and the point farthest from it, so both halves are open lines.
+        private static List<vec3> SimplifyRing(List<vec3> fence, double tol)
+        {
+            var pts = new List<vec3>(fence.Count + 1);
+            foreach (var p in fence)
+            {
+                if (pts.Count > 0)
+                {
+                    var q = pts[pts.Count - 1];
+                    double ddx = p.easting - q.easting, ddy = p.northing - q.northing;
+                    if (ddx * ddx + ddy * ddy < 0.0025) continue;   // duplicates (< 5 cm)
+                }
+                pts.Add(p);
+            }
+            if (pts.Count < 3) return pts;
+
+            int far = 0;
+            double best = -1;
+            for (int i = 1; i < pts.Count; i++)
+            {
+                double ddx = pts[i].easting - pts[0].easting, ddy = pts[i].northing - pts[0].northing;
+                double d = ddx * ddx + ddy * ddy;
+                if (d > best) { best = d; far = i; }
+            }
+            pts.Add(pts[0]);   // close it
+
+            var keep = new bool[pts.Count];
+            keep[0] = keep[far] = keep[pts.Count - 1] = true;
+            MarkDouglasPeucker(pts, 0, far, tol, keep);
+            MarkDouglasPeucker(pts, far, pts.Count - 1, tol, keep);
+
+            var outp = new List<vec3>();
+            for (int i = 0; i < pts.Count - 1; i++)
+                if (keep[i]) outp.Add(pts[i]);
+            return outp;
+        }
+
+        private static void MarkDouglasPeucker(List<vec3> pts, int first, int last, double tol, bool[] keep)
+        {
             var stack = new Stack<KeyValuePair<int, int>>();
-            stack.Push(new KeyValuePair<int, int>(0, dense.Count - 1));
+            stack.Push(new KeyValuePair<int, int>(first, last));
             while (stack.Count > 0)
             {
                 var seg = stack.Pop();
-                int first = seg.Key, last = seg.Value;
+                int f = seg.Key, l = seg.Value;
                 double worst = 0; int at = -1;
-                double ax = dense[first].easting, ay = dense[first].northing;
-                double dx = dense[last].easting - ax, dy = dense[last].northing - ay;
+                double ax = pts[f].easting, ay = pts[f].northing;
+                double dx = pts[l].easting - ax, dy = pts[l].northing - ay;
                 double len2 = dx * dx + dy * dy;
-                for (int i = first + 1; i < last; i++)
+                for (int i = f + 1; i < l; i++)
                 {
-                    double px = dense[i].easting - ax, py = dense[i].northing - ay;
+                    double px = pts[i].easting - ax, py = pts[i].northing - ay;
                     double t = len2 < 1e-12 ? 0 : Math.Max(0, Math.Min(1, (px * dx + py * dy) / len2));
                     double ex = px - t * dx, ey = py - t * dy;
                     double d = Math.Sqrt(ex * ex + ey * ey);
                     if (d > worst) { worst = d; at = i; }
                 }
-                if (at > 0 && worst > 0.3)
+                if (at > 0 && worst > tol)
                 {
                     keep[at] = true;
-                    stack.Push(new KeyValuePair<int, int>(first, at));
-                    stack.Push(new KeyValuePair<int, int>(at, last));
+                    stack.Push(new KeyValuePair<int, int>(f, at));
+                    stack.Push(new KeyValuePair<int, int>(at, l));
                 }
             }
-
-            vec3 prev = dense[0];
-            outp.Add(prev);
-            for (int i = 1; i < dense.Count; i++)
-            {
-                if (!keep[i]) continue;
-                vec3 cur = dense[i];
-                double len = Math.Sqrt((cur.easting - prev.easting) * (cur.easting - prev.easting)
-                                     + (cur.northing - prev.northing) * (cur.northing - prev.northing));
-                int pieces = (int)Math.Ceiling(len / autoPointSpacing);
-                for (int k = 1; k < pieces; k++)
-                {
-                    double f = (double)k / pieces;
-                    outp.Add(new vec3(prev.easting + (cur.easting - prev.easting) * f,
-                                      prev.northing + (cur.northing - prev.northing) * f, 0));
-                }
-                outp.Add(cur);
-                prev = cur;
-            }
-            return outp;
         }
 
         /// <summary>
