@@ -20,7 +20,7 @@ namespace AgOpenGPS.IO
     public class TurnPlanData
     {
         public bool followPlan;
-        public int mode = CTurnPlan.ModeZones;
+        public int mode = CTurnPlan.ModeMinUTurn;
         public int zoneCount = 2;
         public string zoneOrder = "";
         public string trackName = "";
