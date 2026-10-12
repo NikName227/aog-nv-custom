@@ -2054,7 +2054,7 @@ namespace AgOpenGPS
 
         // centre in HUD coordinates (x relative to the screen centre, y from the top)
         private int TurnOffsetBtnX { get { return oglMain.Width / 2 - 120; } }
-        private int TurnOffsetBtnY { get { return oglMain.Height / 2 - 70; } }
+        private int TurnOffsetBtnY { get { return oglMain.Height / 2 - 40; } }
 
         private double TurnOffsetUndoLeft()
         {
