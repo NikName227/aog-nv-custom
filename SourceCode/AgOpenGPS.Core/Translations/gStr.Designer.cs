@@ -5748,5 +5748,11 @@ public static string gsOrchPlanterBehind {
             }
         }
         
+        public static string gsMaxEndStep {
+            get {
+                return ResourceManager.GetString("gsMaxEndStep", resourceCulture);
+            }
+        }
+        
 }
 }

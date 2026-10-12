@@ -1767,7 +1767,7 @@ namespace AgOpenGPS
                     lblPlanInfo.Visible = true;
                     lblManualPass.Visible = true;                // "Ručno dodavanje prolaza"
                     lstLines.Visible = true;                     // manual pass target line
-                    lstLines.Top = 322; lstLines.Height = 78;    // shrunk to fit the zone tools above
+                    lstLines.Top = 332; lstLines.Height = 68;    // shrunk to fit the zone tools above
                     btnAddPath.Visible = btnDeletePath.Visible = true;
                     btnWizBack.Visible = btnWizCancel.Visible = true;
                     btnWizNext.Visible = true;                   // repurposed as "Završi" (same as OK)
@@ -2074,6 +2074,7 @@ namespace AgOpenGPS
                          : Mode4On ? CTurnPlan.ModeMinUTurn
                          : CTurnPlan.ModeZones;
             if (chkAutoZones != null) mf.plan.autoZones = chkAutoZones.Checked;
+            if (nudMaxStep != null) mf.plan.maxEndStep = (double)nudMaxStep.Value;
             mf.plan.zoneCount = (int)nudZones.Value;
             mf.plan.trackName = cboTrack.SelectedItem?.ToString() ?? "";
             mf.plan.clipToHeadland = chkHeadlandClip.Enabled && chkHeadlandClip.Checked;
@@ -2223,7 +2224,7 @@ namespace AgOpenGPS
                 string abName = mf.plan.trackName;
                 if (string.IsNullOrEmpty(abName) && mf.trk.idx >= 0 && mf.trk.idx < mf.trk.gArr.Count)
                     abName = mf.trk.gArr[mf.trk.idx].name;
-                lblPlanInfo.Text = gStr.gsABline + ": " + abName + "\n\n"
+                lblPlanInfo.Text = gStr.gsABline + ": " + abName + "\n"
                     + ZoneWidthText(zoneWidth, passesPerZone);
             }
             else
@@ -2231,9 +2232,12 @@ namespace AgOpenGPS
                 lblPlanInfo.Text = gStr.gsNoPlanHint;
             }
 
+            // the zones the plan really has - the field shape and the 10 m rule add to the count
+            int zonesInPlan = 0;
+            if (mf.plan.TryZoneStatsFromPlan(out List<int> zp, out _)) zonesInPlan = zp.Count;
             lblPlanStatus.Text = mf.plan.HasPlan
                 ? mf.plan.entries.Count + " " + gStr.gsPasses + " · "
-                    + mf.plan.zoneCount + " " + gStr.gsZones
+                    + zonesInPlan + " " + gStr.gsZones
                 : "";
         }
 
@@ -2287,6 +2291,10 @@ namespace AgOpenGPS
         private CheckBox btnMode4, chkAutoZones, btnCutAdd, btnCutDel;
         private Button btnCutClear;
         private Label lblNoZones;
+        // REQ 2026-10-12-1: "Najveći pomak kraja" - just a number, a tap opens the keypad
+        private Label lblMaxStep;
+        private NumericUpDown nudMaxStep;
+        private bool syncingMaxStep;
         private const int narrowPanelWidth = 244;     // was 348
         private const int contentWidth = 224;         // 10 .. 234
 
@@ -2358,9 +2366,41 @@ namespace AgOpenGPS
                 Visible = false
             };
 
-            pnlPath.Controls.AddRange(new Control[] { chkAutoZones, btnCutAdd, btnCutDel, btnCutClear, lblNoZones });
-            foreach (Control c in new Control[] { chkAutoZones, btnCutAdd, btnCutDel, btnCutClear, lblNoZones })
+            lblMaxStep = new Label
+            {
+                Text = gStr.gsMaxEndStep,
+                Font = new Font("Tahoma", 9.75F, FontStyle.Bold),
+                TextAlign = ContentAlignment.MiddleLeft,
+                Visible = false
+            };
+            nudMaxStep = new NumericUpDown
+            {
+                Font = nudZones.Font,
+                Minimum = (decimal)CTurnPlan.minMaxEndStep,
+                Maximum = (decimal)CTurnPlan.maxMaxEndStep,
+                DecimalPlaces = 0,
+                TextAlign = HorizontalAlignment.Center,
+                Value = (decimal)Math.Round(mf.plan.maxEndStep),
+                Visible = false
+            };
+            nudMaxStep.ValueChanged += (s, e) =>
+            {
+                if (syncingMaxStep) return;
+                mf.plan.maxEndStep = (double)nudMaxStep.Value;
+                if (wizStep == 3) GenerateFromWizard();
+            };
+
+            pnlPath.Controls.AddRange(new Control[] { chkAutoZones, btnCutAdd, btnCutDel, btnCutClear, lblNoZones,
+                lblMaxStep, nudMaxStep });
+            foreach (Control c in new Control[] { chkAutoZones, btnCutAdd, btnCutDel, btnCutClear, lblNoZones,
+                lblMaxStep, nudMaxStep })
                 c.BringToFront();
+
+            // only the number: no built-in spinner, no arrows, a tap opens the keypad
+            if (nudMaxStep.Controls.Count > 0) nudMaxStep.Controls[0].Visible = false;
+            nudMaxStep.ReadOnly = true;
+            nudMaxStep.Click += (s, e) => OpenKeypad(nudMaxStep);
+            if (nudMaxStep.Controls.Count > 1) nudMaxStep.Controls[1].Click += (s, e) => OpenKeypad(nudMaxStep);
         }
 
         private CheckBox MkCutToggle(string text)
@@ -2384,8 +2424,16 @@ namespace AgOpenGPS
         {
             if (chkAutoZones == null) return;
             chkAutoZones.Visible = btnCutAdd.Visible = btnCutDel.Visible = btnCutClear.Visible = vis;
+            lblMaxStep.Visible = nudMaxStep.Visible = vis;
             lblNoZones.Visible = false;
-            if (vis) chkAutoZones.Checked = mf.plan.autoZones;
+            if (vis)
+            {
+                chkAutoZones.Checked = mf.plan.autoZones;
+                syncingMaxStep = true;
+                nudMaxStep.Value = Math.Max(nudMaxStep.Minimum, Math.Min(nudMaxStep.Maximum,
+                    (decimal)Math.Round(mf.plan.maxEndStep)));
+                syncingMaxStep = false;
+            }
             else { btnCutAdd.Checked = false; btnCutDel.Checked = false; }
         }
 
@@ -2428,21 +2476,27 @@ namespace AgOpenGPS
 
             // zone step: auto split, zone count, the three zone border tools
             chkAutoZones.SetBounds(x, 64, w, 38);
-            lblZones.SetBounds(x, 110, 70, 34);
-            nudZones.Location = new Point(x + 72, 108);
+            // REQ 2026-10-12-1 (field markup): box 40 % narrower and further left, a gap
+            // between the arrows - the row used to run past the panel edge
+            lblZones.SetBounds(x, 110, 54, 34);
+            nudZones.Location = new Point(x + 56, 108);
+            nudZones.Width = 50;
             if (zoneSteppers.Count == 2)
             {
-                zoneSteppers[0].SetBounds(nudZones.Right + 4, 105, 34, 40);
-                zoneSteppers[1].SetBounds(nudZones.Right + 42, 105, 34, 40);
+                zoneSteppers[0].SetBounds(nudZones.Right + 8, 105, 34, 40);
+                zoneSteppers[1].SetBounds(nudZones.Right + 8 + 34 + 10, 105, 34, 40);
             }
             int cw = (w - 2 * 6) / 3;
             btnCutAdd.SetBounds(x, 152, cw, 40);
             btnCutDel.SetBounds(x + cw + 6, 152, cw, 40);
             btnCutClear.SetBounds(x + 2 * (cw + 6), 152, cw, 40);
             lblNoZones.SetBounds(x, 64, w, 60);
-            lblPlanInfo.SetBounds(x, 198, w, 66);
-            lblZoneOrderRead.SetBounds(x, 268, w, 24);
-            lblManualPass.SetBounds(x, 294, w, 26);
+            lblMaxStep.SetBounds(x, 198, w - 56, 34);
+            nudMaxStep.Location = new Point(x + w - 50, 198);
+            nudMaxStep.Width = 50;
+            lblPlanInfo.SetBounds(x, 236, w, 48);
+            lblZoneOrderRead.SetBounds(x, 284, w, 22);
+            lblManualPass.SetBounds(x, 306, w, 24);
             int hw = (w - 8) / 2;
             btnAddPath.SetBounds(x, 404, hw, 42);
             btnDeletePath.SetBounds(x + hw + 8, 404, hw, 42);

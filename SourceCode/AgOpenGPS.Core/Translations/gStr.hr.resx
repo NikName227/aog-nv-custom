@@ -1916,4 +1916,7 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsZonesAddedByRule" xml:space="preserve">
     <value>zona dodano (pravilo 10 m)</value>
   </data>
+  <data name="gsMaxEndStep" xml:space="preserve">
+    <value>Najveći pomak kraja (m)</value>
+  </data>
 </root>

@@ -2283,4 +2283,7 @@ USE AT OWN RISK.</value>
   <data name="gsZonesAddedByRule" xml:space="preserve">
     <value>zones added (10 m rule)</value>
   </data>
+  <data name="gsMaxEndStep" xml:space="preserve">
+    <value>Max end step (m)</value>
+  </data>
 </root>
