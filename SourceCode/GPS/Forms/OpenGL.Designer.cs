@@ -538,6 +538,8 @@ namespace AgOpenGPS
 
                     if (vehicle.isHydLiftOn) DrawLiftIndicator();
 
+                    if (TurnOffsetBtnVisible()) DrawTurnOffsetBtn();
+
                     if (isReverse || isChangingDirection)
                         DrawReverse();
 
@@ -2034,6 +2036,143 @@ namespace AgOpenGPS
                 }
             }
             GL.End();
+        }
+
+        // ── REQ 2026-10-11-1: HUD button "set the turn offset from here" ──────────
+        // Autosteer off, within maxOffset of a turn line: the driver stands the pivot where
+        // the turn should reach and taps - the pivot's square distance from the nearest line
+        // becomes that line's offset. The caption above shows the offset currently set; for
+        // 10 s after a tap the button offers UNDO, like SKIP.
+        private int turnOffsetLine = -1;
+        private double turnOffsetDist;
+        private DateTime turnOffsetUndoUntil = DateTime.MinValue;
+        private DateTime turnOffsetFlashUntil = DateTime.MinValue;
+        private int turnOffsetUndoLine = -1;
+        private double turnOffsetUndoValue;
+
+        private const int turnOffsetBtnHalf = 30;   // 60 x 60 px
+
+        // centre in HUD coordinates (x relative to the screen centre, y from the top)
+        private int TurnOffsetBtnX { get { return oglMain.Width / 2 - 120; } }
+        private int TurnOffsetBtnY { get { return oglMain.Height / 2 - 40; } }
+
+        private double TurnOffsetUndoLeft()
+        {
+            return Math.Max(0, (turnOffsetUndoUntil - DateTime.Now).TotalSeconds);
+        }
+
+        /// <summary>Also refreshes which line is nearest and how far - one pass per frame.</summary>
+        private bool TurnOffsetBtnVisible()
+        {
+            turnOffsetLine = -1;
+            if (!isJobStarted || isBtnAutoSteerOn || tnl == null || !tnl.IsFeatureOn) return false;
+
+            int li = tnl.NearestLineSigned(pivotAxlePos.easting, pivotAxlePos.northing, out double d);
+            if (li >= 0 && Math.Abs(d) <= CTurnLimitLines.maxOffset)
+            {
+                turnOffsetLine = li;
+                turnOffsetDist = d;
+            }
+            return turnOffsetLine >= 0 || TurnOffsetUndoLeft() > 0;
+        }
+
+        private void DrawTurnOffsetBtn()
+        {
+            int cx = TurnOffsetBtnX, cy = TurnOffsetBtnY, h = turnOffsetBtnHalf;
+            double undoLeft = TurnOffsetUndoLeft();
+
+            GL.Disable(EnableCap.Texture2D);
+            if (DateTime.Now < turnOffsetFlashUntil) GL.Color4(0.25f, 0.95f, 0.35f, 0.95f);
+            else if (undoLeft > 0) GL.Color4(0.98f, 0.80f, 0.25f, 0.95f);
+            else GL.Color4(0.92f, 0.92f, 0.92f, 0.85f);
+            DrawRoundedRectOutline(cx - h, cy - h, cx + h, cy + h, 8);
+
+            // pictogram: the turn line (orange), the pivot (dot) and the gap between them
+            GL.LineWidth(3f);
+            GL.Color4(1.0f, 0.55f, 0.0f, 0.95f);
+            GL.Begin(PrimitiveType.Lines);
+            GL.Vertex2(cx - h + 13, cy - h + 12);
+            GL.Vertex2(cx - h + 13, cy + h - 12);
+            GL.End();
+
+            GL.LineWidth(2f);
+            GL.Color4(0.92f, 0.92f, 0.92f, 0.95f);
+            double al = cx - h + 19, ar = cx + h - 21;
+            GL.Begin(PrimitiveType.Lines);
+            GL.Vertex2(al, cy); GL.Vertex2(ar, cy);
+            GL.Vertex2(al, cy); GL.Vertex2(al + 6, cy - 5);
+            GL.Vertex2(al, cy); GL.Vertex2(al + 6, cy + 5);
+            GL.Vertex2(ar, cy); GL.Vertex2(ar - 6, cy - 5);
+            GL.Vertex2(ar, cy); GL.Vertex2(ar - 6, cy + 5);
+            GL.End();
+
+            GL.PointSize(10f);
+            GL.Begin(PrimitiveType.Points);
+            GL.Vertex2(cx + h - 13, cy);
+            GL.End();
+            GL.LineWidth(1f);
+
+            // caption: the offset currently SET for the nearest line, or the UNDO countdown
+            string txt;
+            if (undoLeft > 0)
+                txt = "UNDO " + Math.Ceiling(undoLeft).ToString("N0");
+            else if (turnOffsetLine >= 0)
+            {
+                double off = CTurnLimitLines.GetOffset(tnl.lines[turnOffsetLine]);
+                txt = (turnOffsetLine + 1) + ": "
+                    + (off == 0 ? "auto" : (off * 100).ToString("+0;-0") + " cm");
+            }
+            else txt = "";
+
+            const double sz = 0.8;
+            GL.Enable(EnableCap.Texture2D);
+            GL.Color4(0.96f, 0.96f, 0.96f, 0.95f);
+            font.DrawText(cx - txt.Length * 16 * sz / 2.0, cy - h - 24, txt, sz);
+        }
+
+        /// <summary>Tap on the HUD offset button (screen coordinates); true = it was ours.</summary>
+        public bool TurnOffsetBtnTapped(System.Drawing.Point screen)
+        {
+            if (!TurnOffsetBtnVisible()) return false;
+            int sx = oglMain.Width / 2 + TurnOffsetBtnX, sy = TurnOffsetBtnY;
+            int h = turnOffsetBtnHalf + 6;   // a little extra for a finger
+            if (Math.Abs(screen.X - sx) > h || Math.Abs(screen.Y - sy) > h) return false;
+
+            if (TurnOffsetUndoLeft() > 0)
+            {
+                if (turnOffsetUndoLine >= 0 && turnOffsetUndoLine < tnl.lines.Count)
+                    CTurnLimitLines.SetOffset(tnl.lines[turnOffsetUndoLine].offsets, turnOffsetUndoValue);
+                turnOffsetUndoUntil = DateTime.MinValue;
+                ApplyTurnOffsetChange();
+                return true;
+            }
+
+            if (turnOffsetLine < 0) return true;
+
+            var ln = tnl.lines[turnOffsetLine];
+            turnOffsetUndoLine = turnOffsetLine;
+            turnOffsetUndoValue = CTurnLimitLines.GetOffset(ln);
+
+            // the measured distance IS the offset; exactly 0 would mean "default", so a pivot
+            // standing right on the line is stored as 1 cm
+            double v = Math.Round(turnOffsetDist, 2);
+            if (v == 0) v = 0.01;
+            CTurnLimitLines.SetOffset(ln.offsets, v);
+            Log.EventWriter("Turn offset line " + (turnOffsetLine + 1) + " set from HUD: "
+                + v.ToString("0.00") + " m");
+
+            turnOffsetUndoUntil = DateTime.Now.AddSeconds(10);
+            turnOffsetFlashUntil = DateTime.Now.AddSeconds(0.6);
+            ApplyTurnOffsetChange();
+            return true;
+        }
+
+        private void ApplyTurnOffsetChange()
+        {
+            tnl.BuildEffectiveLines();
+            FileSaveTurnLines();
+            //a maneuver already built against the old limit is rebuilt (not one under way)
+            if (!yt.isYouTurnTriggered) yt.ResetCreatedYouTurn();
         }
 
         private void DrawSteerCircle()

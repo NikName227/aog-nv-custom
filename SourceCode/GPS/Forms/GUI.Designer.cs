@@ -1279,6 +1279,9 @@ namespace AgOpenGPS
 
                 if (isJobStarted)
                 {
+                    //REQ 2026-10-11-1: turn offset from the pivot position (autosteer off)
+                    if (TurnOffsetBtnTapped(point)) return;
+
                     if (isBtnAutoSteerOn || yt.isYouTurnBtnOn)
                     {
                         //NV HUD skip button (below the turn icon, same x column)

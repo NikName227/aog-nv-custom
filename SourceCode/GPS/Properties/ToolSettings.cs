@@ -94,10 +94,9 @@ namespace AgOpenGPS.Properties
         public string setTool_zones = "2,10,20,0,0,0,0,0,0";
 
         // ===== TURN, IMPLEMENT SIDE (F51, 2026-08-10) =====
-        // Extra distance kept from a drawn turn limit line, ON TOP of the wheel-safety margin
-        // (which is the outer front wheel's swept path). A wide implement may not let the
-        // tractor drive right up to the line, and how much room it needs is a property of the
-        // implement - so it travels with the implement profile, as do the trigger tolerances.
+        // DEAD since REQ 2026-10-11-1 - nothing reads it. The room kept from a turn line is now
+        // an offset per LINE (TurnLines.txt, per implement profile). Kept only so the saved
+        // profile still deserializes cleanly.
         public double setTurn_boundaryOffset = 0.5;
         public double setTurn_triggerTolerance = 3.0;        // window before the start (m)
         public double setTurn_triggerToleranceAfter = 1.0;   // window past the start (m)

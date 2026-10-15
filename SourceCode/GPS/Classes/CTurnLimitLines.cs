@@ -1,3 +1,4 @@
+using AgOpenGPS.Core.Translations;
 using OpenTK.Graphics.OpenGL;
 using System;
 using System.Collections.Generic;
@@ -26,6 +27,11 @@ namespace AgOpenGPS
         // short stub of the extension.
         public List<vec2> effExtPts = new List<vec2>();
         public List<double> effExtSegSign = new List<double>();
+
+        // REQ 2026-10-11-1: where the PIVOT may go, measured square off the drawn line, per
+        // implement profile (the job decides how close it is worth driving). + = toward the
+        // field, - = out over the road. Missing or 0 = the default, half the tractor track.
+        public Dictionary<string, double> offsets = new Dictionary<string, double>();
     }
 
     /// <summary>
@@ -41,13 +47,30 @@ namespace AgOpenGPS
 
         public List<CTurnLimitLine> lines = new List<CTurnLimitLine>();
 
-        // master switch + options, saved per field in TurnLines.txt
-        // isAutomatic = auto-engage the youturn button; isAfterStop = trigger only after
-        // the vehicle has stopped and moves forward again (else = automatic/immediate turn)
-        public bool isTurnActive, isAutomatic, isKPrimary, isCombined, isAfterStop;
+        // REQ 2026-10-11-1: the master switch and HOW the turn fires are the driver's choice
+        // and stay as picked until changed - app settings, not tied to a field or implement.
+        // isAfterStop = trigger only after the vehicle has stopped and moves forward again.
+        public bool isTurnActive
+        {
+            get { return Properties.Settings.Default.setTurn_isActive; }
+            set { Properties.Settings.Default.setTurn_isActive = value; }
+        }
 
-        // wheel margin the effective lines were built with (-1 = not built)
-        private double builtMargin = -1;
+        public bool isAfterStop
+        {
+            get { return Properties.Settings.Default.setTurn_isAfterStop; }
+            set { Properties.Settings.Default.setTurn_isAfterStop = value; }
+        }
+
+        // the trigger is always automatic and the maneuver always combined U/K since the
+        // 2026-07-16 redesign; kept as fields because the youturn code still asks
+        public bool isAutomatic = true, isKPrimary, isCombined = true;
+
+        // offset range accepted from the keypad and the HUD button (m)
+        public const double maxOffset = 10.0;
+
+        // pivot limits the effective lines were built with (null = not built)
+        private string builtKey;
 
         public CTurnLimitLines(FormGPS _f)
         {
@@ -63,58 +86,88 @@ namespace AgOpenGPS
         public void Reset()
         {
             lines.Clear();
-            isTurnActive = isAutomatic = isKPrimary = isCombined = isAfterStop = false;
-            builtMargin = -1;
+            builtKey = null;
         }
 
         public void ApplyLoaded(AgOpenGPS.IO.TurnLinesData data)
         {
             Reset();
             if (data == null) return;
-            //F05/F06: activation follows the field file; the F06 turnapp/orchard
-            //gate in SaveOpen decides whether this is ever called with real data
-            //(locked installs get ApplyLoaded(null) and never reach here).
-            isTurnActive = data.active;
-            isAutomatic = data.automatic;
-            isKPrimary = data.kPrimary;
-            isCombined = data.combined;
-            isAfterStop = data.afterStop;
-            foreach (var l in data.lines)
+            //the F06 turnapp/orchard gate in SaveOpen decides whether this is ever called
+            //with real data (locked installs get ApplyLoaded(null) and never reach here)
+            for (int i = 0; i < data.lines.Count; i++)
             {
-                if (l.Count > 1) lines.Add(new CTurnLimitLine { pts = l });
+                if (data.lines[i].Count < 2) continue;
+                var ln = new CTurnLimitLine { pts = data.lines[i] };
+                if (i < data.offsets.Count) ln.offsets = data.offsets[i];
+                lines.Add(ln);
             }
             if (lines.Count > 0) BuildEffectiveLines();
         }
 
-        /// <summary>
-        /// How far inside the drawn line the pivot path has to stay: HALF THE TRACTOR
-        /// WIDTH plus whatever extra room the driver asked for.
-        ///
-        /// Field 2026-08-15: this used to be the sweep of the outer FRONT wheel around a
-        /// turn, sqrt((r + track/2)^2 + wheelbase^2) - r. That models one moment of a
-        /// maneuver but was applied to the whole line, including the straight run where the
-        /// tractor only takes up half a track, so with the extra offset at 0 the dashed line
-        /// still sat 1.5-2 m in - and it moved whenever the turn radius changed. The lateral
-        /// gabarit of the tractor is what belongs here; the offset is the knob for machines
-        /// that need more room, and it is now predictable: what you type is what you get.
-        /// </summary>
-        public double WheelSafetyMargin()
+        // offsets are kept per implement profile - this is the key for the one in use
+        public static string ToolKey
         {
-            double halfTrack = Math.Abs(mf.vehicle.VehicleConfig.TrackWidth) * 0.5;
+            get
+            {
+                string k = RegistrySettings.toolProfileName;
+                return string.IsNullOrEmpty(k) ? "-" : k;
+            }
+        }
 
-            // F51: plus whatever room THIS implement needs. A wide machine may not let the
-            // tractor drive right up to the drawn line, and how much is a property of the
-            // implement, so it travels with the implement profile. Applies to the wheel limit
-            // only - the passes still stop at the boundary/headland, where the implement
-            // reference already is.
-            return halfTrack + Math.Max(0, Properties.ToolSettings.Default.setTurn_boundaryOffset);
+        /// <summary>Offset of a line for the implement in use; 0 = default (half track).</summary>
+        public static double GetOffset(CTurnLimitLine ln)
+        {
+            return GetOffset(ln.offsets);
+        }
+
+        public static double GetOffset(Dictionary<string, double> offsets)
+        {
+            return offsets.TryGetValue(ToolKey, out double v) ? v : 0;
+        }
+
+        /// <summary>Store a line's offset for the implement in use, clamped to +-maxOffset.</summary>
+        public static void SetOffset(Dictionary<string, double> offsets, double value)
+        {
+            if (value > maxOffset) value = maxOffset;
+            if (value < -maxOffset) value = -maxOffset;
+            if (value == 0) offsets.Remove(ToolKey);
+            else offsets[ToolKey] = value;
+        }
+
+        /// <summary>
+        /// How far inside the drawn line the pivot path has to stay (REQ 2026-10-11-1).
+        /// Offset 0 = the default, HALF THE TRACTOR TRACK, so the outer wheel just reaches the
+        /// line. Any other offset IS the pivot distance, nothing added: the driver sets it by
+        /// standing where the pivot should go (HUD button) or types it, and a value under half
+        /// a track - or negative - deliberately lets the wheels over the line.
+        ///
+        /// Field 2026-08-15: the default used to be the sweep of the outer FRONT wheel around
+        /// a turn, which applied to the whole line still sat 1.5-2 m in and moved with the
+        /// turn radius. Half a track is what the tractor takes up on the straight run.
+        /// </summary>
+        public double PivotLimit(CTurnLimitLine ln)
+        {
+            double off = GetOffset(ln);
+            return off != 0 ? off : HalfTrack();
+        }
+
+        private double HalfTrack()
+        {
+            return Math.Abs(mf.vehicle.VehicleConfig.TrackWidth) * 0.5;
+        }
+
+        private string LimitsKey()
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (var ln in lines) sb.Append(PivotLimit(ln).ToString("0.000")).Append('|');
+            return sb.ToString();
         }
 
         private void EnsureBuilt()
         {
             if (lines.Count == 0) return;
-            if (builtMargin < 0 || Math.Abs(builtMargin - WheelSafetyMargin()) > 0.01)
-                BuildEffectiveLines();
+            if (builtKey != LimitsKey()) BuildEffectiveLines();
         }
 
         // centroid of the outer fence = which side of a line is "the field"
@@ -135,19 +188,19 @@ namespace AgOpenGPS
 
         public void BuildEffectiveLines()
         {
-            double margin = WheelSafetyMargin();
-            builtMargin = margin;
+            builtKey = LimitsKey();
 
             if (!TryGetFieldCentroid(out double ce, out double cn)) return;
 
             foreach (var ln in lines)
             {
+                double margin = PivotLimit(ln);
                 ln.effPts.Clear();
                 ln.effSegSign.Clear();
                 int n = ln.pts.Count;
                 if (n < 2) continue;
 
-                // offset every point toward the field by the wheel margin, using the
+                // offset every point toward the field by the pivot limit, using the
                 // averaged direction of the adjacent segments
                 for (int i = 0; i < n; i++)
                 {
@@ -488,6 +541,284 @@ namespace AgOpenGPS
             return t >= 0 && u >= 0 && u <= 1;
         }
 
+        // ── automatic lines (REQ 2026-10-11-1) ────────────────────────────
+
+        // a generated line keeps a boundary point only where leaving it out would move the
+        // line more than this (m) - so a straight side is just its two corners
+        public const double autoTolerance = 0.5;
+
+        // a boundary turn sharper than this (deg) is a corner of the field: the end side
+        // stops there. Also the most a side may drift from its start direction in total,
+        // so a rounded corner drawn as many small turns stops as well.
+        public const double autoCornerAngle = 40.0;
+
+        /// <summary>
+        /// Turn lines for a field that has none: one per end of the field, ON the boundary.
+        /// The parallel of the reference line through the middle of the field picks where each
+        /// end is; from there the line follows the (simplified) boundary both ways until the
+        /// boundary turns by more than autoCornerAngle - the end of that side of the polygon.
+        /// Its points are the boundary's own points (Douglas-Peucker, autoTolerance).
+        /// A stepped end gives only the step the middle parallel hits; the rest is drawn by
+        /// hand. [0] = the end the A point of the reference line faces, [1] = the B end.
+        /// Empty when the fence or the line cannot give two ends.
+        /// </summary>
+        public static List<List<vec3>> AutoLinesFromTrack(List<vec3> fence, CTrk trk)
+        {
+            var result = new List<List<vec3>>();
+            if (fence == null || fence.Count < 3 || trk == null) return result;
+
+            // direction the passes run and a point on the line
+            double h, oe, on;
+            if (trk.mode == TrackMode.AB)
+            {
+                h = trk.heading;
+                oe = trk.ptA.easting; on = trk.ptA.northing;
+            }
+            else if (trk.curvePts.Count > 1)
+            {
+                // a curve has no single heading; its end-to-end direction is a fair stand-in
+                // for which way the field ends lie
+                var c0 = trk.curvePts[0];
+                var c1 = trk.curvePts[trk.curvePts.Count - 1];
+                h = Math.Atan2(c1.easting - c0.easting, c1.northing - c0.northing);
+                oe = c0.easting; on = c0.northing;
+            }
+            else return result;
+
+            double ux = Math.Sin(h), uy = Math.Cos(h);   // along the passes
+            double vx = uy, vy = -ux;                    // across them
+
+            // GPS noise of a driven boundary would read as false corners - simplify first
+            var ring = SimplifyRing(fence, autoTolerance);
+            int n = ring.Count;
+            if (n < 3) return result;
+
+            double vMin = double.MaxValue, vMax = double.MinValue;
+            var fv = new double[n];
+            var fu = new double[n];
+            for (int i = 0; i < n; i++)
+            {
+                double de = ring[i].easting - oe, dn = ring[i].northing - on;
+                fv[i] = de * vx + dn * vy;
+                fu[i] = de * ux + dn * uy;
+                if (fv[i] < vMin) vMin = fv[i];
+                if (fv[i] > vMax) vMax = fv[i];
+            }
+            if (vMax - vMin < 1.0) return result;
+
+            // where the middle parallel leaves the field at each end - the reference line
+            // itself often lies on the boundary or runs into a corner
+            double o = (vMin + vMax) * 0.5;
+            double tMin = double.MaxValue, tMax = double.MinValue;
+            int eA = -1, eB = -1;
+            for (int i = 0; i < n; i++)
+            {
+                int j = (i + 1) % n;
+                double da = fv[i] - o, db = fv[j] - o;
+                if ((da > 0) == (db > 0) || da == db) continue;
+                double t = fu[i] + (fu[j] - fu[i]) * da / (da - db);
+                if (t < tMin) { tMin = t; eA = i; }
+                if (t > tMax) { tMax = t; eB = i; }
+            }
+            if (eA < 0 || eB < 0 || eA == eB) return result;
+
+            var a = EndSide(ring, eA, vx, vy);
+            var b = EndSide(ring, eB, vx, vy);
+            if (a.Count < 2 || b.Count < 2) return result;
+            result.Add(a);
+            result.Add(b);
+            return result;
+        }
+
+        // The side of the polygon that holds edge e: walk the ring both ways from it while
+        // every turn stays within autoCornerAngle and the direction stays within it of edge e.
+        // Returned across the passes (v increasing), like the lines a user draws.
+        private static List<vec3> EndSide(List<vec3> ring, int e, double vx, double vy)
+        {
+            int n = ring.Count;
+            var side = new List<vec3> { ring[e], ring[(e + 1) % n] };
+            Dir(ring[e], ring[(e + 1) % n], out double d0x, out double d0y);
+
+            // forward from the far end of edge e
+            double px = d0x, py = d0y;
+            int k = (e + 1) % n;
+            for (int guard = 0; guard < n - 2; guard++)
+            {
+                int nx = (k + 1) % n;
+                if (nx == e) break;
+                Dir(ring[k], ring[nx], out double dx, out double dy);
+                if (Angle(px, py, dx, dy) > autoCornerAngle || Angle(d0x, d0y, dx, dy) > autoCornerAngle) break;
+                side.Add(ring[nx]);
+                px = dx; py = dy; k = nx;
+            }
+            int forwardEnd = k;
+
+            // backward from the near end of edge e
+            px = d0x; py = d0y;
+            k = e;
+            for (int guard = 0; guard < n - 2; guard++)
+            {
+                int pv = (k - 1 + n) % n;
+                if (pv == forwardEnd) break;
+                Dir(ring[pv], ring[k], out double dx, out double dy);
+                if (Angle(px, py, dx, dy) > autoCornerAngle || Angle(d0x, d0y, dx, dy) > autoCornerAngle) break;
+                side.Insert(0, ring[pv]);
+                px = dx; py = dy; k = pv;
+            }
+
+            var first = side[0];
+            var last = side[side.Count - 1];
+            if (first.easting * vx + first.northing * vy > last.easting * vx + last.northing * vy)
+                side.Reverse();
+            return side;
+        }
+
+        private static void Dir(vec3 a, vec3 b, out double dx, out double dy)
+        {
+            dx = b.easting - a.easting; dy = b.northing - a.northing;
+            double len = Math.Sqrt(dx * dx + dy * dy);
+            if (len > 1e-9) { dx /= len; dy /= len; }
+        }
+
+        // unsigned angle between two unit directions, degrees
+        private static double Angle(double ax, double ay, double bx, double by)
+        {
+            double c = Math.Max(-1.0, Math.Min(1.0, ax * bx + ay * by));
+            return Math.Acos(c) * 180.0 / Math.PI;
+        }
+
+        // The fence as a closed ring with only the points that matter (Douglas-Peucker).
+        // Split at point 0 and the point farthest from it, so both halves are open lines.
+        private static List<vec3> SimplifyRing(List<vec3> fence, double tol)
+        {
+            var pts = new List<vec3>(fence.Count + 1);
+            foreach (var p in fence)
+            {
+                if (pts.Count > 0)
+                {
+                    var q = pts[pts.Count - 1];
+                    double ddx = p.easting - q.easting, ddy = p.northing - q.northing;
+                    if (ddx * ddx + ddy * ddy < 0.0025) continue;   // duplicates (< 5 cm)
+                }
+                pts.Add(p);
+            }
+            if (pts.Count < 3) return pts;
+
+            int far = 0;
+            double best = -1;
+            for (int i = 1; i < pts.Count; i++)
+            {
+                double ddx = pts[i].easting - pts[0].easting, ddy = pts[i].northing - pts[0].northing;
+                double d = ddx * ddx + ddy * ddy;
+                if (d > best) { best = d; far = i; }
+            }
+            pts.Add(pts[0]);   // close it
+
+            var keep = new bool[pts.Count];
+            keep[0] = keep[far] = keep[pts.Count - 1] = true;
+            MarkDouglasPeucker(pts, 0, far, tol, keep);
+            MarkDouglasPeucker(pts, far, pts.Count - 1, tol, keep);
+
+            var outp = new List<vec3>();
+            for (int i = 0; i < pts.Count - 1; i++)
+                if (keep[i]) outp.Add(pts[i]);
+            return outp;
+        }
+
+        private static void MarkDouglasPeucker(List<vec3> pts, int first, int last, double tol, bool[] keep)
+        {
+            var stack = new Stack<KeyValuePair<int, int>>();
+            stack.Push(new KeyValuePair<int, int>(first, last));
+            while (stack.Count > 0)
+            {
+                var seg = stack.Pop();
+                int f = seg.Key, l = seg.Value;
+                double worst = 0; int at = -1;
+                double ax = pts[f].easting, ay = pts[f].northing;
+                double dx = pts[l].easting - ax, dy = pts[l].northing - ay;
+                double len2 = dx * dx + dy * dy;
+                for (int i = f + 1; i < l; i++)
+                {
+                    double px = pts[i].easting - ax, py = pts[i].northing - ay;
+                    double t = len2 < 1e-12 ? 0 : Math.Max(0, Math.Min(1, (px * dx + py * dy) / len2));
+                    double ex = px - t * dx, ey = py - t * dy;
+                    double d = Math.Sqrt(ex * ex + ey * ey);
+                    if (d > worst) { worst = d; at = i; }
+                }
+                if (at > 0 && worst > tol)
+                {
+                    keep[at] = true;
+                    stack.Push(new KeyValuePair<int, int>(f, at));
+                    stack.Push(new KeyValuePair<int, int>(at, l));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Nearest drawn line to a point and the point's SIGNED square distance from it
+        /// (+ = on the field side). Only the drawn extent counts. -1 when there is no line.
+        /// The HUD offset button reads this: it is exactly what it stores.
+        /// </summary>
+        public int NearestLineSigned(double easting, double northing, out double signedDist)
+        {
+            signedDist = 0;
+            int bestLine = -1;
+            double best = double.MaxValue;
+            if (!TryGetFieldCentroid(out double ce, out double cn)) return -1;
+
+            for (int li = 0; li < lines.Count; li++)
+            {
+                var pts = lines[li].pts;
+                for (int i = 0; i < pts.Count - 1; i++)
+                {
+                    double ax = pts[i].easting, ay = pts[i].northing;
+                    double dx = pts[i + 1].easting - ax, dy = pts[i + 1].northing - ay;
+                    double len2 = dx * dx + dy * dy;
+                    if (len2 < 0.0001) continue;
+                    double t = ((easting - ax) * dx + (northing - ay) * dy) / len2;
+                    if (t < 0) t = 0; else if (t > 1) t = 1;
+                    double ex = easting - (ax + t * dx), ey = northing - (ay + t * dy);
+                    double d = Math.Sqrt(ex * ex + ey * ey);
+                    if (d >= best) continue;
+
+                    best = d;
+                    bestLine = li;
+                    // field side = same side of the segment as the field centroid
+                    double crossP = dx * (northing - ay) - dy * (easting - ax);
+                    double crossC = dx * (cn - ay) - dy * (ce - ax);
+                    signedDist = (crossP >= 0) == (crossC >= 0) ? d : -d;
+                }
+            }
+            return bestLine;
+        }
+
+        /// <summary>"Offset_1: +3.40 m" / "Offset_1: auto" - the same caption on both maps.</summary>
+        public static string OffsetCaption(int lineIdx, double offset)
+        {
+            return gStr.gsTurnOffset + "_" + (lineIdx + 1) + ": "
+                + (offset == 0 ? "auto" : offset.ToString("+0.00;-0.00") + " m");
+        }
+
+        /// <summary>Point halfway along a polyline (by length) - where its caption sits.</summary>
+        public static vec3 PolylineMidpoint(List<vec3> pts)
+        {
+            double total = 0;
+            for (int i = 1; i < pts.Count; i++) total += glm.Distance(pts[i - 1], pts[i]);
+            double half = total * 0.5, run = 0;
+            for (int i = 1; i < pts.Count; i++)
+            {
+                double seg = glm.Distance(pts[i - 1], pts[i]);
+                if (run + seg >= half && seg > 1e-9)
+                {
+                    double f = (half - run) / seg;
+                    return new vec3(pts[i - 1].easting + (pts[i].easting - pts[i - 1].easting) * f,
+                                    pts[i - 1].northing + (pts[i].northing - pts[i - 1].northing) * f, 0);
+                }
+                run += seg;
+            }
+            return pts[0];
+        }
+
         /// <summary>
         /// Draw the limit lines on the main map. Bright orange when the feature is active
         /// (+ dashed wheel-safety line), dimmed gray dashes when not activated.
@@ -565,6 +896,8 @@ namespace AgOpenGPS
                     GL.Disable(EnableCap.LineStipple);
                 }
             }
+
+            // REQ 2026-10-12-1: the Offset_N captions live only in the Turn window now
             GL.LineWidth(1);
         }
     }
