@@ -1901,10 +1901,28 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsMinTurnRadiusIs" xml:space="preserve">
     <value>min radijus okreta je</value>
   </data>
+  <data name="gsPlanMode" xml:space="preserve">
+    <value>Način plana</value>
+  </data>
+  <data name="gsAutoZones" xml:space="preserve">
+    <value>Automatska podjela</value>
+  </data>
+  <data name="gsDeleteAllPoints" xml:space="preserve">
+    <value>Obriši sve</value>
+  </data>
+  <data name="gsNoZonesRowByRow" xml:space="preserve">
+    <value>Red po red - bez zona</value>
+  </data>
+  <data name="gsZonesAddedByRule" xml:space="preserve">
+    <value>zona dodano (najveći pomak kraja)</value>
+  </data>
   <data name="gsTurnOffset" xml:space="preserve">
     <value>Odmak</value>
   </data>
   <data name="gsTurnLinesAuto" xml:space="preserve">
     <value>Linije okretanja napravljene iz prve AB linije - po potrebi podesi odmak</value>
+  </data>
+  <data name="gsMaxEndStep" xml:space="preserve">
+    <value>Najveći pomak kraja (m)</value>
   </data>
 </root>

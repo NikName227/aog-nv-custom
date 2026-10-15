@@ -20,7 +20,7 @@ namespace AgOpenGPS.IO
     public class TurnPlanData
     {
         public bool followPlan;
-        public int mode = CTurnPlan.ModeZones;
+        public int mode = CTurnPlan.ModeMinUTurn;
         public int zoneCount = 2;
         public string zoneOrder = "";
         public string trackName = "";
@@ -29,11 +29,20 @@ namespace AgOpenGPS.IO
         public double builtWidth;
         // orchard: first inter-row the plan starts from (1 = from the beginning)
         public int startZone = 1;
+        // REQ 2026-10-11-2: automatic zone borders on/off + the driver's own zone cuts
+        public bool autoZones = true;
+        public List<vec2> zoneCuts = new List<vec2>();
+        // REQ 2026-10-12-1: the most the field end may step along inside a zone (m)
+        public double maxEndStep = CTurnPlan.defaultMaxEndStep;
         public List<CPlanEntry> entries = new List<CPlanEntry>();
     }
 
     public static class TurnPlanFiles
     {
+        // REQ 2026-10-12-1: entries became parts of a pass ("offsetIdx:piece"). A file without
+        // this version was laid out without the parts and is ignored - a new plan is made.
+        private const int planVersion = 2;
+
         /// <summary>
         /// The machine values the plan geometry depends on, as one comparable string.
         /// </summary>
@@ -77,6 +86,7 @@ namespace AgOpenGPS.IO
             var data = new TurnPlanData();
             string wantSig = Signature(workWidth);
             bool sigSeen = false;
+            bool verOk = false;
 
             using (var reader = new StreamReader(path))
             {
@@ -109,10 +119,31 @@ namespace AgOpenGPS.IO
                     }
 
                     var kv = line.Split(',');
+
+                    // ZoneCut,<easting>,<northing> - one driver's zone border
+                    if (kv.Length == 3 && kv[0] == "ZoneCut")
+                    {
+                        if (double.TryParse(kv[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double ce) &&
+                            double.TryParse(kv[2], NumberStyles.Float, CultureInfo.InvariantCulture, out double cn))
+                            data.zoneCuts.Add(new vec2(ce, cn));
+                        continue;
+                    }
+
                     if (kv.Length == 2)
                     {
                         switch (kv[0].Trim())
                         {
+                            case "PlanVer":
+                                verOk = int.TryParse(kv[1].Trim(), NumberStyles.Integer,
+                                    CultureInfo.InvariantCulture, out int pv) && pv == planVersion;
+                                continue;
+                            case "MaxEndStep":
+                                if (double.TryParse(kv[1].Trim(), NumberStyles.Float,
+                                    CultureInfo.InvariantCulture, out double mes)) data.maxEndStep = mes;
+                                continue;
+                            case "AutoZones":
+                                if (bool.TryParse(kv[1].Trim(), out bool az)) data.autoZones = az;
+                                continue;
                             case "FollowPlan":
                                 if (bool.TryParse(kv[1].Trim(), out bool f)) data.followPlan = f;
                                 continue;
@@ -141,10 +172,19 @@ namespace AgOpenGPS.IO
                         }
                     }
 
-                    // pass entry: offsetIdx,order,zone,sameWay,worked[,skipped][,trackName]
+                    // pass entry: offsetIdx[:piece],order,zone,sameWay,worked[,skipped][,trackName]
                     // (skipped added 2026-07-11; old files without it still load)
+                    string idxText = kv[0];
+                    int piece = 0;
+                    int colon = idxText.IndexOf(':');
+                    if (colon > 0)
+                    {
+                        if (!int.TryParse(idxText.Substring(colon + 1), NumberStyles.Integer,
+                                CultureInfo.InvariantCulture, out piece)) continue;
+                        idxText = idxText.Substring(0, colon);
+                    }
                     if (kv.Length >= 5 &&
-                        int.TryParse(kv[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int idx) &&
+                        int.TryParse(idxText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int idx) &&
                         int.TryParse(kv[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int order) &&
                         int.TryParse(kv[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int zone) &&
                         bool.TryParse(kv[3], out bool sameWay) &&
@@ -166,6 +206,7 @@ namespace AgOpenGPS.IO
                         data.entries.Add(new CPlanEntry
                         {
                             offsetIdx = idx,
+                            piece = piece,
                             order = order,
                             zone = zone,
                             isSameWay = sameWay,
@@ -179,6 +220,8 @@ namespace AgOpenGPS.IO
 
             //a plan from before signatures existed cannot be trusted to fit this machine
             if (!sigSeen) return null;
+            //nor one laid out before passes were split into parts
+            if (!verOk) return null;
 
             return data;
         }
@@ -198,6 +241,7 @@ namespace AgOpenGPS.IO
             {
                 writer.WriteLine("$TurnPlan");
                 writer.WriteLine("Sig," + Signature(workWidth));
+                writer.WriteLine("PlanVer," + planVersion.ToString(CultureInfo.InvariantCulture));
                 writer.WriteLine("FollowPlan," + plan.isFollowPlan);
                 writer.WriteLine("ClipHeadland," + plan.clipToHeadland);
                 writer.WriteLine("Mode," + plan.mode.ToString(CultureInfo.InvariantCulture));
@@ -208,11 +252,17 @@ namespace AgOpenGPS.IO
                     writer.WriteLine("ZoneOrder," + plan.zoneOrder);
                 if (!string.IsNullOrEmpty(plan.trackName))
                     writer.WriteLine("Track," + plan.trackName);
+                writer.WriteLine("AutoZones," + plan.autoZones);
+                writer.WriteLine("MaxEndStep," + FileIoUtils.FormatDouble(plan.maxEndStep, 1));
+                foreach (var c in plan.zoneCuts)
+                    writer.WriteLine("ZoneCut," + FileIoUtils.FormatDouble(c.easting, 3) + ","
+                        + FileIoUtils.FormatDouble(c.northing, 3));
 
                 foreach (var p in plan.entries)
                 {
                     writer.WriteLine(
-                        p.offsetIdx.ToString(CultureInfo.InvariantCulture) + "," +
+                        p.offsetIdx.ToString(CultureInfo.InvariantCulture) +
+                        (p.piece > 0 ? ":" + p.piece.ToString(CultureInfo.InvariantCulture) : "") + "," +
                         p.order.ToString(CultureInfo.InvariantCulture) + "," +
                         p.zone.ToString(CultureInfo.InvariantCulture) + "," +
                         p.isSameWay + "," +

@@ -2268,10 +2268,28 @@ USE AT OWN RISK.</value>
   <data name="gsMinTurnRadiusIs" xml:space="preserve">
     <value>min turn radius is</value>
   </data>
+  <data name="gsPlanMode" xml:space="preserve">
+    <value>Plan mode</value>
+  </data>
+  <data name="gsAutoZones" xml:space="preserve">
+    <value>Auto zones</value>
+  </data>
+  <data name="gsDeleteAllPoints" xml:space="preserve">
+    <value>Delete all</value>
+  </data>
+  <data name="gsNoZonesRowByRow" xml:space="preserve">
+    <value>Row by row - no zones</value>
+  </data>
+  <data name="gsZonesAddedByRule" xml:space="preserve">
+    <value>zones added (max end step)</value>
+  </data>
   <data name="gsTurnOffset" xml:space="preserve">
     <value>Offset</value>
   </data>
   <data name="gsTurnLinesAuto" xml:space="preserve">
     <value>Turn lines created from the first AB line - adjust the offset if needed</value>
+  </data>
+  <data name="gsMaxEndStep" xml:space="preserve">
+    <value>Max end step (m)</value>
   </data>
 </root>
