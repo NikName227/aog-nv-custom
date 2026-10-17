@@ -841,7 +841,7 @@
             this.lblHintU.Name = "lblHintU";
             this.lblHintU.Size = new System.Drawing.Size(452, 150);
             this.lblHintU.TabIndex = 2;
-            this.lblHintU.Text = "Radius 0 = use general turn radius. A small entry radius makes the turn overshoot, then a short reverse aligns onto the line.";
+            this.lblHintU.Text = "Radius 0 = use general turn radius. Overshoot > 0: the entry arc aims past the line, a short reverse then aligns. Overshoot < 0: the entry arc aims inside the line, against a tractor that drifts outward.";
             this.nudOutU.DecimalPlaces = 1;
             this.nudOutU.Font = new System.Drawing.Font("Tahoma", 12F);
             this.nudOutU.Increment = new decimal(new int[] { 1, 0, 0, 65536 });
@@ -938,11 +938,12 @@
             this.lblOvershootU.TabIndex = 5;
             this.lblOvershootU.Text = "Overshoot distance (m)";
             this.lblOvershootU.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
-            this.nudOvershootU.DecimalPlaces = 1;
+            this.nudOvershootU.DecimalPlaces = 2;
             this.nudOvershootU.Font = new System.Drawing.Font("Tahoma", 12F);
-            this.nudOvershootU.Increment = new decimal(new int[] { 5, 0, 0, 65536 });
+            this.nudOvershootU.Increment = new decimal(new int[] { 5, 0, 0, 131072 });
             this.nudOvershootU.Location = new System.Drawing.Point(330, 120);
             this.nudOvershootU.Maximum = new decimal(new int[] { 10, 0, 0, 0 });
+            this.nudOvershootU.Minimum = new decimal(new int[] { 1, 0, 0, -2147483648 });
             this.nudOvershootU.Name = "nudOvershootU";
             this.nudOvershootU.Size = new System.Drawing.Size(130, 34);
             this.nudOvershootU.TabIndex = 6;

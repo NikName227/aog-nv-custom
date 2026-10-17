@@ -3198,7 +3198,7 @@ namespace AgOpenGPS
             MakeKeypadField(nudAngleK, 5);
             MakeKeypadField(nudOutU, 0.2);
             MakeKeypadField(nudInU, 0.2);
-            MakeKeypadField(nudOvershootU, 0.5);
+            MakeKeypadField(nudOvershootU, 0.05);
             MakeKeypadField(nudTolerance, 0.2);
             MakeKeypadField(nudToleranceAfter, 0.2);
             MakeKeypadField(nudZones, 1, zoneSteppers);   //wizard step 2 shows/hides these
