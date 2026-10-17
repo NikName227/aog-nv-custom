@@ -1388,10 +1388,11 @@ namespace AgOpenGPS
                     //NV custom U overshoot: aim the entry arc at a virtual line pushed outward by
                     //"overshoot distance", so a large entry radius overshoots and a short reverse
                     //(driver) then aligns onto the real row. 0 = tangent the real line (stock).
+                    //Negative = aim inside the line (REQ 2026-10-17-1), the same offset flipped.
                     if (mf.tnl.IsFeatureOn)
                     {
                         double over = Properties.ToolSettings.Default.setTurn_U_overshootDist;
-                        if (over > 0.01)
+                        if (Math.Abs(over) > 0.01)
                             distAway += ((isTurnLeft ^ mf.ABLine.isHeadingSameWay) ? over : -over);
                     }
 
@@ -2241,7 +2242,12 @@ namespace AgOpenGPS
             double ps = Math.Max(0.1, youTurnRadius * 0.1);
             double Rout = UOutRadius, Rin = UInRadius;
             double over = Properties.ToolSettings.Default.setTurn_U_overshootDist;
-            if (over < 0) over = 0;
+
+            // REQ 2026-10-17-1: a negative value aims the entry arc INSIDE the line, against a
+            // tractor that drifts outward on the entry. It only moves the aim - the radii are
+            // never shrunk for it; without room it is cut to what fits.
+            double inward = 0;
+            if (over < 0) { inward = -over; over = 0; }
 
             // auto-shrink both radii (max -30%), then automatic overshoot for the rest
             double room = o + over;
@@ -2252,7 +2258,9 @@ namespace AgOpenGPS
             }
             if (Rout + Rin > o + over) over += Rout + Rin - (o + over);
 
-            double eT = o + over;
+            if (inward > 0) inward = Math.Min(inward, Math.Max(0, o + over - (Rout + Rin)));
+
+            double eT = o + over - inward;
             double cx1 = Rout, cx3 = eT - Rin;
             double y1 = FitCircleY(eff, cx1, Rout, ps);
             double y3 = FitCircleY(eff, cx3, Rin, ps);
@@ -4624,7 +4632,7 @@ namespace AgOpenGPS
 
                     //sharp turns on you turn.
                     //update base on autosteer settings and distance from line
-                    double goalPointDistance = mf.vehicle.UpdateGoalPointDistance();
+                    double goalPointDistance = mf.vehicle.UpdateGoalPointDistance(mf.tnl.IsFeatureOn);
 
                     //goalPointDistance *= mf.vehicle.uturnCompensation;
 

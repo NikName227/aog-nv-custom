@@ -1925,4 +1925,10 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsMaxEndStep" xml:space="preserve">
     <value>Najveći pomak kraja (m)</value>
   </data>
+  <data name="gsHeadlandTotal" xml:space="preserve">
+    <value>Uvratina</value>
+  </data>
+  <data name="gsPlanSynced" xml:space="preserve">
+    <value>Plan usklađen: {0} prolaza označeno kao odrađeno</value>
+  </data>
 </root>

@@ -287,6 +287,10 @@ namespace AgOpenGPS
                     return;
                 }
 
+                //REQ 2026-10-17-2: passes worked with auto turn off are in the coverage -
+                //the plan takes them in before it decides where to go next
+                if (plan.IsRuntimeOn) PlanSyncWithCoverage();
+
                 //NV follow plan: engaging auto turn switches guidance to the track
                 //the plan was built on, so the turns target the plan's passes and
                 //not whatever line happened to be active (test f05-3.2-01).
@@ -359,6 +363,14 @@ namespace AgOpenGPS
                 yt.ResetCreatedYouTurn();
             }
         }
+        /// <summary>REQ 2026-10-17-2: catch the plan up with the coverage, and say so.</summary>
+        public void PlanSyncWithCoverage()
+        {
+            int marked = plan.SyncWithCoverage();
+            if (marked > 0)
+                TimedMessageBox(3000, "Turn Plan", string.Format(gStr.gsPlanSynced, marked));
+        }
+
         private void btnCycleLines_Click(object sender, EventArgs e)
         {
             trk.isAutoTrack = false;
