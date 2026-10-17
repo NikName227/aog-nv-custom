@@ -347,8 +347,9 @@ namespace AgOpenGPS
                         //turn limit lines (NV custom)
                         tnl.DrawTurnLines();
 
-                        //follow plan (NV custom): only the NEXT pass shows on the main map
-                        plan.DrawNextPass();
+                        //follow plan (NV custom): only the NEXT pass shows on the main map -
+                        //and only while auto turn is on (REQ 2026-10-17-2: off = plan paused)
+                        if (yt.isYouTurnBtnOn) plan.DrawNextPass();
 
                         GL.LineWidth(ABLine.lineWidth);
 
@@ -1938,6 +1939,8 @@ namespace AgOpenGPS
             if (plan.IsRuntimeOn)
             {
                 bool planWarn = plan.isFlexPause;
+                //REQ 2026-10-17-2: auto turn off = the plan is paused, the badge goes grey
+                bool planPaused = !yt.isYouTurnBtnOn;
                 //feedback 2026-07-21: moved further right, ~3 icon widths clear of the drive cue
                 double loopCx = two3 + 136;
                 GL.Disable(EnableCap.Texture2D);
@@ -1945,7 +1948,8 @@ namespace AgOpenGPS
                 GL.Color4(1f, 1f, 1f, 0.30f);
                 DrawRoundedRectOutline(loopCx - 21, 33, loopCx + 21, 75, 8);
 
-                if (planWarn) GL.Color4(0.97f, 0.63f, 0.15f, 0.92f);
+                if (planPaused) GL.Color4(0.62f, 0.62f, 0.62f, 0.75f);
+                else if (planWarn) GL.Color4(0.97f, 0.63f, 0.15f, 0.92f);
                 else GL.Color4(0.47f, 0.92f, 0.51f, 0.90f);
 
                 GL.LineWidth(3.5f);
@@ -1970,7 +1974,7 @@ namespace AgOpenGPS
                 GL.End();
 
                 GL.Enable(EnableCap.Texture2D);
-                if (planWarn)
+                if (planWarn && !planPaused)
                 {
                     GL.Color4(0.97f, 0.63f, 0.15f, 0.95f);
                     font.DrawText(loopCx + 24, 33, "!", 1.2);

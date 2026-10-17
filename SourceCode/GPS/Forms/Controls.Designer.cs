@@ -361,6 +361,10 @@ namespace AgOpenGPS
 
                 //new direction so reset where to put turn diagnostic
                 yt.ResetCreatedYouTurn();
+
+                //REQ 2026-10-17-2: plan paused - re-pick the line from the vehicle at once
+                ABLine.isABValid = false;
+                curve.isCurveValid = false;
             }
         }
         /// <summary>REQ 2026-10-17-2: catch the plan up with the coverage, and say so.</summary>
