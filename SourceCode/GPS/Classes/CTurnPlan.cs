@@ -2301,6 +2301,16 @@ namespace AgOpenGPS
                     if (onOpen) { lst.Remove(near); lst.Insert(0, near); }   // stand on it = next
                     else from = near;                                         // turn from it
                 }
+                else
+                {
+                    // REQ 2026-10-17-3 §4.2: a later zone starts at the edge next to where
+                    // the one before ended (the vehicle's pass when its own zone is done)
+                    CPlanEntry prev = seq.Count > 0 && seq.Count > done.Count ? seq[seq.Count - 1] : near;
+                    bool beside;
+                    if (mode == ModeContour) beside = false;
+                    else lst = FacePrevious(lst, prev, seq.Count, out beside);
+                    if (beside) from = prev;
+                }
 
                 if (mode == ModeMinUTurn) seq.AddRange(OrderMinTurn(lst, seq.Count, from));
                 else seq.AddRange(lst);
