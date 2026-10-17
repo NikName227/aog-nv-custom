@@ -36,7 +36,9 @@ namespace AgOpenGPS
             //REQ 2026-10-17-1: the wheels turn at a rate set by High Steer PWM (the module's
             //max PWM limit) - 255 = ~60 deg/s, the old fixed steps; lower = slower, like a real
             //valve, so the entry overshoot can be tried out in the simulator. Never past the target.
-            double pwm = Math.Max(1, (int)Properties.VehicleSettings.Default.setAS_highSteerPWM);
+            //The live PGN 252 value: the steer form sends the slider there at once and writes the
+            //setting only when it closes (filled from the setting at start).
+            double pwm = Math.Max(1, (int)mf.p_252.pgn[mf.p_252.highPWM]);
             double rate = simFullSteerRate * pwm / 255.0;
             double dt = mf.timerSim.Interval * 0.001;
             double maxStep = rate * dt;

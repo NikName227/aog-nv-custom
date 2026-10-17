@@ -31,6 +31,16 @@ namespace AgOpenGPS
             get
             {
                 if (!mf.tnl.IsFeatureOn) return false;
+
+                //REQ 2026-10-17-2: auto turn off = the plan is paused - the line follows the
+                //vehicle again, a held target pass is let go (it was kept even with turns off)
+                if (!isYouTurnBtnOn)
+                {
+                    approachHoldPass = false;
+                    heldEntry = null;
+                    return false;
+                }
+
                 if (isYouTurnTriggered) return true;
                 if (!approachHoldPass) return false;
 
