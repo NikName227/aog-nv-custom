@@ -5772,5 +5772,11 @@ public static string gsOrchPlanterBehind {
             }
         }
         
+        public static string gsPlanSynced {
+            get {
+                return ResourceManager.GetString("gsPlanSynced", resourceCulture);
+            }
+        }
+        
 }
 }

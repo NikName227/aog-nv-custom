@@ -1147,7 +1147,10 @@ namespace AgOpenGPS
             paramsDirty = false;
             UpdateApplyButton();
 
+            bool wasFollowing = mf.plan.isFollowPlan;
             mf.plan.isFollowPlan = activateState == 2;   // 3rd state = follow plan
+            //REQ 2026-10-17-2: switching Follow plan on takes in what was worked without it
+            if (!wasFollowing && mf.plan.IsRuntimeOn) mf.PlanSyncWithCoverage();
             UpdateZoneOrderLabel();
             mf.FileSaveTurnPlan();
 

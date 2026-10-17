@@ -2053,6 +2053,217 @@ namespace AgOpenGPS
             return n;
         }
 
+        // ── REQ 2026-10-17-2: the plan catches up with what was worked without it ──
+        // Passes driven with auto turn off are on the map as section coverage, but the plan
+        // never saw them. When auto turn / Follow plan is switched on, every open pass is
+        // checked against the coverage: more than half of it painted (points every 2 m along
+        // it) = worked, the same 50 % rule as the runtime. All coverage counts - it is cleared
+        // before every new operation. What is still open is then laid out again from where
+        // the vehicle is: the open pass it stands on comes first, otherwise the cheapest turn
+        // from the pass it is on (min U-turn) - the current zone first, the others after.
+
+        private const double syncSampleStep = 2.0;    // m between coverage samples on a pass
+        private const double syncCellSize = 5.0;      // m, coverage grid cell
+
+        /// <summary>Returns how many passes were newly marked worked (field plans only).</summary>
+        public int SyncWithCoverage()
+        {
+            if (entries.Count == 0 || mf.tool.isToolOrchard) return 0;
+
+            var grid = BuildCoverageGrid();
+            int marked = 0;
+            if (grid.Count > 0)
+            {
+                foreach (var p in entries)
+                {
+                    if (p.isWorked || p.isSkipped) continue;
+                    EnsureGeometry(p);
+                    if (p.passLength <= 1.0) continue;
+
+                    int total = 0, covered = 0;
+                    foreach (var seg in p.segments)
+                        for (int i = 0; i + 1 < seg.Count; i++)
+                        {
+                            double dx = seg[i + 1].easting - seg[i].easting;
+                            double dn = seg[i + 1].northing - seg[i].northing;
+                            double len = Math.Sqrt(dx * dx + dn * dn);
+                            int steps = Math.Max(1, (int)(len / syncSampleStep));
+                            for (int k = 0; k < steps; k++)
+                            {
+                                double f = (k + 0.5) / steps;
+                                total++;
+                                if (IsCovered(grid, seg[i].easting + dx * f, seg[i].northing + dn * f)) covered++;
+                            }
+                        }
+                    if (total > 0 && covered > 0.5 * total)
+                    {
+                        p.isWorked = true;
+                        marked++;
+                    }
+                }
+            }
+
+            bool relaid = RelayRemaining(marked > 0);
+            if (marked > 0 || relaid)
+            {
+                InvalidateRun();
+                mf.FileSaveTurnPlan();
+                Log.EventWriter("TurnPlan: synced with coverage, " + marked + " pass(es) marked worked"
+                    + (relaid ? ", rest re-laid from the vehicle" : ""));
+            }
+            return marked;
+        }
+
+        // coverage quads (two triangles each) bucketed on a grid; a triangle strip list is
+        // [colour, L0, R0, L1, R1, ...] and quad k = L_k, R_k, L_k+1, R_k+1
+        private Dictionary<long, List<vec3[]>> BuildCoverageGrid()
+        {
+            var grid = new Dictionary<long, List<vec3[]>>();
+            if (mf.triStrip == null) return grid;
+            foreach (var strip in mf.triStrip)
+            {
+                if (strip?.patchList == null) continue;
+                foreach (var tri in strip.patchList)
+                {
+                    for (int k = 1; k + 3 < tri.Count; k += 2)
+                    {
+                        var q = new[] { tri[k], tri[k + 1], tri[k + 2], tri[k + 3] };
+                        double minE = q[0].easting, maxE = minE, minN = q[0].northing, maxN = minN;
+                        for (int i = 1; i < 4; i++)
+                        {
+                            minE = Math.Min(minE, q[i].easting); maxE = Math.Max(maxE, q[i].easting);
+                            minN = Math.Min(minN, q[i].northing); maxN = Math.Max(maxN, q[i].northing);
+                        }
+                        int e0 = (int)Math.Floor(minE / syncCellSize), e1 = (int)Math.Floor(maxE / syncCellSize);
+                        int n0 = (int)Math.Floor(minN / syncCellSize), n1 = (int)Math.Floor(maxN / syncCellSize);
+                        if ((e1 - e0) > 20 || (n1 - n0) > 20) continue;    // a broken strip, not a quad
+                        for (int ce = e0; ce <= e1; ce++)
+                            for (int cn = n0; cn <= n1; cn++)
+                            {
+                                long key = CellKey(ce, cn);
+                                if (!grid.TryGetValue(key, out var list)) grid[key] = list = new List<vec3[]>();
+                                list.Add(q);
+                            }
+                    }
+                }
+            }
+            return grid;
+        }
+
+        private static long CellKey(int e, int n) { return ((long)e << 32) ^ (uint)n; }
+
+        private static bool IsCovered(Dictionary<long, List<vec3[]>> grid, double e, double n)
+        {
+            long key = CellKey((int)Math.Floor(e / syncCellSize), (int)Math.Floor(n / syncCellSize));
+            if (!grid.TryGetValue(key, out var list)) return false;
+            foreach (var q in list)
+                if (InTriangle(q[0], q[1], q[2], e, n) || InTriangle(q[1], q[2], q[3], e, n)) return true;
+            return false;
+        }
+
+        private static bool InTriangle(vec3 a, vec3 b, vec3 c, double e, double n)
+        {
+            double d1 = (e - b.easting) * (a.northing - b.northing) - (a.easting - b.easting) * (n - b.northing);
+            double d2 = (e - c.easting) * (b.northing - c.northing) - (b.easting - c.easting) * (n - c.northing);
+            double d3 = (e - a.easting) * (c.northing - a.northing) - (c.easting - a.easting) * (n - a.northing);
+            bool neg = d1 < 0 || d2 < 0 || d3 < 0, pos = d1 > 0 || d2 > 0 || d3 > 0;
+            return !(neg && pos);
+        }
+
+        // distance (squared) from a point to the pass polyline - segments, not just vertices
+        private static double DistToPass2(CPlanEntry p, double e, double n)
+        {
+            double best = double.MaxValue;
+            foreach (var s in p.segments)
+                for (int i = 0; i < s.Count; i++)
+                {
+                    double d;
+                    if (i + 1 < s.Count)
+                    {
+                        double dx = s[i + 1].easting - s[i].easting, dn = s[i + 1].northing - s[i].northing;
+                        double l2 = dx * dx + dn * dn;
+                        double t = l2 < 1e-9 ? 0 : ((e - s[i].easting) * dx + (n - s[i].northing) * dn) / l2;
+                        t = Math.Max(0, Math.Min(1, t));
+                        double qe = s[i].easting + dx * t - e, qn = s[i].northing + dn * t - n;
+                        d = qe * qe + qn * qn;
+                    }
+                    else
+                    {
+                        double qe = s[i].easting - e, qn = s[i].northing - n;
+                        d = qe * qe + qn * qn;
+                    }
+                    if (d < best) best = d;
+                }
+            return best;
+        }
+
+        /// <summary>
+        /// Lay the open passes out again from the vehicle. Done ones keep their place at the
+        /// front (in their old order). Without changes (nothing new worked, the vehicle not on
+        /// an open pass out of turn) the plan stays exactly as it is.
+        /// </summary>
+        private bool RelayRemaining(bool changed)
+        {
+            var main = new List<CPlanEntry>();
+            foreach (var p in entries) if (!p.IsManual) main.Add(p);
+            if (main.Count == 0) return false;
+            main.Sort((a, b) => a.order.CompareTo(b.order));
+
+            var done = new List<CPlanEntry>();
+            var open = new List<CPlanEntry>();
+            foreach (var p in main) (p.isWorked || p.isSkipped ? done : open).Add(p);
+            if (open.Count == 0) return false;
+
+            // the pass the vehicle is on (within 3/4 of a width of it), else the nearest one
+            CPlanEntry near = null;
+            double nearD = double.MaxValue;
+            foreach (var p in main)
+            {
+                EnsureGeometry(p);
+                double d = DistToPass2(p, mf.pivotAxlePos.easting, mf.pivotAxlePos.northing);
+                if (d < nearD) { nearD = d; near = p; }
+            }
+            double w = WorkWidth();
+            bool onOpen = near != null && open.Contains(near) && nearD <= 0.5625 * w * w;
+
+            if (!changed && (!onOpen || near == open[0])) return false;
+
+            // zones: the one the vehicle is in first, the rest in their planned sequence
+            var zoneSeq = new List<int>();
+            int curZone = near != null ? near.zone : open[0].zone;
+            bool curHasOpen = false;
+            foreach (var p in open) if (p.zone == curZone) { curHasOpen = true; break; }
+            if (curHasOpen) zoneSeq.Add(curZone);
+            foreach (var p in open) if (!zoneSeq.Contains(p.zone)) zoneSeq.Add(p.zone);
+
+            var seq = new List<CPlanEntry>(done);
+            foreach (int z in zoneSeq)
+            {
+                var lst = new List<CPlanEntry>();
+                foreach (var p in open) if (p.zone == z) lst.Add(p);
+
+                CPlanEntry from = null;
+                if (z == curZone && near != null)
+                {
+                    if (onOpen) { lst.Remove(near); lst.Insert(0, near); }   // stand on it = next
+                    else from = near;                                         // turn from it
+                }
+
+                if (mode == ModeMinUTurn) seq.AddRange(OrderMinTurn(lst, seq.Count, from));
+                else seq.AddRange(lst);
+            }
+
+            int order = 0;
+            foreach (var p in seq)
+            {
+                p.order = ++order;
+                p.isSameWay = (order % 2) == 1;
+            }
+            foreach (var p in entries) if (p.IsManual) p.order = ++order;
+            entries.Sort((a, b) => a.order.CompareTo(b.order));
+            return true;
+        }
+
         /// <summary>
         /// Per-fix runtime: accumulate the distance driven while on a plan pass
         /// (laterally within half a width of its line); leaving the pass with more
