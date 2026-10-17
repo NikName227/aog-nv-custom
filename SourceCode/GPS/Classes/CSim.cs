@@ -16,6 +16,9 @@ namespace AgOpenGPS
 
         public bool isAccelForward, isAccelBack;
 
+        //steer rate at High Steer PWM 255 [deg/s]
+        private const double simFullSteerRate = 60.0;
+
         #endregion properties sim
 
         public CSim(FormGPS _f)
@@ -30,36 +33,19 @@ namespace AgOpenGPS
         {
             steerAngle = _st;
 
-            double diff = Math.Abs(steerAngle - steerangleAve);
+            //REQ 2026-10-17-1: the wheels turn at a rate set by High Steer PWM (the module's
+            //max PWM limit) - 255 = ~60 deg/s, the old fixed steps; lower = slower, like a real
+            //valve, so the entry overshoot can be tried out in the simulator. Never past the target.
+            //The live PGN 252 value: the steer form sends the slider there at once and writes the
+            //setting only when it closes (filled from the setting at start).
+            double pwm = Math.Max(1, (int)mf.p_252.pgn[mf.p_252.highPWM]);
+            double rate = simFullSteerRate * pwm / 255.0;
+            double dt = mf.timerSim.Interval * 0.001;
+            double maxStep = rate * dt;
+            double diff = steerAngle - steerangleAve;
 
-            if (diff > 11)
-            {
-                if (steerangleAve >= steerAngle)
-                {
-                    steerangleAve -= 6;
-                }
-                else steerangleAve += 6;
-            }
-            else if (diff > 5)
-            {
-                if (steerangleAve >= steerAngle)
-                {
-                    steerangleAve -= 2;
-                }
-                else steerangleAve += 2;
-            }
-            else if (diff > 1)
-            {
-                if (steerangleAve >= steerAngle)
-                {
-                    steerangleAve -= 0.5;
-                }
-                else steerangleAve += 0.5;
-            }
-            else
-            {
-                steerangleAve = steerAngle;
-            }
+            if (Math.Abs(diff) <= maxStep) steerangleAve = steerAngle;
+            else steerangleAve += Math.Sign(diff) * maxStep;
 
             mf.mc.actualSteerAngleDegrees = steerangleAve;
 

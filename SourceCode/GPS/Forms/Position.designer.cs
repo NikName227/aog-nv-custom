@@ -944,6 +944,9 @@ namespace AgOpenGPS
                 OrchardFixGate();
                 OrchardClampSteerAngle();
 
+                //REQ 2026-10-17-1: hold the wheels at a stop until the direction is known again
+                SteerHoldAtStop();
+
                 if (!isBtnAutoSteerOn) //32020 means auto steer is off
                 {
                     guidanceLineDistanceOff = 32020;
