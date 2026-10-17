@@ -1095,6 +1095,7 @@ namespace AgOpenGPS
         // REQ 2026-10-17-3: room kept on top of the U itself (R_out + R_in), instead of +20 %
         public const double minTurnReserve = 0.5;
         private const double kTurnPenalty = 1000.0;
+        private const double jumpRuleFactor = 2.0;    // × width per pass beyond n+1
 
         /// <summary>
         /// REQ 2026-10-17-3: rough length the generated plan drives on the headland, in plan
@@ -1168,6 +1169,11 @@ namespace AgOpenGPS
                 if (st < 0) st = 0;
                 double c = lat + st;
                 if (lat < span - 1e-6 || st > plan.maxEndStep) c += kTurnPenalty;
+
+                // jump rule (field 2026-10-17): n and n+1 only - a longer jump pays extra per
+                // pass beyond n+1, so it is taken only where it must be (end step, zone end)
+                int extra = Math.Abs(a.offsetIdx - b.offsetIdx) - (n + 1);
+                if (extra > 0) c += jumpRuleFactor * extra * w;
                 return c;
             }
 
@@ -2663,34 +2669,55 @@ namespace AgOpenGPS
             List<vec3> run = null;
             bool everClipped = false;
 
-            for (int i = 0; i < pass.Count; i++)
+            bool Inside(double e, double n, ref bool clippedByObstacle)
             {
-                var pt = new vec2(pass[i].easting, pass[i].northing);
-                bool inside = useHeadland
-                    ? headland.IsPointInPolygon(pt)
-                    : fenceEar.IsPointInPolygon(pt);
-                if (inside)
+                var pt = new vec2(e, n);
+                bool ins = useHeadland ? headland.IsPointInPolygon(pt) : fenceEar.IsPointInPolygon(pt);
+                if (!ins) return false;
+                for (int b = 1; b < mf.bnd.bndList.Count; b++)
                 {
-                    for (int b = 1; b < mf.bnd.bndList.Count; b++)
+                    if (mf.bnd.bndList[b].isDriveThru) continue;
+                    if (mf.bnd.bndList[b].fenceLineEar.IsPointInPolygon(pt))
                     {
-                        if (mf.bnd.bndList[b].isDriveThru) continue;
-                        if (mf.bnd.bndList[b].fenceLineEar.IsPointInPolygon(
-                                new vec2(pass[i].easting, pass[i].northing)))
-                        {
-                            inside = false;
-                            everClipped = true;
-                            break;
-                        }
+                        clippedByObstacle = true;
+                        return false;
                     }
                 }
+                return true;
+            }
+
+            // REQ 2026-10-17-3: the samples are 2 m apart, so a run used to end on the last
+            // sample inside - pass ends on a 2 m grid, and the min-turn order counted that
+            // grid as end steps. The crossing is found between the last sample inside and the
+            // first one outside (bisection, ~1 mm) and becomes the end point.
+            vec3 Crossing(vec3 inPt, vec3 outPt)
+            {
+                bool dummy = false;
+                for (int it = 0; it < 12; it++)
+                {
+                    var mid = new vec3((inPt.easting + outPt.easting) * 0.5,
+                        (inPt.northing + outPt.northing) * 0.5, inPt.heading);
+                    if (Inside(mid.easting, mid.northing, ref dummy)) inPt = mid; else outPt = mid;
+                }
+                return inPt;
+            }
+
+            for (int i = 0; i < pass.Count; i++)
+            {
+                bool inside = Inside(pass[i].easting, pass[i].northing, ref everClipped);
 
                 if (inside)
                 {
-                    if (run == null) run = new List<vec3>();
+                    if (run == null)
+                    {
+                        run = new List<vec3>();
+                        if (i > 0) run.Add(Crossing(pass[i], pass[i - 1]));
+                    }
                     run.Add(pass[i]);
                 }
                 else if (run != null)
                 {
+                    run.Add(Crossing(run[run.Count - 1], pass[i]));
                     if (run.Count > 1) segments.Add(run);
                     run = null;
                 }
