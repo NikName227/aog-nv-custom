@@ -4624,7 +4624,7 @@ namespace AgOpenGPS
 
                     //sharp turns on you turn.
                     //update base on autosteer settings and distance from line
-                    double goalPointDistance = mf.vehicle.UpdateGoalPointDistance();
+                    double goalPointDistance = mf.vehicle.UpdateGoalPointDistance(mf.tnl.IsFeatureOn);
 
                     //goalPointDistance *= mf.vehicle.uturnCompensation;
 

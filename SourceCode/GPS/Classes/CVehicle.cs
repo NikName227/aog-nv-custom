@@ -102,9 +102,13 @@ namespace AgOpenGPS
 
         public VehicleConfig VehicleConfig { get; }
 
-        public double UpdateGoalPointDistance()
+        /// <param name="isTurning">REQ 2026-10-17-1: inside a turn (turn lines on) the acquire
+        /// lookahead is used all the way, not only once the error passes 0.4 m - a turn is
+        /// steering, not holding a straight line, and the short hold lookahead reaches the
+        /// entry arc too late for the wheels to follow. Acquire factor 1 = as before.</param>
+        public double UpdateGoalPointDistance(bool isTurning = false)
         {
-            double xTE = Math.Abs(modeActualXTE);
+            double xTE = isTurning ? 1.0 : Math.Abs(modeActualXTE);
             double goalPointDistance = mf.avgSpeed * 0.05 * goalPointLookAheadMult;
 
             double LoekiAheadHold = goalPointLookAheadHold;
