@@ -5766,5 +5766,11 @@ public static string gsOrchPlanterBehind {
             }
         }
         
+        public static string gsHeadlandTotal {
+            get {
+                return ResourceManager.GetString("gsHeadlandTotal", resourceCulture);
+            }
+        }
+        
 }
 }

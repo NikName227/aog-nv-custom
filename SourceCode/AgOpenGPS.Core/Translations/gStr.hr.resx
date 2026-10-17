@@ -1925,4 +1925,7 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsMaxEndStep" xml:space="preserve">
     <value>Najveći pomak kraja (m)</value>
   </data>
+  <data name="gsHeadlandTotal" xml:space="preserve">
+    <value>Uvratina</value>
+  </data>
 </root>
