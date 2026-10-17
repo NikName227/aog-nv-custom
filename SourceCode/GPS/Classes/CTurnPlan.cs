@@ -223,6 +223,47 @@ namespace AgOpenGPS
             return true;
         }
 
+        /// <summary>
+        /// REQ 2026-10-17-3 §4.2: the zone list turned so it starts at the edge whose entry
+        /// is nearer the exit of prev (the last pass of the previous zone, at plan position
+        /// already). Both are on the same field end - the one prev turns at. Without pass
+        /// geometry the pass index decides. prev == null -> the list as it is.
+        /// beside = the new zone lies next to prev at that field end (end step within
+        /// maxEndStep), so the way into it is a real turn the optimizer may price; a zone
+        /// further along the line (a cut-off part) is only reached by driving there.
+        /// </summary>
+        private List<CPlanEntry> FacePrevious(List<CPlanEntry> lst, CPlanEntry prev, int already,
+            out bool beside)
+        {
+            beside = false;
+            var res = new List<CPlanEntry>(lst);
+            if (prev == null || res.Count == 0) return res;
+            if (res.Count < 2)
+            {
+                double one = EndStep(prev, res[0], TurnsAtB(already));
+                beside = one >= 0 && one <= maxEndStep;
+                return res;
+            }
+            CPlanEntry first = res[0], last = res[res.Count - 1];
+            bool atB = TurnsAtB(already);
+            double dFirst, dLast;
+            if (TryPassEnd(prev, atB, out vec3 x) && TryPassEnd(first, atB, out vec3 f)
+                && TryPassEnd(last, atB, out vec3 l))
+            {
+                dFirst = (f.easting - x.easting) * (f.easting - x.easting) + (f.northing - x.northing) * (f.northing - x.northing);
+                dLast = (l.easting - x.easting) * (l.easting - x.easting) + (l.northing - x.northing) * (l.northing - x.northing);
+            }
+            else
+            {
+                dFirst = Math.Abs(first.offsetIdx - prev.offsetIdx);
+                dLast = Math.Abs(last.offsetIdx - prev.offsetIdx);
+            }
+            if (dLast < dFirst - 1e-6) res.Reverse();
+            double st = EndStep(prev, res[0], atB);
+            beside = st >= 0 && st <= maxEndStep;
+            return res;
+        }
+
         // true when a border lies between two passes of a walk (they may skip indices)
         private static bool CutBetween(HashSet<int> cuts, CPlanEntry a, CPlanEntry b)
         {
@@ -681,9 +722,15 @@ namespace AgOpenGPS
                     int z = Array.IndexOf(zoneOrderById, step);
                     if (z < 0) continue;
                     int startCount = ordered.Count;
+                    // REQ 2026-10-17-3 §4.2: a zone starts at the edge next to where the
+                    // previous one ended; min turn also prices the turn out of that pass
+                    CPlanEntry prev = ordered.Count > 0 ? ordered[ordered.Count - 1] : null;
+                    bool beside = false;
+                    var zl = mode == ModeContour ? zoneLists[z]
+                        : FacePrevious(zoneLists[z], prev, ordered.Count, out beside);
                     var inZone = mode == ModeMinUTurn
-                        ? OrderMinTurn(zoneLists[z], ordered.Count)
-                        : new List<CPlanEntry>(OrderWithinZoneByMode(zoneLists[z]));
+                        ? OrderMinTurn(zl, ordered.Count, beside ? prev : null)
+                        : new List<CPlanEntry>(OrderWithinZoneByMode(zl));
                     foreach (var p in inZone)
                     {
                         // zone number = SPATIAL position, so the map colours stay put no
