@@ -2292,4 +2292,10 @@ USE AT OWN RISK.</value>
   <data name="gsMaxEndStep" xml:space="preserve">
     <value>Max end step (m)</value>
   </data>
+  <data name="gsHeadlandTotal" xml:space="preserve">
+    <value>Headland</value>
+  </data>
+  <data name="gsPlanSynced" xml:space="preserve">
+    <value>Plan synced: {0} passes marked worked</value>
+  </data>
 </root>

@@ -223,6 +223,47 @@ namespace AgOpenGPS
             return true;
         }
 
+        /// <summary>
+        /// REQ 2026-10-17-3 §4.2: the zone list turned so it starts at the edge whose entry
+        /// is nearer the exit of prev (the last pass of the previous zone, at plan position
+        /// already). Both are on the same field end - the one prev turns at. Without pass
+        /// geometry the pass index decides. prev == null -> the list as it is.
+        /// beside = the new zone lies next to prev at that field end (end step within
+        /// maxEndStep), so the way into it is a real turn the optimizer may price; a zone
+        /// further along the line (a cut-off part) is only reached by driving there.
+        /// </summary>
+        private List<CPlanEntry> FacePrevious(List<CPlanEntry> lst, CPlanEntry prev, int already,
+            out bool beside)
+        {
+            beside = false;
+            var res = new List<CPlanEntry>(lst);
+            if (prev == null || res.Count == 0) return res;
+            if (res.Count < 2)
+            {
+                double one = EndStep(prev, res[0], TurnsAtB(already));
+                beside = one >= 0 && one <= maxEndStep;
+                return res;
+            }
+            CPlanEntry first = res[0], last = res[res.Count - 1];
+            bool atB = TurnsAtB(already);
+            double dFirst, dLast;
+            if (TryPassEnd(prev, atB, out vec3 x) && TryPassEnd(first, atB, out vec3 f)
+                && TryPassEnd(last, atB, out vec3 l))
+            {
+                dFirst = (f.easting - x.easting) * (f.easting - x.easting) + (f.northing - x.northing) * (f.northing - x.northing);
+                dLast = (l.easting - x.easting) * (l.easting - x.easting) + (l.northing - x.northing) * (l.northing - x.northing);
+            }
+            else
+            {
+                dFirst = Math.Abs(first.offsetIdx - prev.offsetIdx);
+                dLast = Math.Abs(last.offsetIdx - prev.offsetIdx);
+            }
+            if (dLast < dFirst - 1e-6) res.Reverse();
+            double st = EndStep(prev, res[0], atB);
+            beside = st >= 0 && st <= maxEndStep;
+            return res;
+        }
+
         // true when a border lies between two passes of a walk (they may skip indices)
         private static bool CutBetween(HashSet<int> cuts, CPlanEntry a, CPlanEntry b)
         {
@@ -681,9 +722,15 @@ namespace AgOpenGPS
                     int z = Array.IndexOf(zoneOrderById, step);
                     if (z < 0) continue;
                     int startCount = ordered.Count;
+                    // REQ 2026-10-17-3 §4.2: a zone starts at the edge next to where the
+                    // previous one ended; min turn also prices the turn out of that pass
+                    CPlanEntry prev = ordered.Count > 0 ? ordered[ordered.Count - 1] : null;
+                    bool beside = false;
+                    var zl = mode == ModeContour ? zoneLists[z]
+                        : FacePrevious(zoneLists[z], prev, ordered.Count, out beside);
                     var inZone = mode == ModeMinUTurn
-                        ? OrderMinTurn(zoneLists[z], ordered.Count)
-                        : new List<CPlanEntry>(OrderWithinZoneByMode(zoneLists[z]));
+                        ? OrderMinTurn(zl, ordered.Count, beside ? prev : null)
+                        : new List<CPlanEntry>(OrderWithinZoneByMode(zl));
                     foreach (var p in inZone)
                     {
                         // zone number = SPATIAL position, so the map colours stay put no
@@ -1058,70 +1105,323 @@ namespace AgOpenGPS
         }
 
         /// <summary>
-        /// REQ 2026-10-11-2 - min turn for the field, the F50 walk (OrderOrchardPasses) on
-        /// field passes. A move is workable when the passes are far enough apart for a clean
-        /// U (the turn builder's own span + minTurnSafety) AND the field end does not step
-        /// along by more than maxEndStep. Of the workable ones the EARLIEST still-to-do pass
-        /// is taken, but never one that leaves nothing workable after it (one look ahead).
-        /// Nothing workable left = the nearest pass, and the K-turn covers it - or the driver
-        /// takes over. already = passes ordered before this zone (keeps the alternation).
+        /// REQ 2026-10-17-3 - min U-turn for the field = the SHORTEST way through a zone in
+        /// which every turn is a clean U. Track sequencing as a small travelling-salesman
+        /// problem: the price of a turn a -> b is the lateral distance plus how far the field
+        /// end steps along (a slanted end); a turn the U does not fit (closer than
+        /// UTurnSpanNeeded + minTurnReserve) or that steps more than maxEndStep costs a K-turn
+        /// penalty. Two starts are laid - the old walk (earliest workable pass) and the
+        /// driver's n+1 / n zigzag with its zone end searched exhaustively - both are improved
+        /// by local moves (shift one to three passes, reversed or not; reverse a stretch) as
+        /// long as the total gets shorter, and the cheaper one is kept.
+        /// already = passes ordered before this zone (keeps the A/B alternation). from = the
+        /// pass the vehicle is on when only the rest of a plan is re-laid (REQ 2026-10-17-2):
+        /// the first pass is then free, and the turn into it is priced too.
         /// </summary>
-        private List<CPlanEntry> OrderMinTurn(List<CPlanEntry> lst, int already)
+        private List<CPlanEntry> OrderMinTurn(List<CPlanEntry> lst, int already, CPlanEntry from = null)
         {
             int m = lst.Count;
-            if (m < 3) return new List<CPlanEntry>(lst);
+            if (m == 0) return new List<CPlanEntry>();
+            if (m < 3 && from == null) return new List<CPlanEntry>(lst);
+
+            var tc = new TurnCosts(this, lst, already, from);
+            int start = 0;
+            if (from != null)
+                for (int j = 1; j < m; j++)
+                    if (tc.Start(j) < tc.Start(start) - 1e-9) start = j;
+
+            int[] a = tc.Improve(tc.WalkEarliest(start));
+            int[] b = tc.Improve(tc.TailSearch(tc.WalkZigzag(start)));
+            int[] best = tc.Total(b) <= tc.Total(a) + 1e-9 ? b : a;
+
+            var seq = new List<CPlanEntry>(m);
+            foreach (int i in best) seq.Add(lst[i]);
+            return seq;
+        }
+
+        // REQ 2026-10-17-3: room kept on top of the U itself (R_out + R_in), instead of +20 %
+        public const double minTurnReserve = 0.5;
+        private const double kTurnPenalty = 1000.0;
+        private const double jumpRuleFactor = 2.0;    // × width per pass beyond n+1
+
+        /// <summary>
+        /// REQ 2026-10-17-3: rough length the generated plan drives on the headland, in plan
+        /// order - per turn the lateral step, the field-end step and what the arcs add (a
+        /// U = the quarter circles in place of the straight; too close = about one span more).
+        /// </summary>
+        public double HeadlandEstimate()
+        {
+            var list = new List<CPlanEntry>();
+            foreach (var p in entries) if (!p.IsManual) list.Add(p);
+            list.Sort((a, b) => a.order.CompareTo(b.order));
 
             double w = WorkWidth();
-            double span = mf.yt.UTurnSpanNeeded * minTurnSafety;
-
-            bool Workable(int from, int to, int fromPos)
+            double span = mf.yt.UTurnSpanNeeded;
+            double sum = 0;
+            for (int i = 0; i + 1 < list.Count; i++)
             {
-                if (Math.Abs(lst[from].offsetIdx - lst[to].offsetIdx) * w < span) return false;
-                double st = EndStep(lst[from], lst[to], TurnsAtB(fromPos));
-                return st < 0 || st <= maxEndStep;
+                double lat = Math.Abs(list[i].offsetIdx - list[i + 1].offsetIdx) * w;
+                double st = EndStep(list[i], list[i + 1], TurnsAtB(list[i].order));
+                sum += lat + Math.Max(0, st) + (lat >= span ? (Math.PI / 2 - 1) * span : span);
+            }
+            return sum;
+        }
+
+        /// <summary>
+        /// Turn prices of one zone and the moves on a pass sequence (indices into the zone
+        /// list). A sequence s puts s[t] at plan position already + t + 1; the turn after it
+        /// is at the B end when that position is odd (TurnsAtB).
+        /// </summary>
+        private sealed class TurnCosts
+        {
+            private readonly int m, already, n, window;
+            private readonly bool hasFrom;
+            private readonly double span;
+            private readonly double[,] costA, costB;
+            private readonly double[] startA, startB;
+
+            public TurnCosts(CTurnPlan plan, List<CPlanEntry> lst, int already, CPlanEntry from)
+            {
+                m = lst.Count;
+                this.already = already;
+                hasFrom = from != null;
+                double w = plan.WorkWidth();
+                span = plan.mf.yt.UTurnSpanNeeded + minTurnReserve;
+                n = Math.Max(1, (int)Math.Ceiling(span / Math.Max(0.1, w) - 1e-9));
+                window = Math.Max(12, 3 * (n + 1));
+
+                costA = new double[m, m];
+                costB = new double[m, m];
+                for (int i = 0; i < m; i++)
+                    for (int j = 0; j < m; j++)
+                    {
+                        if (i == j) continue;
+                        costA[i, j] = Price(plan, lst[i], lst[j], false, w);
+                        costB[i, j] = Price(plan, lst[i], lst[j], true, w);
+                    }
+                startA = new double[m];
+                startB = new double[m];
+                if (hasFrom)
+                    for (int j = 0; j < m; j++)
+                    {
+                        startA[j] = Price(plan, from, lst[j], false, w);
+                        startB[j] = Price(plan, from, lst[j], true, w);
+                    }
             }
 
-            var used = new bool[m];
-            var seq = new List<CPlanEntry>(m);
-            int cur = 0;
-            used[0] = true;
-            seq.Add(lst[0]);
-
-            for (int step = 1; step < m; step++)
+            private double Price(CTurnPlan plan, CPlanEntry a, CPlanEntry b, bool atB, double w)
             {
-                int curPos = already + step;          // 1-based plan position of cur
-                int next = -1;
-                for (int k = 0; k < m && next < 0; k++)
+                double lat = Math.Abs(a.offsetIdx - b.offsetIdx) * w;
+                double st = EndStep(a, b, atB);
+                if (st < 0) st = 0;
+                double c = lat + st;
+                if (lat < span - 1e-6 || st > plan.maxEndStep) c += kTurnPenalty;
+
+                // jump rule (field 2026-10-17): n and n+1 only - a longer jump pays extra per
+                // pass beyond n+1, so it is taken only where it must be (end step, zone end)
+                int extra = Math.Abs(a.offsetIdx - b.offsetIdx) - (n + 1);
+                if (extra > 0) c += jumpRuleFactor * extra * w;
+                return c;
+            }
+
+            public double Start(int j) { return !hasFrom ? 0 : (TurnsAtB(already) ? startB[j] : startA[j]); }
+
+            private double Step(int a, int b, int t)
+            {
+                return TurnsAtB(already + t + 1) ? costB[a, b] : costA[a, b];
+            }
+
+            private bool Fits(int a, int b, int t) { return Step(a, b, t) < kTurnPenalty; }
+
+            // turns t in [lo, hi): t = -1 is the turn into s[0], t = i the one after s[i]
+            private double Range(int[] s, int lo, int hi)
+            {
+                double c = 0;
+                if (lo < 0) { c += Start(s[0]); lo = 0; }
+                if (hi > m - 1) hi = m - 1;
+                for (int t = lo; t < hi; t++) c += Step(s[t], s[t + 1], t);
+                return c;
+            }
+
+            public double Total(int[] s) { return Range(s, -1, m - 1); }
+
+            /// <summary>The F50 walk: the earliest still-to-do pass that fits, one look ahead.</summary>
+            public int[] WalkEarliest(int start)
+            {
+                var used = new bool[m];
+                var s = new int[m];
+                s[0] = start;
+                used[start] = true;
+                int cur = start;
+                for (int t = 1; t < m; t++)
                 {
-                    if (used[k] || !Workable(cur, k, curPos)) continue;
-                    bool onward = step == m - 1;
-                    for (int y = 0; !onward && y < m; y++)
-                        if (!used[y] && y != k && Workable(k, y, curPos + 1)) onward = true;
-                    if (onward) next = k;
-                }
-                if (next < 0)
-                {
-                    //no look-ahead winner: the earliest workable one, else the nearest
+                    int next = -1;
                     for (int k = 0; k < m && next < 0; k++)
-                        if (!used[k] && Workable(cur, k, curPos)) next = k;
-                }
-                if (next < 0)
-                {
-                    int best = int.MaxValue;
-                    for (int k = 0; k < m; k++)
                     {
-                        if (used[k]) continue;
-                        int d = Math.Abs(lst[cur].offsetIdx - lst[k].offsetIdx);
-                        if (d < best) { best = d; next = k; }
+                        if (used[k] || !Fits(cur, k, t - 1)) continue;
+                        bool onward = t == m - 1;
+                        for (int y = 0; !onward && y < m; y++)
+                            if (!used[y] && y != k && Fits(k, y, t)) onward = true;
+                        if (onward) next = k;
+                    }
+                    for (int k = 0; k < m && next < 0; k++)
+                        if (!used[k] && Fits(cur, k, t - 1)) next = k;
+                    if (next < 0) next = Cheapest(used, cur, t - 1);
+                    used[next] = true;
+                    s[t] = next;
+                    cur = next;
+                }
+                return s;
+            }
+
+            /// <summary>The driver's zigzag: n+1 on, n back; taken -> the cheapest that is left.</summary>
+            public int[] WalkZigzag(int start)
+            {
+                var used = new bool[m];
+                var s = new int[m];
+                s[0] = start;
+                used[start] = true;
+                int cur = start;
+                bool up = true;
+                for (int t = 1; t < m; t++)
+                {
+                    int p1 = up ? cur + n + 1 : cur - n;
+                    int p2 = up ? cur - n : cur + n + 1;
+                    int next = -1;
+                    if (p1 >= 0 && p1 < m && !used[p1] && Fits(cur, p1, t - 1)) next = p1;
+                    else if (p2 >= 0 && p2 < m && !used[p2] && Fits(cur, p2, t - 1)) next = p2;
+                    if (next < 0) next = Cheapest(used, cur, t - 1);
+                    up = next < cur;
+                    used[next] = true;
+                    s[t] = next;
+                    cur = next;
+                }
+                return s;
+            }
+
+            private int Cheapest(bool[] used, int cur, int t)
+            {
+                int best = -1;
+                double bc = double.MaxValue;
+                for (int k = 0; k < m; k++)
+                {
+                    if (used[k]) continue;
+                    double c = Step(cur, k, t);
+                    if (c < bc - 1e-9) { bc = c; best = k; }
+                }
+                return best;
+            }
+
+            /// <summary>
+            /// The zone end, where a walk strands its last passes side by side: the last few
+            /// are laid out exhaustively (branch and bound, with a node budget).
+            /// </summary>
+            public int[] TailSearch(int[] s)
+            {
+                int tail = Math.Min(Math.Min(2 * (n + 1) + 1, 10), m - 1);
+                if (tail < 2) return s;
+                int head = m - tail;
+                var rest = new List<int>();
+                for (int i = head; i < m; i++) rest.Add(s[i]);
+
+                double bestCost = Range(s, head - 1, m - 1);
+                int[] best = null;
+                var path = new int[tail];
+                var used = new bool[tail];
+                long budget = 2000000;
+
+                void Dfs(int prev, int depth, double cost)
+                {
+                    if (--budget < 0 || cost >= bestCost - 1e-9) return;
+                    if (depth == tail)
+                    {
+                        bestCost = cost;
+                        best = (int[])path.Clone();
+                        return;
+                    }
+                    for (int r = 0; r < tail; r++)
+                    {
+                        if (used[r]) continue;
+                        used[r] = true;
+                        path[depth] = rest[r];
+                        Dfs(rest[r], depth + 1, cost + Step(prev, rest[r], head + depth - 1));
+                        used[r] = false;
                     }
                 }
-                if (next < 0) break;
-                used[next] = true;
-                seq.Add(lst[next]);
-                cur = next;
+                Dfs(s[head - 1], 0, 0);
+
+                if (best == null) return s;
+                var o = (int[])s.Clone();
+                Array.Copy(best, 0, o, head, tail);
+                return o;
             }
-            for (int k = 0; k < m; k++) if (!used[k]) seq.Add(lst[k]);
-            return seq;
+
+            /// <summary>Local moves while the total gets shorter (first pass stays unless free).</summary>
+            public int[] Improve(int[] s)
+            {
+                s = (int[])s.Clone();
+                int first = hasFrom ? 0 : 1;
+                var trial = new int[m];
+                for (int sweep = 0; sweep < 50; sweep++)
+                {
+                    bool better = false;
+
+                    // shift a stretch of 1..3 passes (as it is or reversed) to another place
+                    for (int len = 1; len <= 3; len++)
+                        for (int i = first; i + len <= m; i++)
+                            for (int j = Math.Max(first, i - window); j <= Math.Min(m - len, i + window); j++)
+                            {
+                                if (j == i) continue;
+                                int lo = Math.Min(i, j) - 1, hi = Math.Max(i, j) + len;
+                                double before = Range(s, lo, hi);
+                                for (int rev = 0; rev < 2; rev++)
+                                {
+                                    Shift(s, trial, i, len, j, rev == 1);
+                                    if (Range(trial, lo, hi) < before - 1e-9)
+                                    {
+                                        Array.Copy(trial, s, m);
+                                        better = true;
+                                        break;
+                                    }
+                                }
+                            }
+
+                    // reverse a stretch
+                    for (int i = first; i < m - 1; i++)
+                        for (int j = i + 1; j <= Math.Min(m - 1, i + window); j++)
+                        {
+                            double before = Range(s, i - 1, j + 1);
+                            Array.Copy(s, trial, m);
+                            Array.Reverse(trial, i, j - i + 1);
+                            if (Range(trial, i - 1, j + 1) < before - 1e-9)
+                            {
+                                Array.Copy(trial, s, m);
+                                better = true;
+                            }
+                        }
+
+                    if (!better) break;
+                }
+                return s;
+            }
+
+            // o = s with s[i .. i+len) taken out and put back so that it starts at index j
+            private void Shift(int[] s, int[] o, int i, int len, int j, bool reversed)
+            {
+                int w = 0;
+                for (int k = 0; k < m; k++)
+                {
+                    if (w == j) { Put(s, o, ref w, i, len, reversed); }
+                    if (k >= i && k < i + len) continue;
+                    o[w++] = s[k];
+                }
+                if (w == j) Put(s, o, ref w, i, len, reversed);
+            }
+
+            private static void Put(int[] s, int[] o, ref int w, int i, int len, bool reversed)
+            {
+                for (int q = 0; q < len; q++) o[w++] = s[reversed ? i + len - 1 - q : i + q];
+            }
         }
 
         private IEnumerable<CPlanEntry> OrderWithinZoneByMode(List<CPlanEntry> lst)
@@ -1806,6 +2106,227 @@ namespace AgOpenGPS
             return n;
         }
 
+        // ── REQ 2026-10-17-2: the plan catches up with what was worked without it ──
+        // Passes driven with auto turn off are on the map as section coverage, but the plan
+        // never saw them. When auto turn / Follow plan is switched on, every open pass is
+        // checked against the coverage: more than half of it painted (points every 2 m along
+        // it) = worked, the same 50 % rule as the runtime. All coverage counts - it is cleared
+        // before every new operation. What is still open is then laid out again from where
+        // the vehicle is: the open pass it stands on comes first, otherwise the cheapest turn
+        // from the pass it is on (min U-turn) - the current zone first, the others after.
+
+        private const double syncSampleStep = 2.0;    // m between coverage samples on a pass
+        private const double syncCellSize = 5.0;      // m, coverage grid cell
+
+        /// <summary>Returns how many passes were newly marked worked (field plans only).</summary>
+        public int SyncWithCoverage()
+        {
+            if (entries.Count == 0 || mf.tool.isToolOrchard) return 0;
+
+            var grid = BuildCoverageGrid();
+            int marked = 0;
+            if (grid.Count > 0)
+            {
+                foreach (var p in entries)
+                {
+                    if (p.isWorked || p.isSkipped) continue;
+                    EnsureGeometry(p);
+                    if (p.passLength <= 1.0) continue;
+
+                    int total = 0, covered = 0;
+                    foreach (var seg in p.segments)
+                        for (int i = 0; i + 1 < seg.Count; i++)
+                        {
+                            double dx = seg[i + 1].easting - seg[i].easting;
+                            double dn = seg[i + 1].northing - seg[i].northing;
+                            double len = Math.Sqrt(dx * dx + dn * dn);
+                            int steps = Math.Max(1, (int)(len / syncSampleStep));
+                            for (int k = 0; k < steps; k++)
+                            {
+                                double f = (k + 0.5) / steps;
+                                total++;
+                                if (IsCovered(grid, seg[i].easting + dx * f, seg[i].northing + dn * f)) covered++;
+                            }
+                        }
+                    if (total > 0 && covered > 0.5 * total)
+                    {
+                        p.isWorked = true;
+                        marked++;
+                    }
+                }
+            }
+
+            bool relaid = RelayRemaining(marked > 0);
+            if (marked > 0 || relaid)
+            {
+                InvalidateRun();
+                mf.FileSaveTurnPlan();
+                Log.EventWriter("TurnPlan: synced with coverage, " + marked + " pass(es) marked worked"
+                    + (relaid ? ", rest re-laid from the vehicle" : ""));
+            }
+            return marked;
+        }
+
+        // coverage quads (two triangles each) bucketed on a grid; a triangle strip list is
+        // [colour, L0, R0, L1, R1, ...] and quad k = L_k, R_k, L_k+1, R_k+1
+        private Dictionary<long, List<vec3[]>> BuildCoverageGrid()
+        {
+            var grid = new Dictionary<long, List<vec3[]>>();
+            if (mf.triStrip == null) return grid;
+            foreach (var strip in mf.triStrip)
+            {
+                if (strip?.patchList == null) continue;
+                foreach (var tri in strip.patchList)
+                {
+                    for (int k = 1; k + 3 < tri.Count; k += 2)
+                    {
+                        var q = new[] { tri[k], tri[k + 1], tri[k + 2], tri[k + 3] };
+                        double minE = q[0].easting, maxE = minE, minN = q[0].northing, maxN = minN;
+                        for (int i = 1; i < 4; i++)
+                        {
+                            minE = Math.Min(minE, q[i].easting); maxE = Math.Max(maxE, q[i].easting);
+                            minN = Math.Min(minN, q[i].northing); maxN = Math.Max(maxN, q[i].northing);
+                        }
+                        int e0 = (int)Math.Floor(minE / syncCellSize), e1 = (int)Math.Floor(maxE / syncCellSize);
+                        int n0 = (int)Math.Floor(minN / syncCellSize), n1 = (int)Math.Floor(maxN / syncCellSize);
+                        if ((e1 - e0) > 20 || (n1 - n0) > 20) continue;    // a broken strip, not a quad
+                        for (int ce = e0; ce <= e1; ce++)
+                            for (int cn = n0; cn <= n1; cn++)
+                            {
+                                long key = CellKey(ce, cn);
+                                if (!grid.TryGetValue(key, out var list)) grid[key] = list = new List<vec3[]>();
+                                list.Add(q);
+                            }
+                    }
+                }
+            }
+            return grid;
+        }
+
+        private static long CellKey(int e, int n) { return ((long)e << 32) ^ (uint)n; }
+
+        private static bool IsCovered(Dictionary<long, List<vec3[]>> grid, double e, double n)
+        {
+            long key = CellKey((int)Math.Floor(e / syncCellSize), (int)Math.Floor(n / syncCellSize));
+            if (!grid.TryGetValue(key, out var list)) return false;
+            foreach (var q in list)
+                if (InTriangle(q[0], q[1], q[2], e, n) || InTriangle(q[1], q[2], q[3], e, n)) return true;
+            return false;
+        }
+
+        private static bool InTriangle(vec3 a, vec3 b, vec3 c, double e, double n)
+        {
+            double d1 = (e - b.easting) * (a.northing - b.northing) - (a.easting - b.easting) * (n - b.northing);
+            double d2 = (e - c.easting) * (b.northing - c.northing) - (b.easting - c.easting) * (n - c.northing);
+            double d3 = (e - a.easting) * (c.northing - a.northing) - (c.easting - a.easting) * (n - a.northing);
+            bool neg = d1 < 0 || d2 < 0 || d3 < 0, pos = d1 > 0 || d2 > 0 || d3 > 0;
+            return !(neg && pos);
+        }
+
+        // distance (squared) from a point to the pass polyline - segments, not just vertices
+        private static double DistToPass2(CPlanEntry p, double e, double n)
+        {
+            double best = double.MaxValue;
+            foreach (var s in p.segments)
+                for (int i = 0; i < s.Count; i++)
+                {
+                    double d;
+                    if (i + 1 < s.Count)
+                    {
+                        double dx = s[i + 1].easting - s[i].easting, dn = s[i + 1].northing - s[i].northing;
+                        double l2 = dx * dx + dn * dn;
+                        double t = l2 < 1e-9 ? 0 : ((e - s[i].easting) * dx + (n - s[i].northing) * dn) / l2;
+                        t = Math.Max(0, Math.Min(1, t));
+                        double qe = s[i].easting + dx * t - e, qn = s[i].northing + dn * t - n;
+                        d = qe * qe + qn * qn;
+                    }
+                    else
+                    {
+                        double qe = s[i].easting - e, qn = s[i].northing - n;
+                        d = qe * qe + qn * qn;
+                    }
+                    if (d < best) best = d;
+                }
+            return best;
+        }
+
+        /// <summary>
+        /// Lay the open passes out again from the vehicle. Done ones keep their place at the
+        /// front (in their old order). Without changes (nothing new worked, the vehicle not on
+        /// an open pass out of turn) the plan stays exactly as it is.
+        /// </summary>
+        private bool RelayRemaining(bool changed)
+        {
+            var main = new List<CPlanEntry>();
+            foreach (var p in entries) if (!p.IsManual) main.Add(p);
+            if (main.Count == 0) return false;
+            main.Sort((a, b) => a.order.CompareTo(b.order));
+
+            var done = new List<CPlanEntry>();
+            var open = new List<CPlanEntry>();
+            foreach (var p in main) (p.isWorked || p.isSkipped ? done : open).Add(p);
+            if (open.Count == 0) return false;
+
+            // the pass the vehicle is on (within 3/4 of a width of it), else the nearest one
+            CPlanEntry near = null;
+            double nearD = double.MaxValue;
+            foreach (var p in main)
+            {
+                EnsureGeometry(p);
+                double d = DistToPass2(p, mf.pivotAxlePos.easting, mf.pivotAxlePos.northing);
+                if (d < nearD) { nearD = d; near = p; }
+            }
+            double w = WorkWidth();
+            bool onOpen = near != null && open.Contains(near) && nearD <= 0.5625 * w * w;
+
+            if (!changed && (!onOpen || near == open[0])) return false;
+
+            // zones: the one the vehicle is in first, the rest in their planned sequence
+            var zoneSeq = new List<int>();
+            int curZone = near != null ? near.zone : open[0].zone;
+            bool curHasOpen = false;
+            foreach (var p in open) if (p.zone == curZone) { curHasOpen = true; break; }
+            if (curHasOpen) zoneSeq.Add(curZone);
+            foreach (var p in open) if (!zoneSeq.Contains(p.zone)) zoneSeq.Add(p.zone);
+
+            var seq = new List<CPlanEntry>(done);
+            foreach (int z in zoneSeq)
+            {
+                var lst = new List<CPlanEntry>();
+                foreach (var p in open) if (p.zone == z) lst.Add(p);
+
+                CPlanEntry from = null;
+                if (z == curZone && near != null)
+                {
+                    if (onOpen) { lst.Remove(near); lst.Insert(0, near); }   // stand on it = next
+                    else from = near;                                         // turn from it
+                }
+                else
+                {
+                    // REQ 2026-10-17-3 §4.2: a later zone starts at the edge next to where
+                    // the one before ended (the vehicle's pass when its own zone is done)
+                    CPlanEntry prev = seq.Count > 0 && seq.Count > done.Count ? seq[seq.Count - 1] : near;
+                    bool beside;
+                    if (mode == ModeContour) beside = false;
+                    else lst = FacePrevious(lst, prev, seq.Count, out beside);
+                    if (beside) from = prev;
+                }
+
+                if (mode == ModeMinUTurn) seq.AddRange(OrderMinTurn(lst, seq.Count, from));
+                else seq.AddRange(lst);
+            }
+
+            int order = 0;
+            foreach (var p in seq)
+            {
+                p.order = ++order;
+                p.isSameWay = (order % 2) == 1;
+            }
+            foreach (var p in entries) if (p.IsManual) p.order = ++order;
+            entries.Sort((a, b) => a.order.CompareTo(b.order));
+            return true;
+        }
+
         /// <summary>
         /// Per-fix runtime: accumulate the distance driven while on a plan pass
         /// (laterally within half a width of its line); leaving the pass with more
@@ -2205,34 +2726,55 @@ namespace AgOpenGPS
             List<vec3> run = null;
             bool everClipped = false;
 
-            for (int i = 0; i < pass.Count; i++)
+            bool Inside(double e, double n, ref bool clippedByObstacle)
             {
-                var pt = new vec2(pass[i].easting, pass[i].northing);
-                bool inside = useHeadland
-                    ? headland.IsPointInPolygon(pt)
-                    : fenceEar.IsPointInPolygon(pt);
-                if (inside)
+                var pt = new vec2(e, n);
+                bool ins = useHeadland ? headland.IsPointInPolygon(pt) : fenceEar.IsPointInPolygon(pt);
+                if (!ins) return false;
+                for (int b = 1; b < mf.bnd.bndList.Count; b++)
                 {
-                    for (int b = 1; b < mf.bnd.bndList.Count; b++)
+                    if (mf.bnd.bndList[b].isDriveThru) continue;
+                    if (mf.bnd.bndList[b].fenceLineEar.IsPointInPolygon(pt))
                     {
-                        if (mf.bnd.bndList[b].isDriveThru) continue;
-                        if (mf.bnd.bndList[b].fenceLineEar.IsPointInPolygon(
-                                new vec2(pass[i].easting, pass[i].northing)))
-                        {
-                            inside = false;
-                            everClipped = true;
-                            break;
-                        }
+                        clippedByObstacle = true;
+                        return false;
                     }
                 }
+                return true;
+            }
+
+            // REQ 2026-10-17-3: the samples are 2 m apart, so a run used to end on the last
+            // sample inside - pass ends on a 2 m grid, and the min-turn order counted that
+            // grid as end steps. The crossing is found between the last sample inside and the
+            // first one outside (bisection, ~1 mm) and becomes the end point.
+            vec3 Crossing(vec3 inPt, vec3 outPt)
+            {
+                bool dummy = false;
+                for (int it = 0; it < 12; it++)
+                {
+                    var mid = new vec3((inPt.easting + outPt.easting) * 0.5,
+                        (inPt.northing + outPt.northing) * 0.5, inPt.heading);
+                    if (Inside(mid.easting, mid.northing, ref dummy)) inPt = mid; else outPt = mid;
+                }
+                return inPt;
+            }
+
+            for (int i = 0; i < pass.Count; i++)
+            {
+                bool inside = Inside(pass[i].easting, pass[i].northing, ref everClipped);
 
                 if (inside)
                 {
-                    if (run == null) run = new List<vec3>();
+                    if (run == null)
+                    {
+                        run = new List<vec3>();
+                        if (i > 0) run.Add(Crossing(pass[i], pass[i - 1]));
+                    }
                     run.Add(pass[i]);
                 }
                 else if (run != null)
                 {
+                    run.Add(Crossing(run[run.Count - 1], pass[i]));
                     if (run.Count > 1) segments.Add(run);
                     run = null;
                 }

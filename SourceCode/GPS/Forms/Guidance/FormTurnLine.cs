@@ -1147,7 +1147,10 @@ namespace AgOpenGPS
             paramsDirty = false;
             UpdateApplyButton();
 
+            bool wasFollowing = mf.plan.isFollowPlan;
             mf.plan.isFollowPlan = activateState == 2;   // 3rd state = follow plan
+            //REQ 2026-10-17-2: switching Follow plan on takes in what was worked without it
+            if (!wasFollowing && mf.plan.IsRuntimeOn) mf.PlanSyncWithCoverage();
             UpdateZoneOrderLabel();
             mf.FileSaveTurnPlan();
 
@@ -2379,9 +2382,11 @@ namespace AgOpenGPS
             // the zones the plan really has - the field shape and the 10 m rule add to the count
             int zonesInPlan = 0;
             if (mf.plan.TryZoneStatsFromPlan(out List<int> zp, out _)) zonesInPlan = zp.Count;
+            // REQ 2026-10-17-3: what the order costs on the headland, to compare plans
             lblPlanStatus.Text = mf.plan.HasPlan
                 ? mf.plan.entries.Count + " " + gStr.gsPasses + " · "
-                    + zonesInPlan + " " + gStr.gsZones
+                    + zonesInPlan + " " + gStr.gsZones + " · "
+                    + gStr.gsHeadlandTotal + " ≈ " + (mf.plan.HeadlandEstimate() / 1000.0).ToString("0.0") + " km"
                 : "";
         }
 
