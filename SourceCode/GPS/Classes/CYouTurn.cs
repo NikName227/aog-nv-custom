@@ -318,11 +318,11 @@ namespace AgOpenGPS
         {
             get { double v = Properties.ToolSettings.Default.setTurn_K_exitRadius; return v > 0.5 ? TurnRadius(v) : youTurnRadius; }
         }
-        private double UOutRadius
+        public double UOutRadius
         {
             get { double v = Properties.ToolSettings.Default.setTurn_U_exitRadius; return v > 0.5 ? TurnRadius(v) : youTurnRadius; }
         }
-        private double UInRadius
+        public double UInRadius
         {
             get { double v = Properties.ToolSettings.Default.setTurn_U_entryRadius; return v > 0.5 ? TurnRadius(v) : youTurnRadius; }
         }
@@ -2027,6 +2027,10 @@ namespace AgOpenGPS
         //field 2026-07-16 diag: throttle for the plan-abort log
         private DateTime lastPlanDiagLog = DateTime.MinValue;
         public int ytRedIndex = -1;     // ytList index from which points draw red
+        // REQ 2026-11-06-1: the straight on the new row after a rigid U's entry arc. The turn ends when the
+        // vehicle reaches its end (not when the lookahead runs out of path in the middle of the bend).
+        public int ytTailStart = -1;
+        public double lastTailLen, lastTailAngle, lastOvershootAsked, lastOvershootApplied;
         public int part2RedIndex = -1;  // red index inside the pending part 2
 
         // local frame
@@ -2184,7 +2188,7 @@ namespace AgOpenGPS
         //field 2026-07-28 diag: throttle for the wrong-end rejection log below
         private DateTime lastWrongEndLog = DateTime.MinValue;
 
-        private bool FinishRigidPath(List<vec2> p1, int redStart, List<vec2> p2, int p2Red)
+        private bool FinishRigidPath(List<vec2> p1, int redStart, List<vec2> p2, int p2Red, int tailStart = -1)
         {
             if (p1.Count < 6) { FailCreate(); return false; }
 
@@ -2210,6 +2214,7 @@ namespace AgOpenGPS
             ytList.Clear();
             ytList.AddRange(w1);
             ytRedIndex = redStart;
+            ytTailStart = tailStart;
 
             kPart2List.Clear();
             kTurnStage = 0;
@@ -2271,6 +2276,8 @@ namespace AgOpenGPS
             if (inward > 0) inward = Math.Min(inward, Math.Max(0, o + over - (Rout + Rin)));
 
             double eT = o + over - inward;
+            lastOvershootAsked = Properties.ToolSettings.Default.setTurn_U_overshootDist;
+            lastOvershootApplied = over - inward;
             double cx1 = Rout, cx3 = eT - Rin;
             double y1 = FitCircleY(eff, cx1, Rout, ps);
             double y3 = FitCircleY(eff, cx3, Rin, ps);
@@ -2325,9 +2332,44 @@ namespace AgOpenGPS
                 pl.Add(new vec2(px, py));
             }
 
+            // REQ 2026-11-06-1: straight on the new row after the entry arc, back onto the line from
+            // wherever the arc was aimed (eT). Length = lookahead of the turn + extra, and long enough
+            // that the angle toward the row stays under the cap. extra < 0 = off (the old behaviour).
+            int tailStart = -1;
+            lastTailLen = 0; lastTailAngle = 0;
+            double tailExtra = Properties.ToolSettings.Default.setTurn_U_tailExtra;
+            if (tailExtra >= 0)
+            {
+                double capDeg = Math.Max(10, Math.Min(80, Properties.ToolSettings.Default.setTurn_U_tailMaxAngle));
+                double dOff = Math.Abs(px - o);
+                double tailLen = Math.Max(TurnLookahead() + Math.Min(10, tailExtra), dOff / Math.Tan(capDeg * Math.PI / 180.0));
+                int nTail = Math.Max(2, (int)Math.Round(tailLen / ps));
+                tailStart = pl.Count;
+                double x0 = px, yEnd = py;
+                for (int i = 1; i <= nTail; i++)
+                {
+                    double f = (double)i / nTail;
+                    pl.Add(new vec2(x0 + (o - x0) * f, yEnd - tailLen * f));
+                }
+                lastTailLen = tailLen;
+                lastTailAngle = Math.Atan2(dOff, tailLen) * 180.0 / Math.PI;
+            }
+
             ShiftUnderEff(pl, null, eff);
             SmoothLocal(pl, 15);
-            return FinishRigidPath(pl, redStart, null, -1);
+            return FinishRigidPath(pl, redStart, null, -1, tailStart);
+        }
+
+        /// <summary>
+        /// Lookahead the vehicle will have in the turn (hold x acquire, as UpdateGoalPointDistance(true)),
+        /// worked out with a speed of at least 3 km/h - the turn is built before the vehicle slows or speeds up.
+        /// </summary>
+        private double TurnLookahead()
+        {
+            var v = mf.vehicle;
+            double acquire = v.goalPointLookAheadHold * v.goalPointAcquireFactor;
+            double speed = Math.Max(3.0, Math.Abs(mf.avgSpeed));
+            return Math.Max(2.0, speed * 0.05 * v.goalPointLookAheadMult * acquire + acquire);
         }
 
         /// <summary>
@@ -3502,6 +3544,7 @@ namespace AgOpenGPS
             kFwdHeldDist = 0;
             kRevExtraDist = 0;
             ytRedIndex = -1;
+            ytTailStart = -1;
             part2RedIndex = -1;
             turnLineSwapPending = false;
             isLineApproach = false;
@@ -4675,6 +4718,23 @@ namespace AgOpenGPS
 
                         if (i == ptCount - 1)//goalPointDistance is longer than remaining u-turn
                         {
+                            //REQ 2026-11-06-1: with the straight on the new row the turn does not end
+                            //here - aim ahead along the row (the lookahead stays as long as it is) and let
+                            //the vehicle reach the end of the straight; the check on the closest points
+                            //above hands over to the line there
+                            if (ytTailStart > 0 && ptCount > 2 && !isLineApproach)
+                            {
+                                double ex = ytList[ptCount - 1].easting - ytList[ptCount - 2].easting;
+                                double ey = ytList[ptCount - 1].northing - ytList[ptCount - 2].northing;
+                                double el = Math.Sqrt(ex * ex + ey * ey);
+                                if (el > 1e-6)
+                                {
+                                    double more = Math.Max(0, goalPointDistance - distSoFar);
+                                    goalPointYT.easting = ytList[ptCount - 1].easting + ex / el * more;
+                                    goalPointYT.northing = ytList[ptCount - 1].northing + ey / el * more;
+                                    break;
+                                }
+                            }
                             if (kSplitHold)
                             {
                                 //K split: hold at the end of part 1, aim at the last point
@@ -4777,7 +4837,18 @@ namespace AgOpenGPS
             {
                 GL.Color3(0.9495f, 0.395f, 0.325f);
                 GL.Begin(PrimitiveType.Points);
-                for (int i = ytRedIndex; i < ytList.Count; i++)
+                int redEnd = ytTailStart > ytRedIndex ? ytTailStart : ytList.Count;
+                for (int i = ytRedIndex; i < redEnd; i++)
+                    GL.Vertex3(ytList[i].easting, ytList[i].northing, 0);
+                GL.End();
+            }
+
+            //REQ 2026-11-06-1: the straight on the new row, orange
+            if (ytTailStart > 0 && ytTailStart < ytList.Count)
+            {
+                GL.Color3(0.95f, 0.65f, 0.15f);
+                GL.Begin(PrimitiveType.Points);
+                for (int i = ytTailStart; i < ytList.Count; i++)
                     GL.Vertex3(ytList[i].easting, ytList[i].northing, 0);
                 GL.End();
             }

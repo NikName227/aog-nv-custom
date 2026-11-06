@@ -2298,4 +2298,22 @@ USE AT OWN RISK.</value>
   <data name="gsPlanSynced" xml:space="preserve">
     <value>Plan synced: {0} passes marked worked</value>
   </data>
+  <data name="gsTailExtra" xml:space="preserve">
+    <value>Straight on the new row: extra (m, -1 = off)</value>
+  </data>
+  <data name="gsTailAngle" xml:space="preserve">
+    <value>Straight: steepest angle (°)</value>
+  </data>
+  <data name="gsLastUNone" xml:space="preserve">
+    <value>Last U-turn: none built yet</value>
+  </data>
+  <data name="gsLastUApplied" xml:space="preserve">
+    <value>Last U: overshoot applied</value>
+  </data>
+  <data name="gsLastUAsked" xml:space="preserve">
+    <value>asked</value>
+  </data>
+  <data name="gsLastUTail" xml:space="preserve">
+    <value>Straight on the new row:</value>
+  </data>
 </root>

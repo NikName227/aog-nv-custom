@@ -115,6 +115,8 @@ namespace AgOpenGPS.Properties
         public double setTurn_U_exitRadius = 8;         // U: exit (outer) radius
         public double setTurn_U_entryRadius = 8;        // U: entry (inner) radius
         public double setTurn_U_overshootDist = 0.5;    // U: virtual line offset beyond AB
+        public double setTurn_U_tailExtra = 1.0;        // U: straight on the new row = lookahead + this (m), REQ 2026-11-06-1
+        public double setTurn_U_tailMaxAngle = 45;      // U: steepest the straight may run toward the new row (deg)
 
         /// <summary>false = this implement never had the turn shape, take it off the vehicle once</summary>
         public bool setTurn_shapeFromVehicle = false;

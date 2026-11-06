@@ -947,6 +947,9 @@ namespace AgOpenGPS
                 //REQ 2026-10-17-1: hold the wheels at a stop until the direction is known again
                 SteerHoldAtStop();
 
+                //REQ 2026-11-06-1: turn log (TurnLog.csv in the field folder)
+                TurnLogFix();
+
                 if (!isBtnAutoSteerOn) //32020 means auto steer is off
                 {
                     guidanceLineDistanceOff = 32020;

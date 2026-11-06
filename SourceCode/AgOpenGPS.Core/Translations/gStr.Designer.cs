@@ -5778,5 +5778,41 @@ public static string gsOrchPlanterBehind {
             }
         }
         
+        public static string gsTailExtra {
+            get {
+                return ResourceManager.GetString("gsTailExtra", resourceCulture);
+            }
+        }
+        
+        public static string gsTailAngle {
+            get {
+                return ResourceManager.GetString("gsTailAngle", resourceCulture);
+            }
+        }
+        
+        public static string gsLastUNone {
+            get {
+                return ResourceManager.GetString("gsLastUNone", resourceCulture);
+            }
+        }
+        
+        public static string gsLastUApplied {
+            get {
+                return ResourceManager.GetString("gsLastUApplied", resourceCulture);
+            }
+        }
+        
+        public static string gsLastUAsked {
+            get {
+                return ResourceManager.GetString("gsLastUAsked", resourceCulture);
+            }
+        }
+        
+        public static string gsLastUTail {
+            get {
+                return ResourceManager.GetString("gsLastUTail", resourceCulture);
+            }
+        }
+        
 }
 }
