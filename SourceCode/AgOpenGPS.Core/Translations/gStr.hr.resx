@@ -1931,4 +1931,22 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsPlanSynced" xml:space="preserve">
     <value>Plan usklađen: {0} prolaza označeno kao odrađeno</value>
   </data>
+  <data name="gsTailExtra" xml:space="preserve">
+    <value>Ravni dio na novom redu: dodatak (m, -1 = isključeno)</value>
+  </data>
+  <data name="gsTailAngle" xml:space="preserve">
+    <value>Ravni dio: najveći kut (°)</value>
+  </data>
+  <data name="gsLastUNone" xml:space="preserve">
+    <value>Zadnji U okret: još nije izgrađen</value>
+  </data>
+  <data name="gsLastUApplied" xml:space="preserve">
+    <value>Zadnji U: primijenjeni overshoot</value>
+  </data>
+  <data name="gsLastUAsked" xml:space="preserve">
+    <value>zadano</value>
+  </data>
+  <data name="gsLastUTail" xml:space="preserve">
+    <value>Ravni dio na novom redu:</value>
+  </data>
 </root>
