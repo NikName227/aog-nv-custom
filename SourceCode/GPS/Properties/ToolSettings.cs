@@ -114,9 +114,12 @@ namespace AgOpenGPS.Properties
         public double setTurn_K_transitionRadius = 1.0; // K: unused (rigid K - covered by path smoothing)
         public double setTurn_U_exitRadius = 8;         // U: exit (outer) radius
         public double setTurn_U_entryRadius = 8;        // U: entry (inner) radius
-        public double setTurn_U_overshootDist = 0.5;    // U: virtual line offset beyond AB
-        public double setTurn_U_tailExtra = 1.0;        // U: straight on the new row = lookahead + this (m), REQ 2026-11-06-1
-        public double setTurn_U_tailMaxAngle = 45;      // U: steepest the straight may run toward the new row (deg)
+        // U: lateral offset of the entry, RIGHT turns (+ = beyond the new row, - = inside it). One
+        // parameter since REQ 2026-11-16-1: the driver may type it, self learning nudges it.
+        public double setTurn_U_overshootDist = 0;
+        public double setTurn_U_overshootLeft = -999;   // same for LEFT turns; -999 = not set yet, use the right one
+        public double setTurn_U_tailExtra = 1.0;        // DEAD since REQ 2026-11-16-1 (kept so saved profiles load)
+        public double setTurn_U_tailMaxAngle = 45;      // DEAD since REQ 2026-11-16-1
 
         /// <summary>false = this implement never had the turn shape, take it off the vehicle once</summary>
         public bool setTurn_shapeFromVehicle = false;

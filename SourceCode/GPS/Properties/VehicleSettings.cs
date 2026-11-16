@@ -22,6 +22,11 @@ namespace AgOpenGPS.Properties
         public double setVehicle_maxAngularVelocity = 0.64;
         public double setVehicle_trackWidth = 1.9;
 
+        // Turn entry (REQ 2026-11-16-1): what the steering of THIS tractor can do. Set by the
+        // Teach run or by hand; the turn path and the steering in the turn are built from them.
+        public double setTurn_steerRate = 15;   // [deg/s] how fast the wheels turn under autosteer
+        public double setTurn_leadTime = 0.3;   // [s] from the commanded angle until the tractor turns
+
         // AutoSteer settings
         public byte setAS_Kp = 50;
         public byte setAS_countsPerDegree = 110;

@@ -332,7 +332,7 @@ namespace AgOpenGPS
         // e.g. 5 m + 4 m radii already fits at 9 m (not 16 m).
         private double UWideThreshold
         {
-            get { return mf.tnl.IsFeatureOn ? (UOutRadius + UInRadius) : (youTurnRadius * 2.0); }
+            get { return mf.tnl.IsFeatureOn ? UTurnMinWidth(turnPlanSpeed) : (youTurnRadius * 2.0); }
         }
 
         /// <summary>
@@ -1401,7 +1401,7 @@ namespace AgOpenGPS
                     //Negative = aim inside the line (REQ 2026-10-17-1), the same offset flipped.
                     if (mf.tnl.IsFeatureOn)
                     {
-                        double over = Properties.ToolSettings.Default.setTurn_U_overshootDist;
+                        double over = UOffsetForSide(isTurnLeft);
                         if (Math.Abs(over) > 0.01)
                             distAway += ((isTurnLeft ^ mf.ABLine.isHeadingSameWay) ? over : -over);
                     }
@@ -2031,6 +2031,11 @@ namespace AgOpenGPS
         // vehicle reaches its end (not when the lookahead runs out of path in the middle of the bend).
         public int ytTailStart = -1;
         public double lastTailLen, lastTailAngle, lastOvershootAsked, lastOvershootApplied;
+        // REQ 2026-11-16-1: curvature of the path at every ytList point (1/m, + = to the right), filled
+        // only by the rigid U builder. The steering in the turn reads it ahead by the lead time.
+        public List<double> ytCurv = new List<double>();
+        private double ytCurvE0, ytCurvN0;
+        public double lastTurnWidthNeeded, lastTransitionLen;
         public int part2RedIndex = -1;  // red index inside the pending part 2
 
         // local frame
@@ -2242,9 +2247,118 @@ namespace AgOpenGPS
             return true;
         }
 
+        // ===== REQ 2026-11-16-1: U-turn with curvature transitions =====
+        // The steering cannot jump from straight to full lock. Every arc of the turn is entered and
+        // left over a transition whose length comes from how fast the wheels turn and how fast the
+        // tractor drives, so the path is one the tractor can actually follow.
+
+        /// <summary>speed (km/h) the "does a U fit" question is answered for</summary>
+        private const double turnPlanSpeed = 5.0;
+        /// <summary>share of the tractor's tightest turn the plan uses; the rest is left for corrections</summary>
+        private const double turnCurvReserve = 0.9;
+
+        // feedback of the turn steering: back onto the path over about 2.5 m of travel, no overshoot
+        private const double turnGainOffset = 0.16;    // 1/m2 : curvature per metre off the path
+        private const double turnGainHeading = 0.8;    // 1/m  : curvature per radian of heading error
+
+        private struct CurvSeg { public bool line; public double len, D, kmax; public int sgn; }
+        private static CurvSeg SegLine(double len) { return new CurvSeg { line = true, len = len }; }
+        private static CurvSeg SegTurn(double D, int sgn, double kmax) { return new CurvSeg { D = D, sgn = sgn, kmax = kmax }; }
+
         /// <summary>
-        /// Rigid U-turn: 2-DOF circle fit + common upper tangent; degenerate -> level
-        /// apexes; too tight -> shrink both radii max -30%, then automatic overshoot.
+        /// Path from a list of straights and turns, start (0,0) heading +y, heading clockwise. A turn
+        /// ramps its curvature up at sigma (1/m per m) to kmax (or less when the turn is short), holds
+        /// it and ramps down again; its total heading change is D.
+        /// </summary>
+        private static List<vec2> BuildCurvPath(IList<CurvSeg> segs, double sigma, double ds, List<int> marks)
+        {
+            var pts = new List<vec2>(512);
+            double x = 0, y = 0, h = 0;
+            pts.Add(new vec2(0, 0));
+            for (int g = 0; g < segs.Count; g++)
+            {
+                if (marks != null) marks.Add(pts.Count - 1);
+                CurvSeg sg = segs[g];
+                if (sg.line)
+                {
+                    if (sg.len < 1e-6) continue;
+                    int n = Math.Max(1, (int)Math.Round(sg.len / ds));
+                    double dl = sg.len / n;
+                    for (int i = 0; i < n; i++) { x += Math.Sin(h) * dl; y += Math.Cos(h) * dl; pts.Add(new vec2(x, y)); }
+                    continue;
+                }
+                if (sg.D < 1e-5 || sg.kmax < 1e-6) continue;
+                double kp = Math.Min(sg.kmax, Math.Sqrt(sg.D * sigma));
+                double Lc = kp / sigma;
+                double La = Math.Max(0, (sg.D - kp * Lc) / kp);
+                double tot = 2 * Lc + La;
+                int m = Math.Max(2, (int)Math.Round(tot / ds));
+                double dm = tot / m;
+                for (int i = 0; i < m; i++)
+                {
+                    double u = (i + 0.5) * dm;
+                    double k = u < Lc ? kp * u / Lc : (u < Lc + La ? kp : kp * (tot - u) / Lc);
+                    k *= sg.sgn;
+                    double hm = h + k * dm / 2;
+                    x += Math.Sin(hm) * dm; y += Math.Cos(hm) * dm; h += k * dm;
+                    pts.Add(new vec2(x, y));
+                }
+            }
+            return pts;
+        }
+
+        private static double CurvEndX(IList<CurvSeg> segs, double sigma)
+        {
+            List<vec2> p = BuildCurvPath(segs, sigma, 0.1, null);
+            return p[p.Count - 1].easting;
+        }
+
+        /// <summary>How fast the path curvature may change per metre (1/m per m) at this speed (m/s).</summary>
+        private double TurnSigma(double speed)
+        {
+            double wb = Math.Abs(Properties.VehicleSettings.Default.setVehicle_wheelbase);
+            if (wb < 0.5) wb = 3.0;
+            double rate = Math.Max(5.0, Math.Min(60.0, Properties.VehicleSettings.Default.setTurn_steerRate));
+            return glm.toRadians(rate) / (wb * Math.Max(0.5, speed));
+        }
+
+        /// <summary>The U radii the plan works with: the implement's wish, never tighter than the tractor allows with the reserve.</summary>
+        private void PlanRadii(out double rOut, out double rIn)
+        {
+            double floor = MinTurnRadius() / turnCurvReserve;
+            rOut = Math.Max(UOutRadius, floor);
+            rIn = Math.Max(UInRadius, floor);
+            if (rOut < 1.0) rOut = 1.0;
+            if (rIn < 1.0) rIn = 1.0;
+        }
+
+        private double uwRo = -1, uwRi = -1, uwSig = -1, uwVal;
+
+        /// <summary>Smallest spacing a U with transitions fits into at this speed (km/h).</summary>
+        public double UTurnMinWidth(double kmh)
+        {
+            PlanRadii(out double rOut, out double rIn);
+            double sigma = TurnSigma(kmh / 3.6);
+            if (rOut == uwRo && rIn == uwRi && sigma == uwSig) return uwVal;
+            double kT = Math.Max(1.0 / rOut, 1.0 / rIn);
+            uwVal = CurvEndX(new[] { SegTurn(Math.PI, 1, kT) }, sigma);
+            uwRo = rOut; uwRi = rIn; uwSig = sigma;
+            return uwVal;
+        }
+
+        /// <summary>Lateral offset of the entry for this turn side (+ = beyond the new row, - = inside it).</summary>
+        public double UOffsetForSide(bool left)
+        {
+            var t = Properties.ToolSettings.Default;
+            if (!left || t.setTurn_U_overshootLeft <= -900) return t.setTurn_U_overshootDist;
+            return t.setTurn_U_overshootLeft;
+        }
+
+        /// <summary>
+        /// Rigid U-turn: exit turn, connector along the limit line, entry turn - each with curvature
+        /// transitions - pushed up under the effective limit line. The end lies on the new row,
+        /// parallel to it: an offset entry returns to the row over an S, then a short straight.
+        /// No room for the transitions: the turn goes wide by what is missing (automatic overshoot).
         /// </summary>
         private bool BuildRigidUTurn(vec3 rowPt, double head, double turnOffset)
         {
@@ -2254,122 +2368,139 @@ namespace AgOpenGPS
             SetTurnFrame(rowPt, head);
             if (!TryGetLocalEff(head, out List<vec2> eff)) { FailCreate(); return false; }
 
-            double ps = Math.Max(0.1, youTurnRadius * 0.1);
-            double Rout = UOutRadius, Rin = UInRadius;
-            double over = Properties.ToolSettings.Default.setTurn_U_overshootDist;
+            PlanRadii(out double Rout, out double Rin);
+            double kOut = 1.0 / Rout, kIn = 1.0 / Rin, kT = Math.Max(kOut, kIn);
+            // built for the speed turns are driven at, not the working speed the tractor arrives with:
+            // never below the 5 km/h the "does a U fit" answer assumes, up to 6 when it comes in faster
+            double speed = Math.Max(turnPlanSpeed, Math.Min(6.0, Math.Abs(mf.avgSpeed))) / 3.6;
+            double sigma = TurnSigma(speed);
+            const double ds = 0.2;
 
-            // REQ 2026-10-17-1: a negative value aims the entry arc INSIDE the line, against a
-            // tractor that drifts outward on the entry. It only moves the aim - the radii are
-            // never shrunk for it; without room it is cut to what fits.
-            double inward = 0;
-            if (over < 0) { inward = -over; over = 0; }
+            double asked = UOffsetForSide(isTurnLeft);
+            double eT = o + asked;
 
-            // auto-shrink both radii (max -30%), then automatic overshoot for the rest
-            double room = o + over;
-            if (Rout + Rin > room)
+            // heading of the connector between the two turns: along the limit line (a headland that
+            // is not square to the rows), taken from the two circles fitted under it as before
+            double htgt = glm.PIBy2;
             {
-                double shrink = Math.Max(0.7, room / (Rout + Rin));
-                Rout *= shrink; Rin *= shrink;
-            }
-            if (Rout + Rin > o + over) over += Rout + Rin - (o + over);
-
-            if (inward > 0) inward = Math.Min(inward, Math.Max(0, o + over - (Rout + Rin)));
-
-            double eT = o + over - inward;
-            lastOvershootAsked = Properties.ToolSettings.Default.setTurn_U_overshootDist;
-            lastOvershootApplied = over - inward;
-            double cx1 = Rout, cx3 = eT - Rin;
-            double y1 = FitCircleY(eff, cx1, Rout, ps);
-            double y3 = FitCircleY(eff, cx3, Rin, ps);
-            if (y1 == double.MaxValue || y3 == double.MaxValue) { FailCreate(); return false; }
-
-            // common upper external tangent: unit normal n with n·d = R_out - R_in
-            double dvx = cx3 - cx1, dvy = y3 - y1, D = Math.Sqrt(dvx * dvx + dvy * dvy);
-            double T1x = 0, T1y = 0, T3x = 0, T3y = 0, htgt = 0;
-            bool degen = true;
-            if (D > Math.Abs(Rout - Rin) + 1e-6)
-            {
-                double k = (Rout - Rin) / D, s = Math.Sqrt(Math.Max(0, 1 - k * k));
-                double dpx = -dvy / D, dpy = dvx / D;
-                double nAx = dvx / D * k + dpx * s, nAy = dvy / D * k + dpy * s;
-                double nBx = dvx / D * k - dpx * s, nBy = dvy / D * k - dpy * s;
-                double nx = nAy > nBy ? nAx : nBx, ny = nAy > nBy ? nAy : nBy;
-                T1x = cx1 + nx * Rout; T1y = y1 + ny * Rout;
-                T3x = cx3 + nx * Rin; T3y = y3 + ny * Rin;
-                htgt = Math.Atan2(T3x - T1x, T3y - T1y);
-                // the connector must actually head toward the target row (stacked circles
-                // at off ~ R_out+R_in give a near-vertical tangent -> the path would loop)
-                degen = !(Math.Sin(htgt) > 0.1);
-            }
-            if (degen)
-            {
-                double t = Math.Min(y1 + Rout, y3 + Rin);
-                y1 = t - Rout; y3 = t - Rin;
-                T1x = cx1; T1y = t; T3x = cx3; T3y = t; htgt = glm.PIBy2;
-            }
-
-            // lead-in + exit arc (0 -> htgt) + tangent line + entry arc (htgt -> PI), no tail
-            var pl = new List<vec2>(512);
-            int nLead = Math.Max(3, (int)(2.5 / ps));
-            for (int i = nLead; i >= 1; i--) pl.Add(new vec2(0, y1 - ps * i));
-
-            double px = 0, py = y1, h = 0;
-            int g = 0;
-            while (Math.Abs(AngleDiff(h, htgt)) > ps / Rout && g++ < 4000)
-            {
-                px += ps * Math.Sin(h); py += ps * Math.Cos(h); h += ps / Rout;
-                pl.Add(new vec2(px, py));
-            }
-            double L = Math.Sqrt((T3x - px) * (T3x - px) + (T3y - py) * (T3y - py));
-            int m = Math.Max(1, (int)Math.Round(L / ps));
-            for (int j = 1; j <= m; j++) pl.Add(new vec2(px + (T3x - px) * j / m, py + (T3y - py) * j / m));
-
-            int redStart = over > 0.05 ? pl.Count : -1;   // overshoot -> entry arc draws red
-            px = T3x; py = T3y; h = htgt; g = 0;
-            while (Math.Abs(AngleDiff(h, Math.PI)) > ps / Rin && g++ < 4000)
-            {
-                px += ps * Math.Sin(h); py += ps * Math.Cos(h); h += ps / Rin;
-                pl.Add(new vec2(px, py));
-            }
-
-            // REQ 2026-11-06-1: straight on the new row after the entry arc, back onto the line from
-            // wherever the arc was aimed (eT). Length = lookahead of the turn + extra, and long enough
-            // that the angle toward the row stays under the cap. extra < 0 = off (the old behaviour).
-            int tailStart = -1;
-            lastTailLen = 0; lastTailAngle = 0;
-            double tailExtra = Properties.ToolSettings.Default.setTurn_U_tailExtra;
-            if (tailExtra >= 0)
-            {
-                double capDeg = Math.Max(10, Math.Min(80, Properties.ToolSettings.Default.setTurn_U_tailMaxAngle));
-                double dOff = Math.Abs(px - o);
-                double tailLen = Math.Max(TurnLookahead() + Math.Min(10, tailExtra), dOff / Math.Tan(capDeg * Math.PI / 180.0));
-                int nTail = Math.Max(2, (int)Math.Round(tailLen / ps));
-                tailStart = pl.Count;
-                double x0 = px, yEnd = py;
-                for (int i = 1; i <= nTail; i++)
+                double cx1 = Rout, cx3 = Math.Max(Rout + 0.5, eT - Rin);
+                double y1 = FitCircleY(eff, cx1, Rout, 0.5);
+                double y3 = FitCircleY(eff, cx3, Rin, 0.5);
+                if (y1 != double.MaxValue && y3 != double.MaxValue)
                 {
-                    double f = (double)i / nTail;
-                    pl.Add(new vec2(x0 + (o - x0) * f, yEnd - tailLen * f));
+                    double dvx = cx3 - cx1, dvy = y3 - y1, D = Math.Sqrt(dvx * dvx + dvy * dvy);
+                    if (D > Math.Abs(Rout - Rin) + 1e-6)
+                    {
+                        double k = (Rout - Rin) / D, s = Math.Sqrt(Math.Max(0, 1 - k * k));
+                        double dpx = -dvy / D, dpy = dvx / D;
+                        double nAx = dvx / D * k + dpx * s, nAy = dvy / D * k + dpy * s;
+                        double nBx = dvx / D * k - dpx * s, nBy = dvy / D * k - dpy * s;
+                        double nx = nAy > nBy ? nAx : nBx, ny = nAy > nBy ? nAy : nBy;
+                        double hh = Math.Atan2((cx3 + nx * Rin) - (cx1 + nx * Rout), (y3 + ny * Rin) - (y1 + ny * Rout));
+                        if (Math.Sin(hh) > 0.64) htgt = hh;   // within ~50 deg of square, else level
+                    }
                 }
-                lastTailLen = tailLen;
-                lastTailAngle = Math.Atan2(dOff, tailLen) * 180.0 / Math.PI;
             }
 
-            ShiftUnderEff(pl, null, eff);
-            SmoothLocal(pl, 15);
-            return FinishRigidPath(pl, redStart, null, -1, tailStart);
+            var segs = new List<CurvSeg>(8);
+            segs.Add(SegLine(2.6));
+            int entrySeg = -1;
+            double w0 = CurvEndX(new[] { SegTurn(Math.PI, 1, kT) }, sigma);
+            double w2 = CurvEndX(new[] { SegTurn(htgt, 1, kOut), SegTurn(Math.PI - htgt, 1, kIn) }, sigma);
+            if (eT >= w2)
+            {
+                segs.Add(SegTurn(htgt, 1, kOut));
+                double c = (eT - w2) / Math.Sin(htgt);
+                if (c > 0.05) segs.Add(SegLine(c));
+                entrySeg = segs.Count;
+                segs.Add(SegTurn(Math.PI - htgt, 1, kIn));
+            }
+            else
+            {
+                // one continuous turn; wider than its tightest form -> lower peak curvature
+                if (eT < w0) eT = w0;
+                double kPeak = kT;
+                if (eT > w0 + 0.01)
+                {
+                    double lo = kT * 0.1, hi = kT;
+                    for (int i = 0; i < 30; i++)
+                    {
+                        double mid = (lo + hi) / 2;
+                        if (CurvEndX(new[] { SegTurn(Math.PI, 1, mid) }, sigma) > eT) lo = mid; else hi = mid;
+                    }
+                    kPeak = (lo + hi) / 2;
+                }
+                segs.Add(SegTurn(Math.PI, 1, kPeak));
+            }
+
+            // back onto the row from wherever the entry was aimed, parallel at the end
+            int tailSeg = segs.Count;
+            double dOff = eT - o, gam = 0;
+            if (Math.Abs(dOff) > 0.02)
+            {
+                double lo = 0, hi = 1.0;
+                for (int i = 0; i < 30; i++)
+                {
+                    double mid = (lo + hi) / 2;
+                    if (CurvEndX(new[] { SegTurn(mid, 1, kIn), SegTurn(mid, -1, kIn) }, sigma) < Math.Abs(dOff)) lo = mid; else hi = mid;
+                }
+                gam = (lo + hi) / 2;
+                int sg = dOff > 0 ? 1 : -1;
+                segs.Add(SegTurn(gam, sg, kIn));
+                segs.Add(SegTurn(gam, -sg, kIn));
+            }
+            segs.Add(SegLine(Math.Max(3.0, 2.0 * speed)));
+
+            var marks = new List<int>(segs.Count);
+            List<vec2> pl = BuildCurvPath(segs, sigma, ds, marks);
+
+            // push the whole path up under the effective limit line (0.2 m kept for tracking error)
+            double shift = double.MaxValue;
+            for (int i = 0; i < pl.Count; i++)
+                if (CrossTop(eff, pl[i].easting, out double yy)) shift = Math.Min(shift, yy - pl[i].northing);
+            if (shift == double.MaxValue) { FailCreate(); return false; }
+            shift -= 0.2;
+            for (int i = 0; i < pl.Count; i++) pl[i] = new vec2(pl[i].easting, pl[i].northing + shift);
+
+            lastOvershootAsked = asked;
+            lastOvershootApplied = dOff;
+            lastTailAngle = gam * 180.0 / Math.PI;
+            lastTailLen = (pl.Count - 1 - marks[tailSeg]) * ds;
+            lastTurnWidthNeeded = w0;
+            lastTransitionLen = kT / sigma;
+
+            int redStart = (dOff > 0.05 && entrySeg >= 0) ? marks[entrySeg] : -1;   // overshoot -> entry draws red
+            if (!FinishRigidPath(pl, redStart, null, -1, marks[tailSeg])) return false;
+            FillTurnCurvature();
+            return true;
         }
 
-        /// <summary>
-        /// Lookahead the vehicle will have in the turn (hold x acquire, as UpdateGoalPointDistance(true)),
-        /// worked out with a speed of at least 3 km/h - the turn is built before the vehicle slows or speeds up.
-        /// </summary>
-        private double TurnLookahead()
+        /// <summary>Curvature at every ytList point from the change of heading between its two segments.</summary>
+        private void FillTurnCurvature()
         {
-            var v = mf.vehicle;
-            double acquire = v.goalPointLookAheadHold * v.goalPointAcquireFactor;
-            double speed = Math.Max(3.0, Math.Abs(mf.avgSpeed));
-            return Math.Max(2.0, speed * 0.05 * v.goalPointLookAheadMult * acquire + acquire);
+            ytCurv.Clear();
+            int n = ytList.Count;
+            if (n < 5) return;
+            var k = new double[n];
+            for (int i = 1; i < n - 1; i++)
+            {
+                double dh = ytList[i].heading - ytList[i - 1].heading;
+                while (dh > Math.PI) dh -= glm.twoPI;
+                while (dh < -Math.PI) dh += glm.twoPI;
+                double d = glm.Distance(ytList[i], ytList[i - 1]);
+                k[i] = d > 1e-4 ? dh / d : 0;
+            }
+            ytCurv.Add(0);
+            for (int i = 1; i < n - 1; i++) ytCurv.Add((k[i - 1] + 2 * k[i] + k[i + 1]) / 4.0);
+            ytCurv.Add(0);
+            ytCurvE0 = ytList[0].easting; ytCurvN0 = ytList[0].northing;
+        }
+
+        /// <summary>true while ytList is still the path ytCurv was worked out for</summary>
+        private bool HasTurnCurvature()
+        {
+            return ytCurv.Count == ytList.Count && ytList.Count > 4
+                && ytList[0].easting == ytCurvE0 && ytList[0].northing == ytCurvN0;
         }
 
         /// <summary>
@@ -4775,6 +4906,34 @@ namespace AgOpenGPS
                         + ((goalPointYT.northing - pivot.northing) * Math.Sin(localHeading))) * mf.vehicle.VehicleConfig.Wheelbase / goalPointDistanceSquared));
 
                     steerAngleYT *= mf.vehicle.uturnCompensation;
+
+                    //REQ 2026-11-16-1: rigid U driven forward - the wheel angle comes from the curvature
+                    //of the path itself, read ahead by the lead time (the steering needs that long to
+                    //get there); the offset from the path and the heading error only correct the rest.
+                    //The pure pursuit above still places the goal point for the display.
+                    if (mf.tnl.IsFeatureOn && activeTurnStyle == 0 && !isLineApproach && !mf.isReverse
+                        && HasTurnCurvature())
+                    {
+                        double psi = mf.fixHeading - Math.Atan2(dx, dz);
+                        while (psi > Math.PI) psi -= glm.twoPI;
+                        while (psi < -Math.PI) psi += glm.twoPI;
+                        if (psi > 0.7) psi = 0.7; else if (psi < -0.7) psi = -0.7;
+                        double eLat = distanceFromCurrentLine;
+                        if (eLat > 1.5) eLat = 1.5; else if (eLat < -1.5) eLat = -1.5;
+
+                        double vms = Math.Max(0.3, Math.Abs(mf.avgSpeed) / 3.6);
+                        double lead = Math.Max(0.0, Math.Min(1.0, Properties.VehicleSettings.Default.setTurn_leadTime));
+                        double segLen = Math.Sqrt((dx * dx) + (dz * dz));
+                        double fi = A + (B - A == 1 ? Math.Max(0.0, Math.Min(1.0, U)) : 0.0)
+                            + vms * lead / Math.Max(0.05, segLen);
+                        if (fi > ptCount - 1) fi = ptCount - 1;
+                        int i0 = (int)fi, i1 = Math.Min(ptCount - 1, i0 + 1);
+                        double kff = ytCurv[i0] + ((ytCurv[i1] - ytCurv[i0]) * (fi - i0));
+
+                        double kCmd = kff - (turnGainOffset * eLat) - (turnGainHeading * psi);
+                        steerAngleYT = glm.toDegrees(Math.Atan(mf.vehicle.VehicleConfig.Wheelbase * kCmd));
+                        ppRadiusYT = Math.Abs(kCmd) > 0.002 ? 1.0 / kCmd : 500;
+                    }
 
                     if (steerAngleYT < -mf.vehicle.maxSteerAngle) steerAngleYT = -mf.vehicle.maxSteerAngle;
                     if (steerAngleYT > mf.vehicle.maxSteerAngle) steerAngleYT = mf.vehicle.maxSteerAngle;
