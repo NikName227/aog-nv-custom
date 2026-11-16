@@ -28,6 +28,9 @@ namespace AgOpenGPS
         // the customer cannot turn it on.
         public const string FeatureDebug = "debug";
 
+        // Debug options (column "Debug" in the config tool). All off unless the config says otherwise.
+        public const string DebugTurnLog = "debug_turnlog";   // TurnLog.csv in the field folder
+
         // unremarkable file name on purpose (not "license"/"premium")
         private static readonly string configPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),

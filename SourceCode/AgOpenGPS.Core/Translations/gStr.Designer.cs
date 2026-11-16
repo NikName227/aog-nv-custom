@@ -5976,6 +5976,30 @@ public static string gsOrchPlanterBehind {
             }
         }
         
+        public static string gsCalLive {
+            get {
+                return ResourceManager.GetString("gsCalLive", resourceCulture);
+            }
+        }
+        
+        public static string gsRadiusWhyShort {
+            get {
+                return ResourceManager.GetString("gsRadiusWhyShort", resourceCulture);
+            }
+        }
+        
+        public static string gsRadiusWhyAngle {
+            get {
+                return ResourceManager.GetString("gsRadiusWhyAngle", resourceCulture);
+            }
+        }
+        
+        public static string gsRadiusWhyGps {
+            get {
+                return ResourceManager.GetString("gsRadiusWhyGps", resourceCulture);
+            }
+        }
+        
         public static string gsLastUNone {
             get {
                 return ResourceManager.GetString("gsLastUNone", resourceCulture);

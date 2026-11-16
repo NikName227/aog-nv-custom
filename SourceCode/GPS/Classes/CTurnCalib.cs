@@ -38,15 +38,21 @@ namespace AgOpenGPS
 
         // ---- radius check
         public double holdAngle, sweep;
-        private double lastHead, angleOffTime;
+        private double lastHead;
         private bool rtkLost;
 
+        public enum Unreliable { No, ShortCircle, AngleMoved, Gps }
         public class RadiusResult
         {
+            /// <summary>angle = mean wheel angle actually held during the run</summary>
             public double angle, expected, measured, sweepDeg;
-            public bool reliable;
+            public Unreliable why;
         }
         public readonly List<RadiusResult> results = new List<RadiusResult>();
+        /// <summary>goes up with every new result - the window redraws its list on a change</summary>
+        public int resultsVersion;
+        /// <summary>the last teach run produced numbers (even if they were judged unreliable)</summary>
+        public bool teachMeasured;
 
         public bool IsBusy { get { return mode != Mode.Idle; } }
 
@@ -74,7 +80,7 @@ namespace AgOpenGPS
         {
             if (IsBusy || !SpeedOk() || mf.isReverse) return false;
             teachAngle = Math.Max(8.0, Math.Min(20.0, mf.vehicle.maxSteerAngle * 0.5));
-            teachDone = false; teachOk = false;
+            teachDone = false; teachOk = false; teachMeasured = false;
             mf.vehicle.driveFreeSteerAngle = 0;
             Begin(Mode.Teach);
             Log.EventWriter("Turn teach: started, steps of " + teachAngle.ToString("N0") + " deg");
@@ -86,7 +92,7 @@ namespace AgOpenGPS
             if (IsBusy || !SpeedOk() || mf.isReverse) return false;
             holdAngle = mf.mc.actualSteerAngleDegrees;
             if (Math.Abs(holdAngle) < 5.0) return false;
-            sweep = 0; angleOffTime = 0; rtkLost = false;
+            sweep = 0; rtkLost = false;
             lastHead = mf.fixHeading;
             mf.vehicle.driveFreeSteerAngle = holdAngle;
             Begin(Mode.Radius);
@@ -142,7 +148,6 @@ namespace AgOpenGPS
             while (dh < -Math.PI) dh += glm.twoPI;
             lastHead = mf.fixHeading;
             sweep += Math.Abs(dh);
-            if (smp.Count > 1 && Math.Abs(mf.mc.actualSteerAngleDegrees - holdAngle) > 2.0) angleOffTime += smp[smp.Count - 1].t - smp[smp.Count - 2].t;
             if (!mf.IsSimRunning && mf.pn.fixQuality != 4) rtkLost = true;
             if (sweep >= glm.twoPI) FinishRadius();
         }
@@ -217,6 +222,7 @@ namespace AgOpenGPS
                 teachRate = Math.Max(5, Math.Min(60, rate));
                 teachLead = Math.Max(0, Math.Min(1.0, bestD + bestT));
                 teachGain = bestG;
+                teachMeasured = true;
                 teachOk = tot > 1e-9 && bestE2 / tot < 0.5;     // the heading really followed the wheel angle
                 Log.EventWriter("Turn teach: steering " + rate.ToString("N1") + " deg/s (right " + Median(up).ToString("N1")
                     + ", left " + Median(dn).ToString("N1") + "), wheel delay " + bestD.ToString("N2") + " s, turn delay "
@@ -291,19 +297,35 @@ namespace AgOpenGPS
                 double rPiv = Math.Sqrt(Math.Max(0.01, rAnt * rAnt - d * d));
                 double wb = Math.Abs(mf.vehicle.VehicleConfig.Wheelbase);
 
+                //the angle the wheels really stood at (after the first second, once they had settled):
+                //the model radius is worked out from that, not from the angle that was asked for - the
+                //question is whether the reported angle matches the circle driven
+                double sumA = 0, minA = double.MaxValue, maxA = double.MinValue; int nA = 0;
+                for (int i = 0; i < n; i++)
+                {
+                    if (smp[i].t < 1.0 && n > 30) continue;
+                    sumA += smp[i].act; nA++;
+                    if (smp[i].act < minA) minA = smp[i].act;
+                    if (smp[i].act > maxA) maxA = smp[i].act;
+                }
+                double meanA = nA > 0 ? sumA / nA : holdAngle;
+                if (Math.Abs(meanA) < 1.0) return;
+
                 var r = new RadiusResult
                 {
-                    angle = holdAngle,
-                    expected = wb / Math.Tan(glm.toRadians(Math.Abs(holdAngle))),
+                    angle = meanA,
+                    expected = wb / Math.Tan(glm.toRadians(Math.Abs(meanA))),
                     measured = rPiv,
                     sweepDeg = glm.toDegrees(sweep),
-                    reliable = sweep >= glm.twoPI * 2.0 / 3.0 && angleOffTime < 1.0 && !rtkLost
+                    why = sweep < glm.twoPI * 2.0 / 3.0 ? Unreliable.ShortCircle
+                        : (maxA - minA > 3.0 ? Unreliable.AngleMoved : (rtkLost ? Unreliable.Gps : Unreliable.No))
                 };
                 results.Add(r);
                 if (results.Count > 8) results.RemoveAt(0);
+                resultsVersion++;
                 Log.EventWriter("Radius check: " + r.angle.ToString("N1") + " deg held over " + r.sweepDeg.ToString("N0")
                     + " deg of circle - expected " + r.expected.ToString("N2") + " m, measured " + r.measured.ToString("N2") + " m"
-                    + (r.reliable ? "" : " (unreliable)"));
+                    + (r.why == Unreliable.No ? "" : " (unreliable: " + r.why + ")"));
             }
             catch (Exception ex)
             {

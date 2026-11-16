@@ -1983,7 +1983,7 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
     <value>Stop</value>
   </data>
   <data name="gsTeachHint" xml:space="preserve">
-    <value>Teach: vozi ravno 3-6 km/h, s oko 20 m slobodnog prostora naprijed, pa pritisni Teach. Volan 9 sekundi ide desno i lijevo i mjere se dvije vrijednosti. Apply ih sprema.</value>
+    <value>Vozi ravno 3-6 km/h, oko 20 m slobodno naprijed, pa pritisni Teach. Traje 9 sekundi.</value>
   </data>
   <data name="gsTeachRunning" xml:space="preserve">
     <value>Teach traje: {0} %</value>
@@ -1992,7 +1992,7 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
     <value>Teach nije dovršen (brzina mora ostati između 1,5 i 9 km/h) - vrijednosti nisu promijenjene.</value>
   </data>
   <data name="gsTeachResult" xml:space="preserve">
-    <value>Izmjereno: volan {0} °/s, pretkazivanje {1} s. Skretanje prema modelu: {2}. Pritisni Apply da ostanu.</value>
+    <value>Izmjereno: {0} °/s, {1} s. Skretanje prema modelu: {2}. OK sprema.</value>
   </data>
   <data name="gsTeachUnsure" xml:space="preserve">
     <value>Izmjereno, ali traktor jedva da je skretao - ponovi na tvrđoj podlozi. Vrijednosti nisu promijenjene.</value>
@@ -2004,7 +2004,7 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
     <value>Start (zaključaj kut)</value>
   </data>
   <data name="gsRadiusHint" xml:space="preserve">
-    <value>Okreni volan na oko {0}° (ili manje ako nema mjesta), vozi 2-6 km/h i pritisni Start. Kut se zaključa. Odvozi barem 2/3 kruga, pa Stop.</value>
+    <value>Okreni volan (do oko {0}°), vozi 2-6 km/h, pritisni Start. Odvozi barem 2/3 kruga, pa Stop.</value>
   </data>
   <data name="gsRadiusLive" xml:space="preserve">
     <value>Kut volana sada: {0}°</value>
@@ -2013,7 +2013,7 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
     <value>Držim {0}° - odvoženo kruga: {1} %</value>
   </data>
   <data name="gsRadiusRow" xml:space="preserve">
-    <value>{0}°: model {1} m, izmjereno {2} m, {3} %</value>
+    <value>{0}°: model {1} m, izmjereno {2} m ({3} %)</value>
   </data>
   <data name="gsRadiusUnreliable" xml:space="preserve">
     <value>nepouzdano</value>
@@ -2041,5 +2041,17 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   </data>
   <data name="gsLearnAskMsg" xml:space="preserve">
     <value>U okreti {0}: priključak dolazi {1} cm {2} reda. Promijeniti bočni pomak s {3} m na {4} m?</value>
+  </data>
+  <data name="gsCalLive" xml:space="preserve">
+    <value>Volan {0}°    Brzina {1} km/h</value>
+  </data>
+  <data name="gsRadiusWhyShort" xml:space="preserve">
+    <value>nepouzdano: samo {0} % kruga</value>
+  </data>
+  <data name="gsRadiusWhyAngle" xml:space="preserve">
+    <value>nepouzdano: kut se pomicao</value>
+  </data>
+  <data name="gsRadiusWhyGps" xml:space="preserve">
+    <value>nepouzdano: GPS</value>
   </data>
 </root>
