@@ -2662,7 +2662,7 @@ namespace AgOpenGPS
         double lastSimGuidanceAngle = 0;
         private void timerSim_Tick(object sender, EventArgs e)
         {
-            if (recPath.isDrivingRecordedPath || isBtnAutoSteerOn && (guidanceLineDistanceOff != 32000))
+            if (recPath.isDrivingRecordedPath || turnCal.IsBusy || isBtnAutoSteerOn && (guidanceLineDistanceOff != 32000))
             {
                 if (vehicle.isInDeadZone)
                 {

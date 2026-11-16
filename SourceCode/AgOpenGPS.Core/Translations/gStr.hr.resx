@@ -1970,4 +1970,76 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsTurnHintU2" xml:space="preserve">
     <value>Bočni pomak iznad 0: ulaz cilja preko novog reda, ispod 0: unutar njega; putanja se zatim vraća na red. Brzina volana i vrijeme pretkazivanja opisuju traktor: iz njih se gradi putanja okreta i vođenje u okretu.</value>
   </data>
+  <data name="gsCalibTab" xml:space="preserve">
+    <value>Kalibracija</value>
+  </data>
+  <data name="gsSelfLearn" xml:space="preserve">
+    <value>Self learning bočnog pomaka</value>
+  </data>
+  <data name="gsTeachStart" xml:space="preserve">
+    <value>Teach</value>
+  </data>
+  <data name="gsStop" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="gsTeachHint" xml:space="preserve">
+    <value>Teach: vozi ravno 3-6 km/h, s oko 20 m slobodnog prostora naprijed, pa pritisni Teach. Volan 9 sekundi ide desno i lijevo i mjere se dvije vrijednosti. Apply ih sprema.</value>
+  </data>
+  <data name="gsTeachRunning" xml:space="preserve">
+    <value>Teach traje: {0} %</value>
+  </data>
+  <data name="gsTeachFail" xml:space="preserve">
+    <value>Teach nije dovršen (brzina mora ostati između 1,5 i 9 km/h) - vrijednosti nisu promijenjene.</value>
+  </data>
+  <data name="gsTeachResult" xml:space="preserve">
+    <value>Izmjereno: volan {0} °/s, pretkazivanje {1} s. Skretanje prema modelu: {2}. Pritisni Apply da ostanu.</value>
+  </data>
+  <data name="gsTeachUnsure" xml:space="preserve">
+    <value>Izmjereno, ali traktor jedva da je skretao - ponovi na tvrđoj podlozi. Vrijednosti nisu promijenjene.</value>
+  </data>
+  <data name="gsRadiusTitle" xml:space="preserve">
+    <value>Radius check</value>
+  </data>
+  <data name="gsRadiusStart" xml:space="preserve">
+    <value>Start (zaključaj kut)</value>
+  </data>
+  <data name="gsRadiusHint" xml:space="preserve">
+    <value>Okreni volan na oko {0}° (ili manje ako nema mjesta), vozi 2-6 km/h i pritisni Start. Kut se zaključa. Odvozi barem 2/3 kruga, pa Stop.</value>
+  </data>
+  <data name="gsRadiusLive" xml:space="preserve">
+    <value>Kut volana sada: {0}°</value>
+  </data>
+  <data name="gsRadiusProgress" xml:space="preserve">
+    <value>Držim {0}° - odvoženo kruga: {1} %</value>
+  </data>
+  <data name="gsRadiusRow" xml:space="preserve">
+    <value>{0}°: model {1} m, izmjereno {2} m, {3} %</value>
+  </data>
+  <data name="gsRadiusUnreliable" xml:space="preserve">
+    <value>nepouzdano</value>
+  </data>
+  <data name="gsRadiusNote" xml:space="preserve">
+    <value>Unutar oko 5 % je u redu. Inače ispravi tablicu kuta u kontroleru volana.</value>
+  </data>
+  <data name="gsRadiusNeedAngle" xml:space="preserve">
+    <value>Nije pokrenuto: okreni volan barem 5° i vozi 1,5-9 km/h.</value>
+  </data>
+  <data name="gsLearnAskTitle" xml:space="preserve">
+    <value>Navoz na red</value>
+  </data>
+  <data name="gsLearnSideRight" xml:space="preserve">
+    <value>desno</value>
+  </data>
+  <data name="gsLearnSideLeft" xml:space="preserve">
+    <value>lijevo</value>
+  </data>
+  <data name="gsLearnPast" xml:space="preserve">
+    <value>preko</value>
+  </data>
+  <data name="gsLearnShort" xml:space="preserve">
+    <value>prije</value>
+  </data>
+  <data name="gsLearnAskMsg" xml:space="preserve">
+    <value>U okreti {0}: priključak dolazi {1} cm {2} reda. Promijeniti bočni pomak s {3} m na {4} m?</value>
+  </data>
 </root>

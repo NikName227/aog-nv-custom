@@ -118,6 +118,9 @@ namespace AgOpenGPS.Properties
         // parameter since REQ 2026-11-16-1: the driver may type it, self learning nudges it.
         public double setTurn_U_overshootDist = 0;
         public double setTurn_U_overshootLeft = -999;   // same for LEFT turns; -999 = not set yet, use the right one
+        public bool setTurn_U_selfLearn = true;         // nudge the side offset after every clean U-turn
+        public double setTurn_U_offsetBaseR = -999;     // value the learning stays within +-15 cm of (typed or accepted); -999 = the offset itself
+        public double setTurn_U_offsetBaseL = -999;
         public double setTurn_U_tailExtra = 1.0;        // DEAD since REQ 2026-11-16-1 (kept so saved profiles load)
         public double setTurn_U_tailMaxAngle = 45;      // DEAD since REQ 2026-11-16-1
 

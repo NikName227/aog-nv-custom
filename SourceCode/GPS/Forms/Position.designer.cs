@@ -918,6 +918,9 @@ namespace AgOpenGPS
             //if the whole path driving driving process is green
             if (recPath.isDrivingRecordedPath) recPath.UpdatePosition();
 
+            //REQ 2026-11-16-1: Teach / Radius check command a fixed wheel angle through free drive
+            turnCal.Update();
+
             // If Drive button off - normal autosteer 
             if (!vehicle.isInFreeDriveMode)
             {
@@ -949,6 +952,7 @@ namespace AgOpenGPS
 
                 //REQ 2026-11-06-1: turn log (TurnLog.csv in the field folder)
                 TurnLogFix();
+                TurnLearnFix();
 
                 if (!isBtnAutoSteerOn) //32020 means auto steer is off
                 {
