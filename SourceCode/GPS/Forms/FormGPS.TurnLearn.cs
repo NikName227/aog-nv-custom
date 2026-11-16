@@ -8,7 +8,7 @@ using AgOpenGPS.Core.Translations;
 namespace AgOpenGPS
 {
     // Self learning of the U-turn side offset (REQ 2026-11-16-1).
-    // After every clean U-turn the implement's mean offset from the new row is measured over the
+    // After every clean U- or K-turn the implement's mean offset from the new row is measured over the
     // first metres on the row, and the side offset of that turn side is nudged against it - slowly,
     // inside a band around the value the driver typed or accepted. Nothing is shown while it works;
     // a question comes up only when the first turn is far off, or three turns in a row ask for more
@@ -78,14 +78,21 @@ namespace AgOpenGPS
         {
             try
             {
-                bool uTurn = yt.isYouTurnTriggered && tnl.IsFeatureOn && yt.activeTurnStyle == 0 && !yt.isLineApproach;
+                //REQ 2026-11-16-1 (user 16.11.): the K's entry is the U's, so a K teaches too - judged only
+                //on its forward entry (exit and reverse may be driven by hand)
+                bool uTurn = yt.isYouTurnTriggered && tnl.IsFeatureOn && !yt.isLineApproach
+                    && (yt.activeTurnStyle == 0 || yt.activeTurnStyle == 1);
 
                 if (uTurn)
                 {
                     if (!lnTracking) { lnTracking = true; lnValid = true; lnLeft = yt.TriggerSideLeft; }
                     lnMeasuring = false;        // a new turn ends any measurement still running
+                    bool judged = yt.activeTurnStyle == 0 || yt.kTurnStage == 0 || yt.kTurnStage == 3;
                     bool gpsOk = timerSim.Enabled || pn.fixQuality == 4;
-                    if (!isBtnAutoSteerOn || !gpsOk || isReverse || !yt.turnCurvActive) lnValid = false;
+                    //after a reverse by hand the K's entry may start off its path: there the curvature steering
+                    //is only asked for from the way back onto the row on
+                    bool curvNeeded = yt.activeTurnStyle == 0 || (yt.ytTailStart > 0 && yt.onA >= yt.ytTailStart);
+                    if (judged && (!isBtnAutoSteerOn || !gpsOk || isReverse || (curvNeeded && !yt.turnCurvActive))) lnValid = false;
                     return;
                 }
 

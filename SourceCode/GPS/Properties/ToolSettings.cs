@@ -124,6 +124,7 @@ namespace AgOpenGPS.Properties
         public int setTurn_U_learnCountR = 0;            // clean turns learned per side, for this tractor + implement
         public int setTurn_U_learnCountL = 0;
         public string setTurn_U_learnVehicle = "";       // tractor profile the learned offset belongs to
+        public bool setTurn_K_pauseOnTakeover = false;   // K exit / reverse: taking the wheel pauses autosteer instead of switching it off
         public double setTurn_U_tailExtra = 1.0;        // DEAD since REQ 2026-11-16-1 (kept so saved profiles load)
         public double setTurn_U_tailMaxAngle = 45;      // DEAD since REQ 2026-11-16-1
 

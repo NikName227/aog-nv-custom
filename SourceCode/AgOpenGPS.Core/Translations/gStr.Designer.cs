@@ -6036,6 +6036,36 @@ public static string gsOrchPlanterBehind {
             }
         }
         
+        public static string gsTurnStyleUK {
+            get {
+                return ResourceManager.GetString("gsTurnStyleUK", resourceCulture);
+            }
+        }
+        
+        public static string gsKPauseOpt {
+            get {
+                return ResourceManager.GetString("gsKPauseOpt", resourceCulture);
+            }
+        }
+        
+        public static string gsKPauseHud {
+            get {
+                return ResourceManager.GetString("gsKPauseHud", resourceCulture);
+            }
+        }
+        
+        public static string gsKManualRev {
+            get {
+                return ResourceManager.GetString("gsKManualRev", resourceCulture);
+            }
+        }
+        
+        public static string gsLastApproach {
+            get {
+                return ResourceManager.GetString("gsLastApproach", resourceCulture);
+            }
+        }
+        
         public static string gsLearnReset {
             get {
                 return ResourceManager.GetString("gsLearnReset", resourceCulture);

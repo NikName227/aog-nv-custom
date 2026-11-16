@@ -1043,7 +1043,17 @@ namespace AgOpenGPS
                 if (!isSteerInReverse)
                 {
                     if (isReverse) p_254.pgn[p_254.status] = 0;
-                }                
+                }
+
+                //REQ 2026-11-16-1: K exit / reverse by hand - the driver took the wheel (option) or backs a
+                //pulled implement. AOG holds the module off; on the forward entry the status goes back to 1
+                //and the module engages again as on the tablet button (firmware: guidanceStatus 0 -> 1)
+                if (yt.KMayPause && mc.steerSwitchHigh && isBtnAutoSteerOn && !yt.kDriverPaused)
+                {
+                    yt.kDriverPaused = true;
+                    Log.EventWriter("K turn: steering paused (driver took the wheel)");
+                }
+                if (yt.KSteerHold) p_254.pgn[p_254.status] = 0;                
 
                 // delay on dead zone.
                 if (p_254.pgn[p_254.status] == 1 && !isReverse

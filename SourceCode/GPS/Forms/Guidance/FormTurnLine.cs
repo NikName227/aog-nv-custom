@@ -173,8 +173,16 @@ namespace AgOpenGPS
             btnWizCancel.Text = gStr.gsCancel;
 
             btnStyleK.Text = gStr.gsTurnStyleK;
-            btnStyleU.Text = gStr.gsTurnStyleU;
+            btnStyleU.Text = gStr.gsTurnStyleUK;
             btnStyleRS.Text = gStr.gsTurnStyleRS;
+            //REQ 2026-11-16-1 (user 16.11.): the K is the U with a reverse - one tab "U/K turn", the K tab
+            //goes (its fields stay in the profile, unused); U takes its place, RS moves up
+            {
+                int gap = btnStyleU.Left - btnStyleK.Right;
+                btnStyleK.Visible = false;
+                btnStyleU.Left = btnStyleK.Left;
+                btnStyleRS.Left = btnStyleU.Right + gap;
+            }
             lblExitK.Text = gStr.gsExitRadius;
             lblDistK.Text = gStr.gsEntryStartDist;
             lblAngleK.Text = gStr.gsEntryAngle;
@@ -1486,7 +1494,7 @@ namespace AgOpenGPS
             if (tab == ViewTab.Params)
             {
                 if (!btnStyleK.Checked && !btnStyleU.Checked && !btnStyleRS.Checked)
-                    btnStyleK.Checked = true;
+                    btnStyleU.Checked = true;
                 pnlParams.BringToFront();
             }
             else if (tab == ViewTab.Path)
@@ -1566,8 +1574,8 @@ namespace AgOpenGPS
         private void BuildTailControls()
         {
             lblOvershootU.Text = gStr.gsOffsetRight;
-            lblHintU.Location = new Point(4, 320);
-            lblHintU.Size = new Size(500, 108);
+            lblHintU.Location = new Point(4, 352);
+            lblHintU.Size = new Size(500, 76);
             lblHintU.Text = gStr.gsTurnHintU2;
 
             nudOffsetLeft = new NumericUpDown
@@ -1616,6 +1624,16 @@ namespace AgOpenGPS
             pnlU.Controls.Add(chkSelfLearn);
             pnlU.Controls.Add(lblTurnInfoU);
 
+            //K exit / reverse: taking the wheel pauses autosteer, the forward entry takes over again
+            chkKPause = new CheckBox
+            {
+                Text = gStr.gsKPauseOpt,
+                Font = new Font("Tahoma", 11.25F, FontStyle.Bold),
+                Location = new Point(8, 314), Size = new Size(496, 32)
+            };
+            chkKPause.CheckedChanged += (s, e) => MarkParamsDirty();
+            pnlU.Controls.Add(chkKPause);
+
             BuildCalibButton();
         }
 
@@ -1659,7 +1677,7 @@ namespace AgOpenGPS
         }
 
         private Label lblTurnInfoU;
-        private CheckBox chkSelfLearn;
+        private CheckBox chkSelfLearn, chkKPause;
         private NumericUpDown nudOffsetLeft;
 
         /// <summary>What the last U-turn was built with: offset asked / applied, transition, width a clean U needs.</summary>
@@ -1667,10 +1685,10 @@ namespace AgOpenGPS
         {
             if (lblTurnInfoU == null) return;
             var yt = mf.yt;
-            if (yt.lastTransitionLen <= 0)
+            if (yt.lastTransitionLen <= 0 && yt.lastTurnKind != 'A')
             {
                 lblTurnInfoU.Text = gStr.gsLastUNone + Environment.NewLine
-                    + gStr.gsLastUWidth + " " + yt.UTurnMinWidth(5.0).ToString("N1") + " m (5 km/h)";
+                    + gStr.gsLastUWidth + " " + yt.UTurnMinWidth(6.0).ToString("N1") + " m (6 km/h)";
                 lblTurnInfoU.ForeColor = Color.DimGray;
                 return;
             }
@@ -1678,7 +1696,8 @@ namespace AgOpenGPS
             double applied = yt.lastOvershootApplied - yt.lastTrailExtra;
             bool capped = Math.Abs(applied - yt.lastOvershootAsked) > 0.02;
             var tl = Properties.ToolSettings.Default;
-            lblTurnInfoU.Text = gStr.gsLastUApplied + " " + applied.ToString("N2")
+            string kind = yt.lastTurnKind == 'K' ? "K: " : (yt.lastTurnKind == 'A' ? gStr.gsLastApproach + ": " : "U: ");
+            lblTurnInfoU.Text = kind + gStr.gsLastUApplied + " " + applied.ToString("N2")
                 + " m (" + gStr.gsLastUAsked + " " + yt.lastOvershootAsked.ToString("N2") + ")"
                 + (yt.lastTrailExtra > 0.01 ? ", " + gStr.gsTrailExtra + " +" + yt.lastTrailExtra.ToString("N2") + " m" : "")
                 + Environment.NewLine + gStr.gsLastUInfo2 + " " + yt.lastTransitionLen.ToString("N1") + " m, "
@@ -3241,8 +3260,9 @@ namespace AgOpenGPS
             SetNud(nudTolerance, t.setTurn_triggerTolerance);
             SetNud(nudToleranceAfter, t.setTurn_triggerToleranceAfter);
 
-            btnStyleK.Checked = true;
-            ShowStyle(pnlK);
+            chkKPause.Checked = t.setTurn_K_pauseOnTakeover;
+            btnStyleU.Checked = true;
+            ShowStyle(pnlU);
 
             isLoadingParams = false;
             paramsDirty = false;
@@ -3317,6 +3337,7 @@ namespace AgOpenGPS
             v.setTurn_U_overshootDist = offR;
             v.setTurn_U_overshootLeft = offL;
             v.setTurn_U_selfLearn = chkSelfLearn.Checked;
+            Properties.ToolSettings.Default.setTurn_K_pauseOnTakeover = chkKPause.Checked;
             v.Save();
 
             var t = Properties.ToolSettings.Default;

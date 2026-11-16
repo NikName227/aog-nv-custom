@@ -2004,6 +2004,16 @@ namespace AgOpenGPS
                 font.DrawText((int)(offRight - offTxt.Length * 0.9 * 22 * offSc), 50, offTxt, offSc);
             }
 
+            //REQ 2026-11-16-1: the K's exit / reverse is the driver's now - say so, big, until the forward entry
+            if (yt.KSteerHold)
+            {
+                string hold = yt.KManualReverse ? gStr.gsKManualRev : gStr.gsKPauseHud;
+                double hSc = 1.0;
+                GL.Enable(EnableCap.Texture2D);
+                GL.Color4(1.0f, 0.85f, 0.1f, 0.98f);
+                font.DrawText((int)(oglMain.Width / 2.0 - hold.Length * 0.45 * 22 * hSc), 120, hold, hSc);
+            }
+
             //NV HUD skip (2026-07-11): small transparent button - thin rounded
             //outline + text. SKIP writes off the targeted pass; for 10 s after a
             //skip the same button shows UNDO with a countdown. Only with a plan.
