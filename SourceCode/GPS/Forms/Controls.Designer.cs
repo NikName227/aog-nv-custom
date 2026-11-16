@@ -2686,7 +2686,8 @@ namespace AgOpenGPS
                 }
                 else
                 {
-                    lastSimGuidanceAngle = (double)guidanceLineSteerAngle * 0.01 * 0.9;
+                    //REQ 2026-11-16-1: the wheels get the whole angle (was x 0.9)
+                    lastSimGuidanceAngle = (double)guidanceLineSteerAngle * 0.01;
                     sim.DoSimTick(lastSimGuidanceAngle);
                 }
             }
