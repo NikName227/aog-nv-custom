@@ -16,10 +16,8 @@ namespace AgOpenGPS
     public partial class FormGPS
     {
         private const double learnDistance = 10.0;     // m on the new row that are measured
-        private const double learnGain = 0.25;         // share of the measured offset taken per turn
-        private const double learnMaxStep = 0.03;      // m per turn
-        private const double learnBand = 0.15;         // m around the base value
-        private const double learnFirstBig = 0.10;     // m: first turn this far off asks at once
+        private const double learnLastLimit = 0.05;    // m: the step limit once learning has settled
+        private const int learnAskAfter = 3;           // turns in a row wanting more than that -> question
 
         /// <summary>simulator is driving (no RTK flag to wait for)</summary>
         public bool IsSimRunning { get { return timerSim.Enabled; } }
@@ -36,7 +34,36 @@ namespace AgOpenGPS
         }
         private readonly LearnSide lnRight = new LearnSide(), lnLeftSide = new LearnSide();
 
-        /// <summary>The driver typed a new offset (or switched implement): learning starts over from it.</summary>
+        /// <summary>
+        /// Learning schedule per turn side, by the number n of the clean turn for this tractor +
+        /// implement (REQ 2026-11-16-1, user 16.11.): learn fast while nothing is known, then ever more
+        /// slowly so one odd turn cannot upset a good value.
+        ///  n = 1: the whole measured offset is taken, no limit, no question (a pulled implement may need 1 m)
+        ///  n = 2..7: limit 20, 20, 15, 15, 10, 10 cm;  n >= 8: 5 cm
+        ///  share of the measured offset: n = 1 100 %, n = 2..5 50 %, then 25 %
+        /// </summary>
+        private static void LearnSchedule(int n, out double gain, out double limit)
+        {
+            if (n <= 1) { gain = 1.0; limit = double.MaxValue; return; }
+            gain = n <= 5 ? 0.5 : 0.25;
+            if (n <= 3) limit = 0.20;
+            else if (n <= 5) limit = 0.15;
+            else if (n <= 7) limit = 0.10;
+            else limit = learnLastLimit;
+        }
+
+        /// <summary>Learning starts again from the first turn (button "Reset learning", or another tractor).</summary>
+        public void TurnLearnRestart()
+        {
+            var t = Properties.ToolSettings.Default;
+            t.setTurn_U_learnCountR = 0;
+            t.setTurn_U_learnCountL = 0;
+            t.Save();
+            TurnLearnReset();
+            Log.EventWriter("Turn learning: restarted from the first turn");
+        }
+
+        /// <summary>The driver typed a new offset: the measurements so far are dropped, the turn count stays.</summary>
         public void TurnLearnReset()
         {
             foreach (var s in new[] { lnRight, lnLeftSide })
@@ -114,45 +141,48 @@ namespace AgOpenGPS
             var t = Properties.ToolSettings.Default;
             if (!t.setTurn_U_selfLearn) return;
 
+            //what is learned belongs to this tractor + this implement (the offset is in the implement
+            //profile): another tractor starts the fast learning again
+            string veh = RegistrySettings.vehicleProfileName ?? "";
+            if (t.setTurn_U_learnVehicle != veh)
+            {
+                t.setTurn_U_learnVehicle = veh;
+                t.setTurn_U_learnCountR = 0;
+                t.setTurn_U_learnCountL = 0;
+                TurnLearnReset();
+            }
+
             LearnSide s = left ? lnLeftSide : lnRight;
+            int n = (left ? t.setTurn_U_learnCountL : t.setTurn_U_learnCountR) + 1;
             double cur = yt.UOffsetForSide(left);
-            double baseVal = left ? t.setTurn_U_offsetBaseL : t.setTurn_U_offsetBaseR;
-            if (baseVal <= -900) baseVal = cur;
 
             s.hist.Add(beyond);
             if (s.hist.Count > 3) s.hist.RemoveAt(0);
             var sorted = new List<double>(s.hist); sorted.Sort();
-            double med = sorted[sorted.Count / 2];
+            double med = n <= 1 ? beyond : sorted[sorted.Count / 2];
+
+            LearnSchedule(n, out double gain, out double limit);
+            double step = -gain * med;
+            if (step > limit) step = limit; else if (step < -limit) step = -limit;
 
             string side = left ? "left" : "right";
-            Log.EventWriter("Turn learning (" + side + "): implement " + (beyond * 100).ToString("N0")
-                + " cm past the row, median " + (med * 100).ToString("N0") + " cm, offset " + cur.ToString("N2") + " m");
+            Log.EventWriter("Turn learning (" + side + ", turn " + n + "): implement " + (beyond * 100).ToString("N0")
+                + " cm past the row, median " + (med * 100).ToString("N0") + " cm, offset " + cur.ToString("N2")
+                + " m -> " + (cur + step).ToString("N2") + " m");
 
-            //the very first clean turn, far off: say so at once
-            if (!s.firstDone)
-            {
-                s.firstDone = true;
-                if (Math.Abs(beyond) > learnFirstBig)
-                {
-                    TurnLearnAsk(left, s, beyond, cur, cur - beyond);
-                    return;
-                }
-            }
+            if (left) t.setTurn_U_learnCountL = n; else t.setTurn_U_learnCountR = n;
+            TurnLearnStore(left, Math.Max(-1.0, Math.Min(10.0, cur + step)), cur + step);
 
-            //full correction would leave the band: not applied, not shown - until it says so three times running
-            if (Math.Abs((cur - med) - baseVal) > learnBand)
+            //settled (5 cm steps) and still three turns in a row wanting more than 5 cm the same way:
+            //something changed - ask once for the full value instead of creeping towards it
+            if (limit <= learnLastLimit + 1e-6 && Math.Abs(med) > learnLastLimit)
             {
                 int sg = Math.Sign(med);
                 s.outCount = sg == s.outSign ? s.outCount + 1 : 1;
                 s.outSign = sg;
-                if (s.outCount >= 3 && !s.rejected) TurnLearnAsk(left, s, med, cur, cur - med);
-                return;
+                if (s.outCount >= learnAskAfter && !s.rejected) TurnLearnAsk(left, s, med, cur + step, cur - med);
             }
-
-            s.outCount = 0;
-            double step = Math.Max(-learnMaxStep, Math.Min(learnMaxStep, -learnGain * med));
-            double next = Math.Max(baseVal - learnBand, Math.Min(baseVal + learnBand, cur + step));
-            TurnLearnStore(left, next, baseVal);
+            else s.outCount = 0;
         }
 
         private void TurnLearnAsk(bool left, LearnSide s, double beyond, double cur, double proposal)

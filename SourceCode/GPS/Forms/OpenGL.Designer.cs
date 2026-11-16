@@ -1992,6 +1992,18 @@ namespace AgOpenGPS
                 font.DrawText((int)(loopCx - passTxt.Length * 0.45 * 22 * passSc), 78, passTxt, passSc);
             }
 
+            //REQ 2026-11-16-1 (TestBench markup 16.11.): the side offset of the U entry, LEFT | RIGHT in
+            //metres, left of the plan badge - only while the turn is switched on
+            if (tnl.IsFeatureOn && yt.isYouTurnBtnOn)
+            {
+                string offTxt = yt.UOffsetForSide(true).ToString("N2") + " | " + yt.UOffsetForSide(false).ToString("N2");
+                double offSc = 0.6;
+                double offRight = two3 + 136 - 78;          // the plan badge sits at two3 + 136
+                GL.Enable(EnableCap.Texture2D);
+                GL.Color4(0.96f, 0.96f, 0.96f, 0.95f);
+                font.DrawText((int)(offRight - offTxt.Length * 0.9 * 22 * offSc), 50, offTxt, offSc);
+            }
+
             //NV HUD skip (2026-07-11): small transparent button - thin rounded
             //outline + text. SKIP writes off the targeted pass; for 10 s after a
             //skip the same button shows UNDO with a countdown. Only with a plan.

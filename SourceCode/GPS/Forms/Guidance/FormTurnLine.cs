@@ -1579,9 +1579,30 @@ namespace AgOpenGPS
             {
                 Text = gStr.gsSelfLearn,
                 Font = new Font("Tahoma", 11.25F, FontStyle.Bold),
-                Location = new Point(8, 226), Size = new Size(480, 32)
+                Location = new Point(8, 226), Size = new Size(300, 32)
             };
             chkSelfLearn.CheckedChanged += (s, e) => MarkParamsDirty();
+
+            //learning starts again from the first turn (fast learning), the offset itself stays
+            var btnLearnReset = new Button
+            {
+                Text = gStr.gsLearnReset, Font = new Font("Tahoma", 10F, FontStyle.Bold),
+                FlatStyle = FlatStyle.Flat, BackColor = Color.Gainsboro, UseVisualStyleBackColor = false,
+                Location = new Point(314, 222), Size = new Size(190, 38)
+            };
+            btnLearnReset.Click += (s, e) =>
+            {
+                if (FormDialog.ShowQuestion(gStr.gsLearnReset, gStr.gsLearnResetAsk) == DialogResult.OK)
+                {
+                    mf.TurnLearnRestart();
+                    UpdateTurnInfoU();
+                }
+            };
+            pnlU.Controls.Add(btnLearnReset);
+
+            //REQ 2026-11-16-1: the two trigger tolerances and Apply half a button lower (user 16.11.)
+            foreach (Control c in new Control[] { lblTolerance, nudTolerance, lblToleranceAfter, nudToleranceAfter, btnApplyParams })
+                c.Top += btnApplyParams.Height / 2;
             lblTurnInfoU = new Label
             {
                 Text = "",
@@ -1653,11 +1674,16 @@ namespace AgOpenGPS
                 lblTurnInfoU.ForeColor = Color.DimGray;
                 return;
             }
-            bool capped = Math.Abs(yt.lastOvershootApplied - yt.lastOvershootAsked) > 0.02;
-            lblTurnInfoU.Text = gStr.gsLastUApplied + " " + yt.lastOvershootApplied.ToString("N2")
+            //the deliberate run past the row for a pulled implement is not a cut - shown on its own
+            double applied = yt.lastOvershootApplied - yt.lastTrailExtra;
+            bool capped = Math.Abs(applied - yt.lastOvershootAsked) > 0.02;
+            var tl = Properties.ToolSettings.Default;
+            lblTurnInfoU.Text = gStr.gsLastUApplied + " " + applied.ToString("N2")
                 + " m (" + gStr.gsLastUAsked + " " + yt.lastOvershootAsked.ToString("N2") + ")"
+                + (yt.lastTrailExtra > 0.01 ? ", " + gStr.gsTrailExtra + " +" + yt.lastTrailExtra.ToString("N2") + " m" : "")
                 + Environment.NewLine + gStr.gsLastUInfo2 + " " + yt.lastTransitionLen.ToString("N1") + " m, "
-                + gStr.gsLastUWidth + " " + yt.lastTurnWidthNeeded.ToString("N1") + " m";
+                + gStr.gsLastUWidth + " " + yt.lastTurnWidthNeeded.ToString("N1") + " m, "
+                + gStr.gsLearnedTurns + " " + tl.setTurn_U_learnCountL + " | " + tl.setTurn_U_learnCountR;
             lblTurnInfoU.ForeColor = capped ? Color.Firebrick : Color.Black;
         }
 

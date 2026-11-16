@@ -26,6 +26,8 @@ namespace AgOpenGPS.Properties
         // Teach run or by hand; the turn path and the steering in the turn are built from them.
         public double setTurn_steerRate = 15;   // [deg/s] how fast the wheels turn under autosteer
         public double setTurn_leadTime = 0.3;   // [s] from the commanded angle until the tractor turns
+        public double setTurn_steerAccel = 0;   // [deg/s2] how fast the steering gets up to speed; 0 = 4 x steering speed
+        public double setTurn_fbFilter = 0;     // [s] backup filter on the turn steering correction; 0 = off
 
         // AutoSteer settings
         public byte setAS_Kp = 50;

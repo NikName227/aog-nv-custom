@@ -13,7 +13,7 @@ namespace AgOpenGPS
     public class FormTurnCalib : Form
     {
         private readonly FormGPS mf;
-        private readonly NumericUpDown nudRate, nudLead;
+        private readonly NumericUpDown nudRate, nudLead, nudAccel, nudFilter;
         private readonly Button btnTeach, btnRadius;
         private readonly Label lblLive, lblTeach, lblRadius;
         private readonly ListBox lstRadius;
@@ -34,7 +34,7 @@ namespace AgOpenGPS
             ShowInTaskbar = false;
             TopMost = true;
             StartPosition = FormStartPosition.Manual;
-            ClientSize = new Size(520, 640);
+            ClientSize = new Size(520, 736);
             BackColor = Color.WhiteSmoke;
             Font = fText;
 
@@ -47,23 +47,25 @@ namespace AgOpenGPS
             Controls.Add(lblLive);
 
             // ---- steering: the two numbers + Teach
-            var gSteer = new GroupBox { Text = gStr.gsTeachStart, Font = fBold, Location = new Point(10, 54), Size = new Size(500, 236) };
+            var gSteer = new GroupBox { Text = gStr.gsTeachStart, Font = fBold, Location = new Point(10, 54), Size = new Size(500, 332) };
             Controls.Add(gSteer);
             nudRate = AddRow(gSteer, gStr.gsSteerRate, 30, 5, 60, 0, 1M);
             nudLead = AddRow(gSteer, gStr.gsLeadTime, 76, 0, 1, 2, 0.05M);
-            btnTeach = BigButton(gStr.gsTeachStart, 12, 124, 170);
+            nudAccel = AddRow(gSteer, gStr.gsSteerAccel, 122, 0, 600, 0, 10M);
+            nudFilter = AddRow(gSteer, gStr.gsFbFilter, 168, 0, 0.5M, 2, 0.05M);
+            btnTeach = BigButton(gStr.gsTeachStart, 12, 220, 170);
             btnTeach.Click += (s, e) =>
             {
                 if (mf.turnCal.mode == CTurnCalib.Mode.Teach) mf.turnCal.Stop();
                 else if (mf.turnCal.StartTeach()) teachSeen = false;
                 else lblTeach.Text = gStr.gsTeachFail;
             };
-            lblTeach = new Label { Font = fText, Location = new Point(194, 122), Size = new Size(296, 106), Text = gStr.gsTeachHint };
+            lblTeach = new Label { Font = fText, Location = new Point(194, 218), Size = new Size(296, 106), Text = gStr.gsTeachHint };
             gSteer.Controls.Add(btnTeach);
             gSteer.Controls.Add(lblTeach);
 
             // ---- radius check
-            var gRad = new GroupBox { Text = gStr.gsRadiusTitle, Font = fBold, Location = new Point(10, 298), Size = new Size(500, 272) };
+            var gRad = new GroupBox { Text = gStr.gsRadiusTitle, Font = fBold, Location = new Point(10, 394), Size = new Size(500, 272) };
             Controls.Add(gRad);
             btnRadius = BigButton(gStr.gsRadiusStart, 12, 30, 230);
             btnRadius.Click += (s, e) =>
@@ -84,23 +86,27 @@ namespace AgOpenGPS
             gRad.Controls.Add(note);
 
             // ---- OK / Cancel
-            var ok = BigButton("OK", 290, 580, 105);
+            var ok = BigButton("OK", 290, 676, 105);
             ok.BackColor = Color.LightGreen;
             ok.Click += (s, e) =>
             {
                 var veh = Properties.VehicleSettings.Default;
                 veh.setTurn_steerRate = (double)nudRate.Value;
                 veh.setTurn_leadTime = (double)nudLead.Value;
+                veh.setTurn_steerAccel = (double)nudAccel.Value;
+                veh.setTurn_fbFilter = (double)nudFilter.Value;
                 veh.Save();
                 Close();
             };
-            var cancel = BigButton(gStr.gsCancel, 405, 580, 105);
+            var cancel = BigButton(gStr.gsCancel, 405, 676, 105);
             cancel.Click += (s, e) => Close();
             Controls.Add(ok);
             Controls.Add(cancel);
 
             SetNud(nudRate, Properties.VehicleSettings.Default.setTurn_steerRate);
             SetNud(nudLead, Properties.VehicleSettings.Default.setTurn_leadTime);
+            SetNud(nudAccel, Properties.VehicleSettings.Default.setTurn_steerAccel);
+            SetNud(nudFilter, Properties.VehicleSettings.Default.setTurn_fbFilter);
 
             timer = new Timer { Interval = 250 };
             timer.Tick += (s, e) => UpdateLive();
@@ -202,6 +208,7 @@ namespace AgOpenGPS
                 {
                     SetNud(nudRate, Math.Round(c.teachRate));
                     SetNud(nudLead, Math.Round(c.teachLead / 0.05) * 0.05);
+                    if (c.teachAccel > 0) SetNud(nudAccel, Math.Round(c.teachAccel / 10) * 10);
                     lblTeach.Text = string.Format(gStr.gsTeachResult, c.teachRate.ToString("N0"),
                         c.teachLead.ToString("N2"), c.teachGain.ToString("N2"));
                 }
