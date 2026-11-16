@@ -5832,6 +5832,150 @@ public static string gsOrchPlanterBehind {
             }
         }
         
+        public static string gsCalibTab {
+            get {
+                return ResourceManager.GetString("gsCalibTab", resourceCulture);
+            }
+        }
+        
+        public static string gsSelfLearn {
+            get {
+                return ResourceManager.GetString("gsSelfLearn", resourceCulture);
+            }
+        }
+        
+        public static string gsTeachStart {
+            get {
+                return ResourceManager.GetString("gsTeachStart", resourceCulture);
+            }
+        }
+        
+        public static string gsStop {
+            get {
+                return ResourceManager.GetString("gsStop", resourceCulture);
+            }
+        }
+        
+        public static string gsTeachHint {
+            get {
+                return ResourceManager.GetString("gsTeachHint", resourceCulture);
+            }
+        }
+        
+        public static string gsTeachRunning {
+            get {
+                return ResourceManager.GetString("gsTeachRunning", resourceCulture);
+            }
+        }
+        
+        public static string gsTeachFail {
+            get {
+                return ResourceManager.GetString("gsTeachFail", resourceCulture);
+            }
+        }
+        
+        public static string gsTeachResult {
+            get {
+                return ResourceManager.GetString("gsTeachResult", resourceCulture);
+            }
+        }
+        
+        public static string gsTeachUnsure {
+            get {
+                return ResourceManager.GetString("gsTeachUnsure", resourceCulture);
+            }
+        }
+        
+        public static string gsRadiusTitle {
+            get {
+                return ResourceManager.GetString("gsRadiusTitle", resourceCulture);
+            }
+        }
+        
+        public static string gsRadiusStart {
+            get {
+                return ResourceManager.GetString("gsRadiusStart", resourceCulture);
+            }
+        }
+        
+        public static string gsRadiusHint {
+            get {
+                return ResourceManager.GetString("gsRadiusHint", resourceCulture);
+            }
+        }
+        
+        public static string gsRadiusLive {
+            get {
+                return ResourceManager.GetString("gsRadiusLive", resourceCulture);
+            }
+        }
+        
+        public static string gsRadiusProgress {
+            get {
+                return ResourceManager.GetString("gsRadiusProgress", resourceCulture);
+            }
+        }
+        
+        public static string gsRadiusRow {
+            get {
+                return ResourceManager.GetString("gsRadiusRow", resourceCulture);
+            }
+        }
+        
+        public static string gsRadiusUnreliable {
+            get {
+                return ResourceManager.GetString("gsRadiusUnreliable", resourceCulture);
+            }
+        }
+        
+        public static string gsRadiusNote {
+            get {
+                return ResourceManager.GetString("gsRadiusNote", resourceCulture);
+            }
+        }
+        
+        public static string gsRadiusNeedAngle {
+            get {
+                return ResourceManager.GetString("gsRadiusNeedAngle", resourceCulture);
+            }
+        }
+        
+        public static string gsLearnAskTitle {
+            get {
+                return ResourceManager.GetString("gsLearnAskTitle", resourceCulture);
+            }
+        }
+        
+        public static string gsLearnSideRight {
+            get {
+                return ResourceManager.GetString("gsLearnSideRight", resourceCulture);
+            }
+        }
+        
+        public static string gsLearnSideLeft {
+            get {
+                return ResourceManager.GetString("gsLearnSideLeft", resourceCulture);
+            }
+        }
+        
+        public static string gsLearnPast {
+            get {
+                return ResourceManager.GetString("gsLearnPast", resourceCulture);
+            }
+        }
+        
+        public static string gsLearnShort {
+            get {
+                return ResourceManager.GetString("gsLearnShort", resourceCulture);
+            }
+        }
+        
+        public static string gsLearnAskMsg {
+            get {
+                return ResourceManager.GetString("gsLearnAskMsg", resourceCulture);
+            }
+        }
+        
         public static string gsLastUNone {
             get {
                 return ResourceManager.GetString("gsLastUNone", resourceCulture);

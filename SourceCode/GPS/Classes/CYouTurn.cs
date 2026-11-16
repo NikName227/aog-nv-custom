@@ -2041,6 +2041,10 @@ namespace AgOpenGPS
         public double turnCurvCmd;
         /// <summary>a debounced reverse is being held right now (turn-after-stop arms on it)</summary>
         public bool IsReverseHeld { get { return reverseHeld; } }
+        /// <summary>the last turn was driven to the end of its path (not cut short) - self learning counts only those</summary>
+        public bool lastEndAtPathEnd;
+        /// <summary>turn side as it was when the running / last turn was triggered</summary>
+        public bool TriggerSideLeft { get { return savedIsTurnLeft; } }
         public int part2RedIndex = -1;  // red index inside the pending part 2
 
         // local frame
@@ -3554,6 +3558,7 @@ namespace AgOpenGPS
         {
             //trigger pulled
             isYouTurnTriggered = true;
+            lastEndAtPathEnd = false;
 
             if (!isGoingStraightThrough)
             {
@@ -4080,7 +4085,9 @@ namespace AgOpenGPS
             double alpha = AngleDiff(mf.fixHeading, lineHead);
 
             //on the pass and pointing along it: there is nothing to lead back to
-            if (y0 < 0.5 * (mf.tool.width - mf.tool.overlap) && Math.Abs(alpha) < 0.1745)
+            //(REQ 2026-11-16-1: 20 deg, was 10 - a driver who steers onto the pass by hand is rarely
+            //that square to it, and was sent along the cross line instead of straight onto the pass)
+            if (y0 < 0.5 * (mf.tool.width - mf.tool.overlap) && Math.Abs(alpha) < 0.349)
             {
                 why = "already on the pass";
                 return false;
@@ -4806,6 +4813,7 @@ namespace AgOpenGPS
                     bool atPathEnd = B >= ptCount - 1 && !(isLineApproach && mf.isReverse);
                     if ((offPathDone || atPathEnd) && hasProgressedEnough && !kSplitHold)
                     {
+                        lastEndAtPathEnd = atPathEnd;
                         CompleteYouTurn();
                         return false;
                     }

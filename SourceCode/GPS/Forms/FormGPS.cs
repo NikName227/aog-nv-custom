@@ -240,6 +240,7 @@ namespace AgOpenGPS
         /// Auto Headland YouTurn
         /// </summary>
         public CYouTurn yt;
+        public CTurnCalib turnCal;
 
         /// <summary>
         /// Our vehicle only
@@ -523,6 +524,7 @@ namespace AgOpenGPS
 
             ////new instance of auto headland turn
             yt = new CYouTurn(this);
+            turnCal = new CTurnCalib(this);
 
             //module communication
             mc = new CModuleComm(this);
