@@ -33,7 +33,7 @@ namespace AgOpenGPS
         private static readonly double[] stepFactor = { 0, 1, -1, 1, 0 };
         private static readonly double[] stepEnd = { 1.0, 2.6, 5.8, 7.4, 9.0 };   // s, end of each step
         public bool teachDone, teachOk;
-        public double teachRate, teachLead, teachGain;
+        public double teachRate, teachLead, teachGain, teachAccel;
         public double TeachProgress { get { return mode == Mode.Teach ? Math.Min(1.0, (DateTime.UtcNow - t0).TotalSeconds / stepEnd[stepEnd.Length - 1]) : 0; } }
 
         // ---- radius check
@@ -196,6 +196,29 @@ namespace AgOpenGPS
                     if (err < bestErr) { bestErr = err; bestD = d; }
                 }
 
+                // 2b. how fast the steering gets up to speed: from the step (after the dead time) until the
+                //     wheels move at 80 % of their full speed
+                var acc = new List<double>();
+                for (int st = 1; st < stepEnd.Length; st++)
+                {
+                    double a0 = stepFactor[st - 1] * teachAngle, b0 = stepFactor[st] * teachAngle;
+                    if (Math.Abs(b0 - a0) < 5) continue;
+                    double tS = stepEnd[st - 1] + bestD, dir = Math.Sign(b0 - a0);
+                    for (int i = 1; i < smp.Count; i++)
+                    {
+                        if (smp[i].t <= tS || smp[i].t >= stepEnd[st]) continue;
+                        double dtS = smp[i].t - smp[i - 1].t;
+                        if (dtS < 1e-3) continue;
+                        if (dir * (smp[i].act - smp[i - 1].act) / dtS >= 0.8 * rate)
+                        {
+                            double tm = 0.5 * (smp[i].t + smp[i - 1].t);
+                            acc.Add(0.8 * rate / Math.Max(0.05, tm - tS));
+                            break;
+                        }
+                    }
+                }
+                teachAccel = acc.Count > 0 ? Math.Max(10, Math.Min(600, Median(acc))) : 0;
+
                 // 3. from the wheel angle to the tractor actually turning (GPS heading)
                 int n = smp.Count;
                 var km = new double[n];
@@ -226,7 +249,7 @@ namespace AgOpenGPS
                 teachOk = tot > 1e-9 && bestE2 / tot < 0.5;     // the heading really followed the wheel angle
                 Log.EventWriter("Turn teach: steering " + rate.ToString("N1") + " deg/s (right " + Median(up).ToString("N1")
                     + ", left " + Median(dn).ToString("N1") + "), wheel delay " + bestD.ToString("N2") + " s, turn delay "
-                    + bestT.ToString("N2") + " s, turning vs model " + bestG.ToString("N2") + (teachOk ? "" : " - UNRELIABLE"));
+                    + bestT.ToString("N2") + " s, steering accel " + teachAccel.ToString("N0") + " deg/s2, turning vs model " + bestG.ToString("N2") + (teachOk ? "" : " - UNRELIABLE"));
             }
             catch (Exception ex)
             {

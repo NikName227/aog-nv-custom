@@ -2421,4 +2421,22 @@ USE AT OWN RISK.</value>
   <data name="gsRadiusWhyGps" xml:space="preserve">
     <value>unreliable: GPS</value>
   </data>
+  <data name="gsSteerAccel" xml:space="preserve">
+    <value>Steering acceleration (deg/s²)</value>
+  </data>
+  <data name="gsFbFilter" xml:space="preserve">
+    <value>Correction filter (s, 0 = off)</value>
+  </data>
+  <data name="gsLearnReset" xml:space="preserve">
+    <value>Reset learning</value>
+  </data>
+  <data name="gsLearnResetAsk" xml:space="preserve">
+    <value>Learning of the side offset starts again from the first turn. The offset itself stays. Continue?</value>
+  </data>
+  <data name="gsTrailExtra" xml:space="preserve">
+    <value>pulled implement</value>
+  </data>
+  <data name="gsLearnedTurns" xml:space="preserve">
+    <value>learned L | R</value>
+  </data>
 </root>

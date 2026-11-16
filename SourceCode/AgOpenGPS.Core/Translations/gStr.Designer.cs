@@ -6000,6 +6000,42 @@ public static string gsOrchPlanterBehind {
             }
         }
         
+        public static string gsSteerAccel {
+            get {
+                return ResourceManager.GetString("gsSteerAccel", resourceCulture);
+            }
+        }
+        
+        public static string gsFbFilter {
+            get {
+                return ResourceManager.GetString("gsFbFilter", resourceCulture);
+            }
+        }
+        
+        public static string gsLearnReset {
+            get {
+                return ResourceManager.GetString("gsLearnReset", resourceCulture);
+            }
+        }
+        
+        public static string gsLearnResetAsk {
+            get {
+                return ResourceManager.GetString("gsLearnResetAsk", resourceCulture);
+            }
+        }
+        
+        public static string gsTrailExtra {
+            get {
+                return ResourceManager.GetString("gsTrailExtra", resourceCulture);
+            }
+        }
+        
+        public static string gsLearnedTurns {
+            get {
+                return ResourceManager.GetString("gsLearnedTurns", resourceCulture);
+            }
+        }
+        
         public static string gsLastUNone {
             get {
                 return ResourceManager.GetString("gsLastUNone", resourceCulture);

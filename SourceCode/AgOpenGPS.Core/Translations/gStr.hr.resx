@@ -2054,4 +2054,22 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsRadiusWhyGps" xml:space="preserve">
     <value>nepouzdano: GPS</value>
   </data>
+  <data name="gsSteerAccel" xml:space="preserve">
+    <value>Ubrzanje volana (°/s²)</value>
+  </data>
+  <data name="gsFbFilter" xml:space="preserve">
+    <value>Filtar ispravka (s, 0 = isključeno)</value>
+  </data>
+  <data name="gsLearnReset" xml:space="preserve">
+    <value>Resetiraj učenje</value>
+  </data>
+  <data name="gsLearnResetAsk" xml:space="preserve">
+    <value>Učenje bočnog pomaka kreće ispočetka, od prvog okreta. Sam pomak ostaje. Nastaviti?</value>
+  </data>
+  <data name="gsTrailExtra" xml:space="preserve">
+    <value>vučeni</value>
+  </data>
+  <data name="gsLearnedTurns" xml:space="preserve">
+    <value>naučeno L | D</value>
+  </data>
 </root>

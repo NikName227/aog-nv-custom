@@ -121,6 +121,9 @@ namespace AgOpenGPS.Properties
         public bool setTurn_U_selfLearn = true;         // nudge the side offset after every clean U-turn
         public double setTurn_U_offsetBaseR = -999;     // value the learning stays within +-15 cm of (typed or accepted); -999 = the offset itself
         public double setTurn_U_offsetBaseL = -999;
+        public int setTurn_U_learnCountR = 0;            // clean turns learned per side, for this tractor + implement
+        public int setTurn_U_learnCountL = 0;
+        public string setTurn_U_learnVehicle = "";       // tractor profile the learned offset belongs to
         public double setTurn_U_tailExtra = 1.0;        // DEAD since REQ 2026-11-16-1 (kept so saved profiles load)
         public double setTurn_U_tailMaxAngle = 45;      // DEAD since REQ 2026-11-16-1
 
