@@ -1172,9 +1172,25 @@ namespace AgOpenGPS
                 return;
             }
 
+            bool openCalib;
             using (var form = new FormTurnLine(this))
             {
                 form.ShowDialog(this);
+                openCalib = form.OpenCalibRequested;
+            }
+
+            //REQ 2026-11-16-1: calibration runs in its own small window that leaves the navigation
+            //usable; when it closes, the Turn window comes back
+            if (openCalib)
+            {
+                var cal = new FormTurnCalib(this);
+                cal.FormClosed += (s2, e2) =>
+                {
+                    cal.Dispose();
+                    BeginInvoke((Action)(() => turnLinesToolStripMenuItem_Click(sender, e)));
+                };
+                cal.Show(this);
+                return;
             }
 
             //automatic = make sure the auto youturn button matches the wish

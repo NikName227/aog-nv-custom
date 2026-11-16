@@ -2350,7 +2350,7 @@ USE AT OWN RISK.</value>
     <value>Stop</value>
   </data>
   <data name="gsTeachHint" xml:space="preserve">
-    <value>Teach: drive straight at 3-6 km/h with about 20 m free ahead, then press Teach. The wheels step right and left for 9 seconds and the two values are measured. Apply saves them.</value>
+    <value>Drive straight at 3-6 km/h, about 20 m free ahead, then press Teach. Takes 9 seconds.</value>
   </data>
   <data name="gsTeachRunning" xml:space="preserve">
     <value>Teach is running: {0} %</value>
@@ -2359,7 +2359,7 @@ USE AT OWN RISK.</value>
     <value>Teach did not finish (speed must stay between 1.5 and 9 km/h) - values unchanged.</value>
   </data>
   <data name="gsTeachResult" xml:space="preserve">
-    <value>Measured: steering {0} deg/s, lead {1} s. Turning against the model: {2}. Press Apply to keep them.</value>
+    <value>Measured: {0} deg/s, {1} s. Turning against the model: {2}. OK saves.</value>
   </data>
   <data name="gsTeachUnsure" xml:space="preserve">
     <value>Measured, but the tractor hardly turned - repeat on firmer ground. Values unchanged.</value>
@@ -2371,7 +2371,7 @@ USE AT OWN RISK.</value>
     <value>Start (lock angle)</value>
   </data>
   <data name="gsRadiusHint" xml:space="preserve">
-    <value>Turn the wheel to about {0} deg (or less if space is short), drive 2-6 km/h and press Start. The angle is locked. Drive at least 2/3 of a circle, then Stop.</value>
+    <value>Turn the wheel (up to about {0} deg), drive 2-6 km/h, press Start. Drive at least 2/3 of a circle, then Stop.</value>
   </data>
   <data name="gsRadiusLive" xml:space="preserve">
     <value>Wheel angle now: {0} deg</value>
@@ -2380,7 +2380,7 @@ USE AT OWN RISK.</value>
     <value>Holding {0} deg - circle driven: {1} %</value>
   </data>
   <data name="gsRadiusRow" xml:space="preserve">
-    <value>{0} deg: model {1} m, measured {2} m, {3} %</value>
+    <value>{0} deg: model {1} m, measured {2} m ({3} %)</value>
   </data>
   <data name="gsRadiusUnreliable" xml:space="preserve">
     <value>unreliable</value>
@@ -2408,5 +2408,17 @@ USE AT OWN RISK.</value>
   </data>
   <data name="gsLearnAskMsg" xml:space="preserve">
     <value>U-turns to the {0}: the implement comes in {1} cm {2} the row. Change the side offset from {3} m to {4} m?</value>
+  </data>
+  <data name="gsCalLive" xml:space="preserve">
+    <value>Wheel {0} deg    Speed {1} km/h</value>
+  </data>
+  <data name="gsRadiusWhyShort" xml:space="preserve">
+    <value>unreliable: only {0} % of a circle</value>
+  </data>
+  <data name="gsRadiusWhyAngle" xml:space="preserve">
+    <value>unreliable: the angle moved</value>
+  </data>
+  <data name="gsRadiusWhyGps" xml:space="preserve">
+    <value>unreliable: GPS</value>
   </data>
 </root>

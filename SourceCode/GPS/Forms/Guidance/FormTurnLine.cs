@@ -1451,16 +1451,13 @@ namespace AgOpenGPS
 
         private void FormTurnLine_FormClosing(object sender, FormClosingEventArgs e)
         {
-            //a calibration run never outlives the window it was started from
-            if (mf.turnCal.IsBusy) mf.turnCal.Stop();
-            if (calTimer != null) calTimer.Stop();
             //field feedback 2026-07-27: leaving with unsaved lines used to discard them
             //silently. SaveAll clears isDirty, so OK never reaches this prompt.
             if (isDirty)
             {
                 var answer = MessageBox.Show(gStr.gsTurnLinesUnsaved, gStr.gsTurnLimitLines,
                     MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
-                if (answer == DialogResult.Cancel) { e.Cancel = true; return; }
+                if (answer == DialogResult.Cancel) { e.Cancel = true; OpenCalibRequested = false; return; }
                 if (answer == DialogResult.Yes) SaveAll();
             }
             vehicleTimer.Stop();
@@ -1564,9 +1561,8 @@ namespace AgOpenGPS
             lblMinRadiusNoteU.BringToFront();
         }
 
-        // REQ 2026-11-16-1: block U holds the side offset per turn side and its self learning; the two
-        // numbers that describe the tractor's steering live on the Calibration tab with Teach and the
-        // radius check.
+        // REQ 2026-11-16-1: block U holds the side offset per turn side and its self learning. The two
+        // numbers that describe the tractor's steering are in the calibration window (FormTurnCalib).
         private void BuildTailControls()
         {
             lblOvershootU.Text = gStr.gsOffsetRight;
@@ -1599,170 +1595,34 @@ namespace AgOpenGPS
             pnlU.Controls.Add(chkSelfLearn);
             pnlU.Controls.Add(lblTurnInfoU);
 
-            BuildCalibTab();
+            BuildCalibButton();
         }
 
-        // ---- Calibration tab: Teach (steering speed, lead time) and the radius check ----
-        private System.Windows.Forms.Panel pnlCal;
-        private Button btnCalTab, btnTeach, btnRadius;
-        private Label lblTeach, lblRadiusLive, lblRadiusHint;
-        private ListBox lstRadius;
-        private Timer calTimer;
-        private bool calTeachSeen = true;
-        private int calResultsShown = -1;
+        // ---- Calibration: its own small window (FormTurnCalib). This window is modal and covers
+        // the navigation, and the test drives need the navigation - so the button closes this
+        // window, and the calibration window brings it back when it is done.
+        public bool OpenCalibRequested;
+        private Button btnCalTab;
 
-        private void BuildCalibTab()
+        private void BuildCalibButton()
         {
-            var host = pnlU.Parent;
-            pnlCal = new System.Windows.Forms.Panel
-            {
-                Location = pnlU.Location, Size = pnlU.Size, BackColor = pnlU.BackColor, Visible = false
-            };
-            host.Controls.Add(pnlCal);
-
             btnCalTab = new Button
             {
                 Text = gStr.gsCalibTab,
-                Font = btnStyleU.Font, FlatStyle = FlatStyle.Flat, BackColor = Color.AliceBlue,
-                Location = new Point(btnStyleRS.Right + 10, btnStyleRS.Top), Size = btnStyleRS.Size,
+                Font = btnStyleU.Font, FlatStyle = FlatStyle.Flat, BackColor = Color.LightSteelBlue,
+                Location = new Point(btnStyleRS.Right + 24, btnStyleRS.Top), Size = new Size(190, btnStyleRS.Height),
                 UseVisualStyleBackColor = false
             };
-            btnCalTab.Click += (s, e) => ShowCalib(true);
-            host.Controls.Add(btnCalTab);
-            //picking a turn style again leaves the calibration tab
-            btnStyleK.Click += (s, e) => ShowCalib(false);
-            btnStyleU.Click += (s, e) => ShowCalib(false);
-            btnStyleRS.Click += (s, e) => ShowCalib(false);
-
-            // left: the two numbers + Teach
-            nudSteerRate = new NumericUpDown
+            btnCalTab.FlatAppearance.BorderSize = 2;
+            btnCalTab.FlatAppearance.BorderColor = Color.SteelBlue;
+            btnCalTab.Click += (s, e) =>
             {
-                DecimalPlaces = 0, Increment = 1, Minimum = 5, Maximum = 60,
-                Font = new Font("Tahoma", 12F), Location = new Point(330, 12), Size = new Size(130, 34)
+                if (paramsDirty) SaveTurnParams();      // nothing typed here gets lost on the way
+                OpenCalibRequested = true;
+                Close();
             };
-            nudLeadTime = new NumericUpDown
-            {
-                DecimalPlaces = 2, Increment = 0.05M, Minimum = 0, Maximum = 1,
-                Font = new Font("Tahoma", 12F), Location = new Point(330, 52), Size = new Size(130, 34)
-            };
-            btnTeach = CalButton(gStr.gsTeachStart, 4, 100, 200);
-            btnTeach.Click += (s, e) =>
-            {
-                if (mf.turnCal.mode == CTurnCalib.Mode.Teach) mf.turnCal.Stop();
-                else if (mf.turnCal.StartTeach()) calTeachSeen = false;
-                else lblTeach.Text = gStr.gsTeachFail;
-            };
-            lblTeach = new Label
-            {
-                Text = gStr.gsTeachHint, Font = new Font("Tahoma", 10F),
-                Location = new Point(4, 156), Size = new Size(480, 150)
-            };
-            pnlCal.Controls.Add(RowLabelU(gStr.gsSteerRate, 16));
-            pnlCal.Controls.Add(nudSteerRate);
-            pnlCal.Controls.Add(RowLabelU(gStr.gsLeadTime, 56));
-            pnlCal.Controls.Add(nudLeadTime);
-            pnlCal.Controls.Add(btnTeach);
-            pnlCal.Controls.Add(lblTeach);
-
-            // right: radius check
-            var title = RowLabelU(gStr.gsRadiusTitle, 12);
-            title.Location = new Point(520, 12);
-            lblRadiusHint = new Label
-            {
-                Font = new Font("Tahoma", 10F), Location = new Point(520, 46), Size = new Size(450, 62),
-                Text = string.Format(gStr.gsRadiusHint, (mf.vehicle.maxSteerAngle * 0.85).ToString("N0"))
-            };
-            btnRadius = CalButton(gStr.gsRadiusStart, 520, 112, 240);
-            btnRadius.Click += (s, e) =>
-            {
-                if (mf.turnCal.mode == CTurnCalib.Mode.Radius) mf.turnCal.Stop();
-                else if (!mf.turnCal.StartRadius()) lblRadiusLive.Text = gStr.gsRadiusNeedAngle;
-            };
-            lblRadiusLive = new Label
-            {
-                Font = new Font("Tahoma", 11.25F, FontStyle.Bold), Location = new Point(520, 166), Size = new Size(450, 28)
-            };
-            lstRadius = new ListBox
-            {
-                Font = new Font("Tahoma", 10F), Location = new Point(520, 198), Size = new Size(450, 150),
-                IntegralHeight = false
-            };
-            var note = new Label
-            {
-                Text = gStr.gsRadiusNote, Font = new Font("Tahoma", 9F), ForeColor = Color.DimGray,
-                Location = new Point(520, 354), Size = new Size(450, 40)
-            };
-            pnlCal.Controls.Add(title);
-            pnlCal.Controls.Add(lblRadiusHint);
-            pnlCal.Controls.Add(btnRadius);
-            pnlCal.Controls.Add(lblRadiusLive);
-            pnlCal.Controls.Add(lstRadius);
-            pnlCal.Controls.Add(note);
-
-            calTimer = new Timer { Interval = 250 };
-            calTimer.Tick += (s, e) => UpdateCalib();
-        }
-
-        private static Button CalButton(string text, int x, int y, int w)
-        {
-            return new Button
-            {
-                Text = text, Font = new Font("Tahoma", 12F, FontStyle.Bold), FlatStyle = FlatStyle.Flat,
-                BackColor = Color.Gainsboro, UseVisualStyleBackColor = false,
-                Location = new Point(x, y), Size = new Size(w, 46)
-            };
-        }
-
-        private void ShowCalib(bool show)
-        {
-            if (pnlCal == null) return;
-            if (!show && mf.turnCal.IsBusy) mf.turnCal.Stop();
-            pnlCal.Visible = show;
-            btnCalTab.BackColor = show ? Color.Gold : Color.AliceBlue;
-            if (show) { pnlCal.BringToFront(); btnApplyParams.BringToFront(); UpdateCalib(); calTimer.Start(); }
-            else calTimer.Stop();
-        }
-
-        /// <summary>Live view of the calibration tab: wheel angle, progress, results as they arrive.</summary>
-        private void UpdateCalib()
-        {
-            var c = mf.turnCal;
-            btnTeach.Text = c.mode == CTurnCalib.Mode.Teach ? gStr.gsStop : gStr.gsTeachStart;
-            btnRadius.Text = c.mode == CTurnCalib.Mode.Radius ? gStr.gsStop : gStr.gsRadiusStart;
-            btnTeach.Enabled = c.mode != CTurnCalib.Mode.Radius;
-            btnRadius.Enabled = c.mode != CTurnCalib.Mode.Teach;
-
-            if (c.mode == CTurnCalib.Mode.Teach)
-                lblTeach.Text = string.Format(gStr.gsTeachRunning, (c.TeachProgress * 100).ToString("N0"));
-            else if (c.teachDone && !calTeachSeen)
-            {
-                calTeachSeen = true;
-                if (c.teachOk)
-                {
-                    SetNud(nudSteerRate, Math.Round(c.teachRate));
-                    SetNud(nudLeadTime, Math.Round(c.teachLead / 0.05) * 0.05);
-                    lblTeach.Text = string.Format(gStr.gsTeachResult, c.teachRate.ToString("N0"),
-                        c.teachLead.ToString("N2"), c.teachGain.ToString("N2"));
-                }
-                else lblTeach.Text = c.teachRate > 0 && c.abortReason.Length == 0 ? gStr.gsTeachUnsure : gStr.gsTeachFail;
-            }
-
-            lblRadiusLive.Text = c.mode == CTurnCalib.Mode.Radius
-                ? string.Format(gStr.gsRadiusProgress, c.holdAngle.ToString("N1"), (c.sweep / glm.twoPI * 100).ToString("N0"))
-                : string.Format(gStr.gsRadiusLive, mf.mc.actualSteerAngleDegrees.ToString("N1"));
-
-            if (calResultsShown != c.results.Count || (c.results.Count > 0 && lstRadius.Items.Count == 0))
-            {
-                calResultsShown = c.results.Count;
-                lstRadius.Items.Clear();
-                foreach (var r in c.results)
-                {
-                    double pct = (r.measured - r.expected) / r.expected * 100;
-                    lstRadius.Items.Add(string.Format(gStr.gsRadiusRow, r.angle.ToString("N1"), r.expected.ToString("N2"),
-                        r.measured.ToString("N2"), (pct >= 0 ? "+" : "") + pct.ToString("N0"))
-                        + (r.reliable ? "" : "  (" + gStr.gsRadiusUnreliable + ", " + (r.sweepDeg / 3.6).ToString("N0") + " %)"));
-                }
-            }
+            pnlU.Parent.Controls.Add(btnCalTab);
+            btnCalTab.BringToFront();
         }
 
         private static Label RowLabelU(string text, int y)
@@ -1779,7 +1639,7 @@ namespace AgOpenGPS
 
         private Label lblTurnInfoU;
         private CheckBox chkSelfLearn;
-        private NumericUpDown nudOffsetLeft, nudSteerRate, nudLeadTime;
+        private NumericUpDown nudOffsetLeft;
 
         /// <summary>What the last U-turn was built with: offset asked / applied, transition, width a clean U needs.</summary>
         private void UpdateTurnInfoU()
@@ -3351,8 +3211,6 @@ namespace AgOpenGPS
             SetNud(nudInU, v.setTurn_U_entryRadius);
             SetNud(nudOvershootU, v.setTurn_U_overshootDist);
             SetNud(nudOffsetLeft, v.setTurn_U_overshootLeft <= -900 ? v.setTurn_U_overshootDist : v.setTurn_U_overshootLeft);
-            SetNud(nudSteerRate, Properties.VehicleSettings.Default.setTurn_steerRate);
-            SetNud(nudLeadTime, Properties.VehicleSettings.Default.setTurn_leadTime);
             chkSelfLearn.Checked = v.setTurn_U_selfLearn;
             SetNud(nudTolerance, t.setTurn_triggerTolerance);
             SetNud(nudToleranceAfter, t.setTurn_triggerToleranceAfter);
@@ -3404,7 +3262,7 @@ namespace AgOpenGPS
             var nuds = new System.Windows.Forms.NumericUpDown[]
             {
                 nudExitK, nudDistK, nudAngleK, nudTransK, nudOutU, nudInU,
-                nudOvershootU, nudTolerance, nudToleranceAfter, nudOffsetLeft, nudSteerRate, nudLeadTime
+                nudOvershootU, nudTolerance, nudToleranceAfter, nudOffsetLeft
             };
             foreach (var n in nuds) n.ValueChanged += (s, e) => MarkParamsDirty();
 
@@ -3435,12 +3293,6 @@ namespace AgOpenGPS
             v.setTurn_U_selfLearn = chkSelfLearn.Checked;
             v.Save();
 
-            //the two steering numbers describe the tractor, so they go to the vehicle profile
-            var veh = Properties.VehicleSettings.Default;
-            veh.setTurn_steerRate = (double)nudSteerRate.Value;
-            veh.setTurn_leadTime = (double)nudLeadTime.Value;
-            veh.Save();
-
             var t = Properties.ToolSettings.Default;
             t.setTurn_triggerTolerance = (double)nudTolerance.Value;
             t.setTurn_triggerToleranceAfter = (double)nudToleranceAfter.Value;
@@ -3466,8 +3318,6 @@ namespace AgOpenGPS
             MakeKeypadField(nudInU, 0.2);
             MakeKeypadField(nudOvershootU, 0.05);
             MakeKeypadField(nudOffsetLeft, 0.05);
-            MakeKeypadField(nudSteerRate, 1);
-            MakeKeypadField(nudLeadTime, 0.05);
             MakeKeypadField(nudTolerance, 0.2);
             MakeKeypadField(nudToleranceAfter, 0.2);
             MakeKeypadField(nudZones, 1, zoneSteppers);   //wizard step 2 shows/hides these

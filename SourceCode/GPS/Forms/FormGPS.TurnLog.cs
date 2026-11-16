@@ -28,9 +28,17 @@ namespace AgOpenGPS
             return v.ToString(f, CultureInfo.InvariantCulture);
         }
 
+        private const string tlHeader = "t_s,state,pivot_e,pivot_n,heading_deg,speed_kmh,steer_set_deg,steer_actual_deg,goal_e,goal_n,goal_dist_m,xte_cm,idx,points,tool_e,tool_n,curv_on,k_cmd\n";
+
         private void TurnLogFix()
         {
             if (tlFailed) return;
+            //a debug option since REQ 2026-11-16-1: written only when the config file switches it on
+            if (!CFeatureLock.IsOn(CFeatureLock.DebugTurnLog))
+            {
+                if (tlActive) TurnLogEnd();
+                return;
+            }
             try
             {
                 bool trig = yt.isYouTurnTriggered && yt.ytList.Count > 3;
@@ -51,6 +59,9 @@ namespace AgOpenGPS
                     if (tlDistAfter > tlAfterDistance) { TurnLogEnd(); return; }
                 }
                 else tlAfter = false;     // triggered again
+
+                //standing still adds nothing but rows (a stop in mid-turn used to fill the file)
+                if (Math.Abs(avgSpeed) < 0.1) return;
 
                 char state = tlAfter ? 'A'
                     : (yt.ytTailStart > 0 && yt.onA >= yt.ytTailStart ? 'R' : 'T');
@@ -115,7 +126,7 @@ namespace AgOpenGPS
 
             string dir = Path.Combine(RegistrySettings.fieldsDirectory, currentFieldDirectory ?? "");
             if (!File.Exists(Path.Combine(dir, "TurnLog.csv")) && Directory.Exists(dir))
-                tlBuf.Insert(0, "t_s,state,pivot_e,pivot_n,heading_deg,speed_kmh,steer_set_deg,steer_actual_deg,goal_e,goal_n,goal_dist_m,xte_cm,idx,points,tool_e,tool_n,curv_on,k_cmd\n");
+                tlBuf.Insert(0, tlHeader);
         }
 
         private void TurnLogEnd()
@@ -131,7 +142,21 @@ namespace AgOpenGPS
             try
             {
                 string dir = Path.Combine(RegistrySettings.fieldsDirectory, currentFieldDirectory ?? "");
-                if (Directory.Exists(dir)) File.AppendAllText(Path.Combine(dir, "TurnLog.csv"), tlBuf.ToString());
+                if (Directory.Exists(dir))
+                {
+                    string file = Path.Combine(dir, "TurnLog.csv");
+                    //never more than about 10 MB per field: at 5 MB the file becomes TurnLog_old.csv
+                    //(replacing the previous one) and a new one starts
+                    var fi = new FileInfo(file);
+                    if (fi.Exists && fi.Length > 5 * 1024 * 1024)
+                    {
+                        string old = Path.Combine(dir, "TurnLog_old.csv");
+                        if (File.Exists(old)) File.Delete(old);
+                        File.Move(file, old);
+                        tlBuf.Insert(0, tlHeader);
+                    }
+                    File.AppendAllText(file, tlBuf.ToString());
+                }
             }
             catch (Exception ex)
             {

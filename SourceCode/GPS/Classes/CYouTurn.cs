@@ -2036,6 +2036,8 @@ namespace AgOpenGPS
         public List<double> ytCurv = new List<double>();
         private double ytCurvE0, ytCurvN0;
         public double lastTurnWidthNeeded, lastTransitionLen;
+        /// <summary>how far past the row the tractor was sent on purpose for a pulled implement (m)</summary>
+        public double lastTrailExtra;
         /// <summary>true on the fixes where the curvature steering drove the turn; the curvature it asked for (1/m)</summary>
         public bool turnCurvActive;
         public double turnCurvCmd;
@@ -2046,6 +2048,7 @@ namespace AgOpenGPS
         /// <summary>turn side as it was when the running / last turn was triggered</summary>
         public bool TriggerSideLeft { get { return savedIsTurnLeft; } }
         public int part2RedIndex = -1;  // red index inside the pending part 2
+        private int part2TailStart = -1; // where the entry tail begins inside the pending part 2
 
         // local frame
         private double frOx, frOy, frTx, frTy, frLx, frLy;
@@ -2408,13 +2411,12 @@ namespace AgOpenGPS
             const double ds = 0.2;
 
             double asked = UOffsetForSide(isTurnLeft);
-            double eT = o + asked;
 
             // heading of the connector between the two turns: along the limit line (a headland that
             // is not square to the rows), taken from the two circles fitted under it as before
             double htgt = glm.PIBy2;
             {
-                double cx1 = Rout, cx3 = Math.Max(Rout + 0.5, eT - Rin);
+                double cx1 = Rout, cx3 = Math.Max(Rout + 0.5, o + asked - Rin);
                 double y1 = FitCircleY(eff, cx1, Rout, 0.5);
                 double y3 = FitCircleY(eff, cx3, Rin, 0.5);
                 if (y1 != double.MaxValue && y3 != double.MaxValue)
@@ -2433,59 +2435,100 @@ namespace AgOpenGPS
                 }
             }
 
-            var segs = new List<CurvSeg>(8);
-            segs.Add(SegLine(2.6));
-            int entrySeg = -1;
-            double w0 = CurvEndX(new[] { SegTurn(Math.PI, 1, kT) }, sigma);
-            double w2 = CurvEndX(new[] { SegTurn(htgt, 1, kOut), SegTurn(Math.PI - htgt, 1, kIn) }, sigma);
-            if (eT >= w2)
+            // the turn for one aim point (eT = where the entry turn ends, lateral): segments, and what they did
+            double w0 = 0;
+            List<CurvSeg> MakeSegs(double eT, out int entrySeg, out int tailSeg, out double dOff, out double gam)
             {
-                segs.Add(SegTurn(htgt, 1, kOut));
-                double c = (eT - w2) / Math.Sin(htgt);
-                if (c > 0.05) segs.Add(SegLine(c));
-                entrySeg = segs.Count;
-                segs.Add(SegTurn(Math.PI - htgt, 1, kIn));
-            }
-            else
-            {
-                // one continuous turn. Wider than its tightest form: both ends stay at the full planned
-                // lock and only the middle eases off - that keeps the turn shallow (least room used)
-                double wTight = CurvEndX(new[] { SegDip(Math.PI, 1, kT, kT) }, sigma);
-                double kDip = kT;
-                if (eT > wTight + 0.01)
+                var segs = new List<CurvSeg>(8);
+                entrySeg = -1;
+                segs.Add(SegLine(2.6));
+                w0 = CurvEndX(new[] { SegTurn(Math.PI, 1, kT) }, sigma);
+                double w2 = CurvEndX(new[] { SegTurn(htgt, 1, kOut), SegTurn(Math.PI - htgt, 1, kIn) }, sigma);
+                if (eT >= w2)
                 {
-                    double lo = 0, hi = kT;
+                    segs.Add(SegTurn(htgt, 1, kOut));
+                    double c = (eT - w2) / Math.Sin(htgt);
+                    if (c > 0.05) segs.Add(SegLine(c));
+                    entrySeg = segs.Count;
+                    segs.Add(SegTurn(Math.PI - htgt, 1, kIn));
+                }
+                else
+                {
+                    // one continuous turn. Wider than its tightest form: both ends stay at the full planned
+                    // lock and only the middle eases off - that keeps the turn shallow (least room used)
+                    double wTight = CurvEndX(new[] { SegDip(Math.PI, 1, kT, kT) }, sigma);
+                    double kDip = kT;
+                    if (eT > wTight + 0.01)
+                    {
+                        double lo = 0, hi = kT;
+                        for (int i = 0; i < 30; i++)
+                        {
+                            double mid = (lo + hi) / 2;
+                            if (CurvEndX(new[] { SegDip(Math.PI, 1, kT, mid) }, sigma) > eT) lo = mid; else hi = mid;
+                        }
+                        kDip = (lo + hi) / 2;
+                    }
+                    segs.Add(SegDip(Math.PI, 1, kT, kDip));
+                    eT = CurvEndX(new[] { SegDip(Math.PI, 1, kT, kDip) }, sigma);   // where it really ends (no room -> wider)
+                }
+
+                // back onto the row from wherever the entry was aimed, parallel at the end
+                tailSeg = segs.Count;
+                dOff = eT - o; gam = 0;
+                if (Math.Abs(dOff) > 0.02)
+                {
+                    double lo = 0, hi = 1.0;
                     for (int i = 0; i < 30; i++)
                     {
                         double mid = (lo + hi) / 2;
-                        if (CurvEndX(new[] { SegDip(Math.PI, 1, kT, mid) }, sigma) > eT) lo = mid; else hi = mid;
+                        if (CurvEndX(new[] { SegTurn(mid, 1, kIn), SegTurn(mid, -1, kIn) }, sigma) < Math.Abs(dOff)) lo = mid; else hi = mid;
                     }
-                    kDip = (lo + hi) / 2;
+                    gam = (lo + hi) / 2;
+                    int sg = dOff > 0 ? 1 : -1;
+                    segs.Add(SegTurn(gam, sg, kIn));
+                    segs.Add(SegTurn(gam, -sg, kIn));
                 }
-                segs.Add(SegDip(Math.PI, 1, kT, kDip));
-                eT = CurvEndX(new[] { SegDip(Math.PI, 1, kT, kDip) }, sigma);   // where it really ends (no room -> wider)
+                segs.Add(SegLine(Math.Max(3.0, 2.0 * speed)));
+                return segs;
             }
 
-            // back onto the row from wherever the entry was aimed, parallel at the end
-            int tailSeg = segs.Count;
-            double dOff = eT - o, gam = 0;
-            if (Math.Abs(dOff) > 0.02)
+            // A pulled implement only comes onto the row some metres after the tractor does. If the
+            // tractor first runs past the row and comes back, the implement is pulled across sooner.
+            // How far past is tried out on the implement's own track (hitch behind the rear axle +
+            // drawbar): the amount that puts the implement on the row for good the earliest wins.
+            double extra = 0;
+            if (mf.tool.isToolTrailing && !mf.tool.isToolTBT)
             {
-                double lo = 0, hi = 1.0;
-                for (int i = 0; i < 30; i++)
+                double hitch = Math.Abs(mf.tool.hitchLength), bar = Math.Abs(mf.tool.trailingHitchLength);
+                if (bar > 0.5)
                 {
-                    double mid = (lo + hi) / 2;
-                    if (CurvEndX(new[] { SegTurn(mid, 1, kIn), SegTurn(mid, -1, kIn) }, sigma) < Math.Abs(dOff)) lo = mid; else hi = mid;
+                    double best = double.MaxValue;
+                    for (double tryExtra = 0; tryExtra <= 3.001; tryExtra += 0.25)
+                    {
+                        List<vec2> tp = BuildCurvPath(MakeSegs(o + asked + tryExtra, out _, out _, out _, out _), sigma, 0.25, null);
+                        double ix = 0, iy = -(hitch + bar), settle = 0, run = 0;
+                        for (int i = 1; i < tp.Count; i++)
+                        {
+                            double hx = tp[i].easting - tp[i - 1].easting, hy = tp[i].northing - tp[i - 1].northing;
+                            double hl = Math.Sqrt(hx * hx + hy * hy);
+                            if (hl < 1e-6) continue;
+                            run += hl;
+                            double qx = tp[i].easting - hitch * hx / hl, qy = tp[i].northing - hitch * hy / hl;   // hitch point
+                            double ddx = qx - ix, ddy = qy - iy, dl = Math.Sqrt(ddx * ddx + ddy * ddy);
+                            if (dl > 1e-6) { ix = qx - bar * ddx / dl; iy = qy - bar * ddy / dl; }
+                            if (Math.Abs(ix - o) > 0.05) settle = run;
+                        }
+                        if (settle >= run - 0.3) continue;                 // never settled inside this path
+                        if (settle < best - 0.1) { best = settle; extra = tryExtra; }
+                    }
                 }
-                gam = (lo + hi) / 2;
-                int sg = dOff > 0 ? 1 : -1;
-                segs.Add(SegTurn(gam, sg, kIn));
-                segs.Add(SegTurn(gam, -sg, kIn));
             }
-            segs.Add(SegLine(Math.Max(3.0, 2.0 * speed)));
 
-            var marks = new List<int>(segs.Count);
-            List<vec2> pl = BuildCurvPath(segs, sigma, ds, marks);
+            List<CurvSeg> uSegs = MakeSegs(o + asked + extra, out int uEntry, out int uTail, out double uOff, out double uGam);
+            lastTrailExtra = extra;
+
+            var marks = new List<int>(uSegs.Count);
+            List<vec2> pl = BuildCurvPath(uSegs, sigma, ds, marks);
 
             // push the whole path up under the effective limit line (0.2 m kept for tracking error)
             double shift = double.MaxValue;
@@ -2496,14 +2539,14 @@ namespace AgOpenGPS
             for (int i = 0; i < pl.Count; i++) pl[i] = new vec2(pl[i].easting, pl[i].northing + shift);
 
             lastOvershootAsked = asked;
-            lastOvershootApplied = dOff;
-            lastTailAngle = gam * 180.0 / Math.PI;
-            lastTailLen = (pl.Count - 1 - marks[tailSeg]) * ds;
+            lastOvershootApplied = uOff;
+            lastTailAngle = uGam * 180.0 / Math.PI;
+            lastTailLen = (pl.Count - 1 - marks[uTail]) * ds;
             lastTurnWidthNeeded = w0;
             lastTransitionLen = kT / sigma;
 
-            int redStart = (dOff > 0.05 && entrySeg >= 0) ? marks[entrySeg] : -1;   // overshoot -> entry draws red
-            if (!FinishRigidPath(pl, redStart, null, -1, marks[tailSeg])) return false;
+            int redStart = (uOff > 0.05 && uEntry >= 0) ? marks[uEntry] : -1;   // overshoot -> entry draws red
+            if (!FinishRigidPath(pl, redStart, null, -1, marks[uTail])) return false;
             FillTurnCurvature();
             return true;
         }
@@ -2557,6 +2600,19 @@ namespace AgOpenGPS
             if (alpha < 0.10) alpha = 0.10;
             if (alpha > 1.40) alpha = 1.40;
 
+            //REQ 2026-11-16-1: the entry leg ends in a turn onto the row (built further down). That
+            //turn needs lateral room before the row; an entry start distance smaller than that is
+            //raised to it, otherwise the turn would not fit and the old crossing would be used.
+            {
+                double kE = 1.0 / Math.Max(R, MinTurnRadius() / turnCurvReserve);
+                double sp = Math.Max(turnPlanSpeed, Math.Min(6.0, Math.Abs(mf.avgSpeed))) / 3.6;
+                List<vec2> ft = BuildCurvPath(new[] { SegTurn(alpha, 1, kE) }, TurnSigma(sp), ps, null);
+                double hE = Math.PI - alpha;
+                double lat = (Math.Cos(hE) * ft[ft.Count - 1].easting) + (Math.Sin(hE) * ft[ft.Count - 1].northing);
+                double dNeed = lat - UOffsetForSide(isTurnLeft) + 0.05;
+                if (d < dNeed) d = Math.Min(dNeed, Math.Max(0.1, o - 0.2));
+            }
+
             double cx1 = R, cx3 = o - R;
             double y1 = FitCircleY(eff, cx1, R, ps);
             double y3 = FitCircleY(eff, cx3, R, ps);
@@ -2609,24 +2665,72 @@ namespace AgOpenGPS
             List<vec2> p2 = null;
             int redStart = -1, p2Red = -1;
 
+            //REQ 2026-11-16-1: the slant no longer runs across the row for the line guidance to
+            //sort out. It ends in a turn onto the row - with transitions, like the U's entry - then
+            //the return from the side offset and a short straight. The row takes over at the end.
+            //entryTail = that chain in its own frame (start 0,0 heading +y); it is placed so that
+            //it ends ON the row. No room for it after the entry start point: the old crossing.
+            double kOff = UOffsetForSide(isTurnLeft);
+            double kSpeed = Math.Max(turnPlanSpeed, Math.Min(6.0, Math.Abs(mf.avgSpeed))) / 3.6;
+            double kSigma = TurnSigma(kSpeed);
+            double kEnt = 1.0 / Math.Max(R, MinTurnRadius() / turnCurvReserve);
+            var tailSegs = new List<CurvSeg> { SegTurn(alpha, 1, kEnt) };
+            if (Math.Abs(kOff) > 0.02)
+            {
+                double lo = 0, hi = 1.0;
+                for (int i = 0; i < 30; i++)
+                {
+                    double mid = (lo + hi) / 2;
+                    if (CurvEndX(new[] { SegTurn(mid, 1, kEnt), SegTurn(mid, -1, kEnt) }, kSigma) < Math.Abs(kOff)) lo = mid; else hi = mid;
+                }
+                int sg = kOff > 0 ? 1 : -1;
+                tailSegs.Add(SegTurn((lo + hi) / 2, sg, kEnt));
+                tailSegs.Add(SegTurn((lo + hi) / 2, -sg, kEnt));
+            }
+            tailSegs.Add(SegLine(Math.Max(3.0, 2.0 * kSpeed)));
+            //the first turn alone ends kOff beyond the row; the whole chain ends on it
+            List<vec2> tailFirst = BuildCurvPath(new[] { SegTurn(alpha, 1, kEnt) }, kSigma, ps, null);
+            List<vec2> entryTail = BuildCurvPath(tailSegs, kSigma, ps, null);
+            double sinE = Math.Sin(hEnt), cosE = Math.Cos(hEnt);
+            double firstDx = (cosE * tailFirst[tailFirst.Count - 1].easting) + (sinE * tailFirst[tailFirst.Count - 1].northing);
+            double slantRun = sinE > 0.05 ? (o + kOff - E0x - firstDx) / sinE : -1;   // slant length before the turn
+            bool kTail = slantRun >= 0;
+            int tailStart = -1, p2Tail = -1;
+
+            // slant from (px,py) to where the entry turn begins, then the chain
+            void AddEntry(List<vec2> lst, ref double ex, ref double ey, out int tailIdx)
+            {
+                double sx = ex + (sinE * slantRun), sy = ey + (cosE * slantRun);
+                if (slantRun > 0.05) Dens(lst, ex, ey, sx, sy);
+                tailIdx = lst.Count;
+                for (int i = 1; i < entryTail.Count; i++)
+                    lst.Add(new vec2(sx + (cosE * entryTail[i].easting) + (sinE * entryTail[i].northing),
+                                     sy - (sinE * entryTail[i].easting) + (cosE * entryTail[i].northing)));
+                ex = lst[lst.Count - 1].easting; ey = lst[lst.Count - 1].northing;
+            }
+
             if (proj >= -0.01)
             {
-                // fits forward: tangent line to E0, then the slant crossing the row ~2 m
+                // fits forward: tangent line to E0, then the slant onto the row
                 Dens(pl, px, py, E0x, E0y);
                 px = E0x; py = E0y; g = 0;
-                while (px < o - 0.02 && g++ < 7000)
+                if (kTail) AddEntry(pl, ref px, ref py, out tailStart);
+                else
                 {
-                    px += ps * Math.Sin(hEnt); py += ps * Math.Cos(hEnt);
-                    pl.Add(new vec2(px, py));
-                }
-                redStart = pl.Count;                 // crossing past the line draws red
-                //field 2026-07-16: tail past the line cut to the 0.1 m minimum (user)
-                //so even the end-of-path fallback completes AT the row, AB takes over
-                int nCross = Math.Max(1, (int)Math.Round(0.1 / ps));
-                for (int i = 0; i < nCross; i++)
-                {
-                    px += ps * Math.Sin(hEnt); py += ps * Math.Cos(hEnt);
-                    pl.Add(new vec2(px, py));
+                    while (px < o - 0.02 && g++ < 7000)
+                    {
+                        px += ps * Math.Sin(hEnt); py += ps * Math.Cos(hEnt);
+                        pl.Add(new vec2(px, py));
+                    }
+                    redStart = pl.Count;                 // crossing past the line draws red
+                    //field 2026-07-16: tail past the line cut to the 0.1 m minimum (user)
+                    //so even the end-of-path fallback completes AT the row, AB takes over
+                    int nCross = Math.Max(1, (int)Math.Round(0.1 / ps));
+                    for (int i = 0; i < nCross; i++)
+                    {
+                        px += ps * Math.Sin(hEnt); py += ps * Math.Cos(hEnt);
+                        pl.Add(new vec2(px, py));
+                    }
                 }
             }
             else
@@ -2640,25 +2744,32 @@ namespace AgOpenGPS
                 p2 = new List<vec2>(256) { new vec2(rsx, rsy) };
                 Dens(p2, rsx, rsy, E0x, E0y);
                 px = E0x; py = E0y; g = 0;
-                while (px < o - 0.02 && g++ < 7000)
+                if (kTail) AddEntry(p2, ref px, ref py, out p2Tail);
+                else
                 {
-                    px += ps * Math.Sin(hEnt); py += ps * Math.Cos(hEnt);
-                    p2.Add(new vec2(px, py));
-                }
-                p2Red = p2.Count;
-                //field 2026-07-16: same 0.1 m minimum tail on the split part 2
-                int nCross = Math.Max(1, (int)Math.Round(0.1 / ps));
-                for (int i = 0; i < nCross; i++)
-                {
-                    px += ps * Math.Sin(hEnt); py += ps * Math.Cos(hEnt);
-                    p2.Add(new vec2(px, py));
+                    while (px < o - 0.02 && g++ < 7000)
+                    {
+                        px += ps * Math.Sin(hEnt); py += ps * Math.Cos(hEnt);
+                        p2.Add(new vec2(px, py));
+                    }
+                    p2Red = p2.Count;
+                    //field 2026-07-16: same 0.1 m minimum tail on the split part 2
+                    int nCross = Math.Max(1, (int)Math.Round(0.1 / ps));
+                    for (int i = 0; i < nCross; i++)
+                    {
+                        px += ps * Math.Sin(hEnt); py += ps * Math.Cos(hEnt);
+                        p2.Add(new vec2(px, py));
+                    }
                 }
             }
 
             ShiftUnderEff(pl, p2, eff);
             SmoothLocal(pl, 15);
             if (p2 != null) SmoothLocal(p2, 15);
-            return FinishRigidPath(pl, redStart, p2, p2Red);
+            if (!FinishRigidPath(pl, redStart, p2, p2Red, tailStart)) return false;
+            part2TailStart = p2Tail;
+            FillTurnCurvature();        // the forward legs of the K are driven by the turn steering too
+            return true;
         }
 
         private List<vec3> MoveABTurnInsideTurnLine(List<vec3> uTurnList, double head)
@@ -3748,7 +3859,9 @@ namespace AgOpenGPS
         // whichever is longer. Past the arc the path stops AT the row (field 2026-08-15:
         // "nakon radijusa mora zavrsiti") - only a stub is kept so the follower has a
         // segment to hand guidance over on.
-        private const double approachParallelLen = 20.0, approachRunIn = 0.1;
+        private const double approachParallelLen = 20.0, approachRunIn = 3.0;
+        /// <summary>index in the last built approach path where its run-in on the row begins</summary>
+        private int approachTailIdx = -1;
 
         // a row crossing further ahead than this is the FAR headland, not our entry -
         // there the driver leads himself back onto the line (field 2026-08-15)
@@ -3939,6 +4052,8 @@ namespace AgOpenGPS
                     approachReverse = false;
                     maxProgressIndexReached = 0;
                     ytRedIndex = -1;
+                    FillTurnCurvature();
+                    ytTailStart = approachTailIdx;
                     Log.EventWriter("LineApproach: room for the entry radius - " + fwhy);
                 }
                 return;
@@ -3996,6 +4111,8 @@ namespace AgOpenGPS
             isGoingStraightThrough = true;   //target = the pass we are already on: no line swap
             isLineApproach = true;
             approachReverse = reverseOnly;
+            //driven forward it gets the turn steering and hands over at the end of its run-in
+            if (!reverseOnly) { FillTurnCurvature(); ytTailStart = approachTailIdx; }
             activeTurnStyle = 0;
             youTurnPhase = 10;
 
@@ -4147,8 +4264,16 @@ namespace AgOpenGPS
                 return false;
             }
 
-            double R = Math.Max(2.0, UInRadius);
-            double d = R * Math.Tan(0.5 * absDelta);
+            //REQ 2026-11-16-1: the entry onto the row is the same kind of turn as the U's - with
+            //curvature transitions the steering can follow - so its tangent points sit further from
+            //the corner than R * tan(delta / 2) of a plain arc. A turn that is symmetric about its
+            //bisector ends at (T sin delta, T + T cos delta), which gives T from where it ends.
+            PlanRadii(out _, out double rPlanIn);
+            double R = Math.Max(2.0, rPlanIn);
+            List<vec2> entryTurn = BuildCurvPath(new[] { SegTurn(absDelta, 1, 1.0 / R) },
+                TurnSigma(turnPlanSpeed / 3.6), 0.2, null);
+            double sinDelta = Math.Sin(absDelta);
+            double d = sinDelta > 0.05 ? entryTurn[entryTurn.Count - 1].easting / sinDelta : R * Math.Tan(0.5 * absDelta);
 
             //room for the entry arc: the fillet eats d*sin(delta) of lateral offset, plus
             //half a machine width the driver asked for (2026-08-15) - that margin doubles
@@ -4259,24 +4384,23 @@ namespace AgOpenGPS
                 return true;
             }
 
-            //the entry arc itself
+            //the entry turn itself, laid from the tangent point on the parallel
             double turnSign = delta > 0 ? 1.0 : -1.0;
-            double head = parHead, arcE = tanPar.easting, arcN = tanPar.northing;
-            for (double arcRun = 0; arcRun < absDelta * R; arcRun += ps)
+            double fwdE = Math.Sin(parHead), fwdN = Math.Cos(parHead);     // along the parallel
+            for (int i = 1; i < entryTurn.Count; i++)
             {
-                arcE += Math.Sin(head) * ps;
-                arcN += Math.Cos(head) * ps;
-                head += turnSign * ps / R;
-                if (head >= glm.twoPI) head -= glm.twoPI;
-                else if (head < 0) head += glm.twoPI;
-                path.Add(new vec3(arcE, arcN, head));
+                double lx = entryTurn[i].easting * turnSign, ly = entryTurn[i].northing;
+                path.Add(new vec3(tanPar.easting + (fwdN * lx) + (fwdE * ly),
+                                  tanPar.northing - (fwdE * lx) + (fwdN * ly), lineHead));
             }
 
-            //and the stub in the row - taken from the tangent point, so the arc's rounding
-            //cannot walk the end of the path off the pass
+            //and a run-in on the row from the tangent point: the vehicle settles on it under the
+            //turn steering and the row takes over at its end (was a 0.1 m stub - the row took
+            //over while the vehicle was still in the bend)
             int rowFrom = path.Count;
             for (double s = 0; s <= approachRunIn; s += ps)
                 path.Add(new vec3(tanRow.easting + rowX * s, tanRow.northing + rowY * s, lineHead));
+            approachTailIdx = rowFrom - 1;      // the smoothing below drops the first point
 
             if (path.Count < 6)
             {
@@ -4567,6 +4691,9 @@ namespace AgOpenGPS
                             kPart2List.Clear();
                             ytRedIndex = part2RedIndex;
                             part2RedIndex = -1;
+                            ytTailStart = part2TailStart;
+                            part2TailStart = -1;
+                            FillTurnCurvature();
                             kTurnStage = 3;
                             A = 0; B = 1;
                             ptCount = ytList.Count;
@@ -4896,7 +5023,7 @@ namespace AgOpenGPS
                             //here - aim ahead along the row (the lookahead stays as long as it is) and let
                             //the vehicle reach the end of the straight; the check on the closest points
                             //above hands over to the line there
-                            if (ytTailStart > 0 && ptCount > 2 && !isLineApproach)
+                            if (ytTailStart > 0 && ptCount > 2 && !(isLineApproach && approachReverse))
                             {
                                 double ex = ytList[ptCount - 1].easting - ytList[ptCount - 2].easting;
                                 double ey = ytList[ptCount - 1].northing - ytList[ptCount - 2].northing;
@@ -4955,15 +5082,26 @@ namespace AgOpenGPS
                     //get there); the offset from the path and the heading error only correct the rest.
                     //The pure pursuit above still places the goal point for the display.
                     turnCurvActive = false;
-                    if (mf.tnl.IsFeatureOn && activeTurnStyle == 0 && !isLineApproach && !mf.isReverse
-                        && HasTurnCurvature())
+                    if (mf.tnl.IsFeatureOn && !mf.isReverse && HasTurnCurvature()
+                        && !(isLineApproach && approachReverse))
                     {
-                        turnCurvActive = true;
                         double psi = mf.fixHeading - Math.Atan2(dx, dz);
                         while (psi > Math.PI) psi -= glm.twoPI;
                         while (psi < -Math.PI) psi += glm.twoPI;
-                        if (psi > 0.7) psi = 0.7; else if (psi < -0.7) psi = -0.7;
                         double eLat = distanceFromCurrentLine;
+
+                        //An approach starts with the vehicle anywhere - far from its path the pure
+                        //pursuit above is the better driver (it simply aims at the path). The
+                        //curvature steering takes over as the vehicle closes in: fully within
+                        //0.4 m and 20 deg, not at all beyond 1 m or 40 deg.
+                        double w = 1.0;
+                        if (isLineApproach)
+                        {
+                            double wE = 1.0 - (Math.Abs(eLat) - 0.4) / 0.6, wP = 1.0 - (Math.Abs(psi) - 0.35) / 0.35;
+                            w = Math.Max(0.0, Math.Min(1.0, wE)) * Math.Max(0.0, Math.Min(1.0, wP));
+                        }
+
+                        if (psi > 0.7) psi = 0.7; else if (psi < -0.7) psi = -0.7;
                         if (eLat > 1.5) eLat = 1.5; else if (eLat < -1.5) eLat = -1.5;
 
                         double vms = Math.Max(0.3, Math.Abs(mf.avgSpeed) / 3.6);
@@ -4976,9 +5114,11 @@ namespace AgOpenGPS
                         double kff = ytCurv[i0] + ((ytCurv[i1] - ytCurv[i0]) * (fi - i0));
 
                         double kCmd = kff - (turnGainOffset * eLat) - (turnGainHeading * psi);
+                        double curvAngle = glm.toDegrees(Math.Atan(mf.vehicle.VehicleConfig.Wheelbase * kCmd));
                         turnCurvCmd = kCmd;
-                        steerAngleYT = glm.toDegrees(Math.Atan(mf.vehicle.VehicleConfig.Wheelbase * kCmd));
-                        ppRadiusYT = Math.Abs(kCmd) > 0.002 ? 1.0 / kCmd : 500;
+                        turnCurvActive = w > 0.5;
+                        steerAngleYT = (w * curvAngle) + ((1.0 - w) * steerAngleYT);
+                        if (w > 0.99) ppRadiusYT = Math.Abs(kCmd) > 0.002 ? 1.0 / kCmd : 500;
                     }
 
                     if (steerAngleYT < -mf.vehicle.maxSteerAngle) steerAngleYT = -mf.vehicle.maxSteerAngle;
