@@ -13,7 +13,7 @@ namespace AgOpenGPS
     public class FormTurnCalib : Form
     {
         private readonly FormGPS mf;
-        private readonly NumericUpDown nudRate, nudLead, nudAccel, nudFilter;
+        private readonly NumericUpDown nudRate, nudLead, nudAccel, nudFilter, nudSAngle, nudSRate, nudSMin;
         private readonly Button btnTeach, btnRadius;
         private readonly Label lblLive, lblTeach, lblRadius;
         private readonly ListBox lstRadius;
@@ -34,7 +34,8 @@ namespace AgOpenGPS
             ShowInTaskbar = false;
             TopMost = true;
             StartPosition = FormStartPosition.Manual;
-            ClientSize = new Size(520, 736);
+            ClientSize = new Size(520, 912);
+            AutoScroll = true;
             BackColor = Color.WhiteSmoke;
             Font = fText;
 
@@ -64,8 +65,15 @@ namespace AgOpenGPS
             gSteer.Controls.Add(btnTeach);
             gSteer.Controls.Add(lblTeach);
 
+            // ---- the counter-turn back onto the row (user 16.11.)
+            var gS = new GroupBox { Text = gStr.gsSGroup, Font = fBold, Location = new Point(10, 394), Size = new Size(500, 168) };
+            Controls.Add(gS);
+            nudSAngle = AddRow(gS, gStr.gsSMaxAngle, 30, 3, 35, 0, 1M);
+            nudSRate = AddRow(gS, gStr.gsSSteerRate, 76, 1, 60, 0, 1M);
+            nudSMin = AddRow(gS, gStr.gsSMinOffset, 122, 0, 1, 2, 0.05M);
+
             // ---- radius check
-            var gRad = new GroupBox { Text = gStr.gsRadiusTitle, Font = fBold, Location = new Point(10, 394), Size = new Size(500, 272) };
+            var gRad = new GroupBox { Text = gStr.gsRadiusTitle, Font = fBold, Location = new Point(10, 570), Size = new Size(500, 272) };
             Controls.Add(gRad);
             btnRadius = BigButton(gStr.gsRadiusStart, 12, 30, 230);
             btnRadius.Click += (s, e) =>
@@ -86,7 +94,7 @@ namespace AgOpenGPS
             gRad.Controls.Add(note);
 
             // ---- OK / Cancel
-            var ok = BigButton("OK", 290, 676, 105);
+            var ok = BigButton("OK", 290, 852, 105);
             ok.BackColor = Color.LightGreen;
             ok.Click += (s, e) =>
             {
@@ -95,10 +103,13 @@ namespace AgOpenGPS
                 veh.setTurn_leadTime = (double)nudLead.Value;
                 veh.setTurn_steerAccel = (double)nudAccel.Value;
                 veh.setTurn_fbFilter = (double)nudFilter.Value;
+                veh.setTurn_S_maxAngle = (double)nudSAngle.Value;
+                veh.setTurn_S_steerRate = (double)nudSRate.Value;
+                veh.setTurn_S_minOffset = (double)nudSMin.Value;
                 veh.Save();
                 Close();
             };
-            var cancel = BigButton(gStr.gsCancel, 405, 676, 105);
+            var cancel = BigButton(gStr.gsCancel, 405, 852, 105);
             cancel.Click += (s, e) => Close();
             Controls.Add(ok);
             Controls.Add(cancel);
@@ -107,6 +118,9 @@ namespace AgOpenGPS
             SetNud(nudLead, Properties.VehicleSettings.Default.setTurn_leadTime);
             SetNud(nudAccel, Properties.VehicleSettings.Default.setTurn_steerAccel);
             SetNud(nudFilter, Properties.VehicleSettings.Default.setTurn_fbFilter);
+            SetNud(nudSAngle, Properties.VehicleSettings.Default.setTurn_S_maxAngle);
+            SetNud(nudSRate, Properties.VehicleSettings.Default.setTurn_S_steerRate);
+            SetNud(nudSMin, Properties.VehicleSettings.Default.setTurn_S_minOffset);
 
             timer = new Timer { Interval = 250 };
             timer.Tick += (s, e) => UpdateLive();
@@ -114,7 +128,10 @@ namespace AgOpenGPS
             {
                 //left half of the main window, under its top row of buttons
                 Rectangle r = mf.Bounds;
-                Location = new Point(r.Left + 6, r.Top + Math.Max(60, (r.Height - Height) / 2));
+                //never taller than the screen (a small tablet): the rest scrolls
+                Rectangle wa = Screen.FromControl(mf).WorkingArea;
+                if (Height > wa.Height - 20) Height = wa.Height - 20;
+                Location = new Point(r.Left + 6, Math.Max(wa.Top, Math.Min(r.Top + Math.Max(60, (r.Height - Height) / 2), wa.Bottom - Height)));
                 UpdateLive();
                 timer.Start();
             };

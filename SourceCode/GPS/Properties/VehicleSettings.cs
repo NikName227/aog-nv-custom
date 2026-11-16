@@ -28,6 +28,10 @@ namespace AgOpenGPS.Properties
         public double setTurn_leadTime = 0.3;   // [s] from the commanded angle until the tractor turns
         public double setTurn_steerAccel = 0;   // [deg/s2] how fast the steering gets up to speed; 0 = 4 x steering speed
         public double setTurn_fbFilter = 0;     // [s] backup filter on the turn steering correction; 0 = off
+        // the counter-turn that brings the tractor from the side offset onto the row (user 16.11.)
+        public double setTurn_S_maxAngle = 20;      // [deg] wheel angle at most
+        public double setTurn_S_steerRate = 15;     // [deg/s] steering speed at most (never above setTurn_steerRate)
+        public double setTurn_S_minOffset = 0.15;   // [m] smaller side offset: no counter-turn, the row guidance takes it
 
         // AutoSteer settings
         public byte setAS_Kp = 50;

@@ -2060,6 +2060,18 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsFbFilter" xml:space="preserve">
     <value>Filtar ispravka (s, 0 = isključeno)</value>
   </data>
+  <data name="gsSGroup" xml:space="preserve">
+    <value>Povratak na red (S)</value>
+  </data>
+  <data name="gsSMaxAngle" xml:space="preserve">
+    <value>Najveći kut kotača (°)</value>
+  </data>
+  <data name="gsSSteerRate" xml:space="preserve">
+    <value>Najveća brzina volana (°/s)</value>
+  </data>
+  <data name="gsSMinOffset" xml:space="preserve">
+    <value>Bez S ispod pomaka (m)</value>
+  </data>
   <data name="gsLearnReset" xml:space="preserve">
     <value>Resetiraj učenje</value>
   </data>

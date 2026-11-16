@@ -2264,8 +2264,8 @@ namespace AgOpenGPS
         // left over a transition whose length comes from how fast the wheels turn and how fast the
         // tractor drives, so the path is one the tractor can actually follow.
 
-        /// <summary>speed (km/h) the "does a U fit" question is answered for</summary>
-        private const double turnPlanSpeed = 5.0;
+        /// <summary>speed (km/h) the "does a U fit" question is answered for (user 16.11.: turns are driven up to 6)</summary>
+        private const double turnPlanSpeed = 6.0;
         /// <summary>share of the tractor's tightest turn the plan uses; the rest is left for corrections</summary>
         private const double turnCurvReserve = 0.9;
 
@@ -2343,7 +2343,9 @@ namespace AgOpenGPS
         private const double turnGainOffset = 0.16;    // 1/m2 : curvature per metre off the path
         private const double turnGainHeading = 0.8;    // 1/m  : curvature per radian of heading error
 
-        private struct CurvSeg { public bool line, dip; public double len, D, kmax, kdip; public int sgn; }
+        // sig: own curvature rate of this turn (1/m per m), 0 = the path's sigma (the S back onto the row
+        // is gentler than the turn itself)
+        private struct CurvSeg { public bool line, dip; public double len, D, kmax, kdip, sig; public int sgn; }
         private static CurvSeg SegLine(double len) { return new CurvSeg { line = true, len = len }; }
         private static CurvSeg SegTurn(double D, int sgn, double kmax) { return new CurvSeg { D = D, sgn = sgn, kmax = kmax }; }
         /// <summary>One turn that eases off to kdip in its middle: kdip = kmax is a plain turn, 0 is two turns back to back.</summary>
@@ -2372,20 +2374,21 @@ namespace AgOpenGPS
                     continue;
                 }
                 if (sg.D < 1e-5 || sg.kmax < 1e-6) continue;
+                double sgm = sg.sig > 0 ? sg.sig : sigma;
                 double kp, Lc, La, Ld = 0, kd = 0;
                 if (sg.dip)
                 {
                     // peak such that even the full dip (two turns of D/2) still reaches it
-                    kp = Math.Min(sg.kmax, Math.Sqrt(sg.D / 2 * sigma));
+                    kp = Math.Min(sg.kmax, Math.Sqrt(sg.D / 2 * sgm));
                     kd = Math.Max(0, Math.Min(kp, sg.kdip));
-                    Lc = kp / sigma;
-                    Ld = (kp - kd) / sigma;
+                    Lc = kp / sgm;
+                    Ld = (kp - kd) / sgm;
                     La = Math.Max(0, (sg.D - kp * Lc - (kp + kd) * Ld) / (2 * kp));   // hold, each side
                 }
                 else
                 {
-                    kp = Math.Min(sg.kmax, Math.Sqrt(sg.D * sigma));
-                    Lc = kp / sigma;
+                    kp = Math.Min(sg.kmax, Math.Sqrt(sg.D * sgm));
+                    Lc = kp / sgm;
                     La = Math.Max(0, (sg.D - kp * Lc) / kp);
                 }
                 double tot = sg.dip ? 2 * Lc + 2 * La + 2 * Ld : 2 * Lc + La;
@@ -2398,8 +2401,8 @@ namespace AgOpenGPS
                     if (!sg.dip) k = u < Lc ? kp * u / Lc : (u < Lc + La ? kp : kp * (tot - u) / Lc);
                     else if (u < Lc) k = kp * u / Lc;
                     else if (u < Lc + La) k = kp;
-                    else if (u < Lc + La + Ld) k = kp - sigma * (u - Lc - La);
-                    else if (u < Lc + La + 2 * Ld) k = kd + sigma * (u - Lc - La - Ld);
+                    else if (u < Lc + La + Ld) k = kp - sgm * (u - Lc - La);
+                    else if (u < Lc + La + 2 * Ld) k = kd + sgm * (u - Lc - La - Ld);
                     else if (u < Lc + 2 * La + 2 * Ld) k = kp;
                     else k = kp * (tot - u) / Lc;
                     k *= sg.sgn;
@@ -2412,29 +2415,77 @@ namespace AgOpenGPS
         }
 
         /// <summary>
-        /// The part every entry onto a row shares (U, K, line approach - REQ 2026-11-16-1): once the
-        /// entry turn points along the row, an S back from the side offset dOff (+ = beyond the row)
-        /// and a straight of max(3 m, 2 s) on the row. The row takes over at the end of the straight.
+        /// The end every entry onto a row shares (U, K, line approach - REQ 2026-11-16-1): the entry
+        /// turn, the way back from the side offset dOff (+ = the turn ends beyond the row) and a
+        /// straight of max(3 m, 2 s) on the row. The row takes over at the end of the straight.
+        ///
+        /// User 16.11.: the way back is no separate S after the tractor has gone straight - the entry
+        /// turn simply goes on by gam and one counter-turn of gam (gentler: its own wheel angle and
+        /// steering speed limits) brings it parallel onto the row; the wheels unwind from the turn
+        /// straight into the counter-turn. Under the minimum offset there is no way back at all: the
+        /// path ends parallel, dOff beyond, and the row guidance takes the last centimetres.
+        /// Returned: the (changed) entry turn first; tailIdx = the first segment after it.
         /// </summary>
-        private static List<CurvSeg> RowReturnSegs(double dOff, double kIn, double sigma, double speed, out double gam)
+        private List<CurvSeg> EntryOntoRow(CurvSeg entry, double dOff, double sigma, double speed, out double gam, out int tailIdx)
         {
             var segs = new List<CurvSeg>(3);
             gam = 0;
-            if (Math.Abs(dOff) > 0.02)
+            tailIdx = 1;
+            CurvSeg counter = default(CurvSeg);
+            bool hasCounter = false;
+            if (Math.Abs(dOff) >= SMinOffset() && !entry.line)
             {
-                double lo = 0, hi = 1.0;
-                for (int i = 0; i < 30; i++)
+                SLimits(speed, out double kS, out double sigS);
+                double H = entry.sgn * entry.D;
+                double rx = Math.Cos(H), ry = -Math.Sin(H);             // right of travel at the row heading
+                List<vec2> e0 = BuildCurvPath(new[] { entry }, sigma, 0.1, null);
+                double x0 = e0[e0.Count - 1].easting, y0 = e0[e0.Count - 1].northing;
+
+                //how far towards the row (from where the plain entry turn ends) a given gam brings it
+                double Back(double g, out CurvSeg e2, out CurvSeg c)
                 {
-                    double mid = (lo + hi) / 2;
-                    if (CurvEndX(new[] { SegTurn(mid, 1, kIn), SegTurn(mid, -1, kIn) }, sigma) < Math.Abs(dOff)) lo = mid; else hi = mid;
+                    e2 = entry; e2.D = entry.D + g;
+                    c = new CurvSeg { D = Math.Abs(g), sgn = g > 0 ? -entry.sgn : entry.sgn, kmax = kS, sig = sigS };
+                    List<vec2> p = BuildCurvPath(new[] { e2, c }, sigma, 0.1, null);
+                    return entry.sgn * (((p[p.Count - 1].easting - x0) * rx) + ((p[p.Count - 1].northing - y0) * ry));
                 }
-                gam = (lo + hi) / 2;
-                int sg = dOff > 0 ? 1 : -1;
-                segs.Add(SegTurn(gam, sg, kIn));
-                segs.Add(SegTurn(gam, -sg, kIn));
+
+                double lo = dOff > 0 ? 0 : -Math.Min(1.2, entry.D - 0.02), hi = dOff > 0 ? 1.2 : 0;
+                if (hi > lo)
+                {
+                    for (int i = 0; i < 30; i++)
+                    {
+                        double mid = (lo + hi) / 2;
+                        if (Back(mid, out _, out _) < dOff) lo = mid; else hi = mid;
+                    }
+                    gam = (lo + hi) / 2;
+                    Back(gam, out entry, out counter);
+                    hasCounter = Math.Abs(gam) > 1e-4;
+                }
             }
+            segs.Add(entry);
+            if (hasCounter) segs.Add(counter);
             segs.Add(SegLine(Math.Max(3.0, 2.0 * speed)));
             return segs;
+        }
+
+        /// <summary>side offset under which the path does not come back onto the row by itself (m)</summary>
+        private static double SMinOffset()
+        {
+            double v = Properties.VehicleSettings.Default.setTurn_S_minOffset;
+            return v < 0 ? 0 : (v > 1.0 ? 1.0 : v);
+        }
+
+        /// <summary>the counter-turn back onto the row: wheel angle and steering speed limits as curvature</summary>
+        private static void SLimits(double speed, out double kS, out double sigS)
+        {
+            var veh = Properties.VehicleSettings.Default;
+            double wb = Math.Abs(veh.setVehicle_wheelbase);
+            if (wb < 0.5) wb = 3.0;
+            double ang = Math.Max(3.0, Math.Min(35.0, veh.setTurn_S_maxAngle));
+            double rate = Math.Max(1.0, Math.Min(Math.Min(60.0, veh.setTurn_S_steerRate), Math.Max(5.0, veh.setTurn_steerRate)));
+            kS = Math.Tan(glm.toRadians(ang)) / wb;
+            sigS = glm.toRadians(rate) / (wb * Math.Max(0.5, speed));
         }
 
         /// <summary>Drop points closer than minGap to the one kept before them (joins of pieces).</summary>
@@ -2516,7 +2567,7 @@ namespace AgOpenGPS
             PlanRadii(out double Rout, out double Rin);
             double kOut = 1.0 / Rout, kIn = 1.0 / Rin, kT = Math.Max(kOut, kIn);
             // built for the speed turns are driven at, not the working speed the tractor arrives with:
-            // never below the 5 km/h the "does a U fit" answer assumes, up to 6 when it comes in faster
+            // the 6 km/h the "does a U fit" answer assumes
             double speed = Math.Max(turnPlanSpeed, Math.Min(6.0, Math.Abs(mf.avgSpeed))) / 3.6;
             double sigma = TurnSigma(speed);
             const double ds = 0.2;
@@ -2552,6 +2603,7 @@ namespace AgOpenGPS
             {
                 var segs = new List<CurvSeg>(8);
                 entrySeg = -1;
+                CurvSeg entryTurn;
                 segs.Add(SegLine(2.6));
                 w0 = CurvEndX(new[] { SegTurn(Math.PI, 1, kT) }, sigma);
                 double w2 = CurvEndX(new[] { SegTurn(htgt, 1, kOut), SegTurn(Math.PI - htgt, 1, kIn) }, sigma);
@@ -2561,7 +2613,7 @@ namespace AgOpenGPS
                     double c = (eT - w2) / Math.Sin(htgt);
                     if (c > 0.05) segs.Add(SegLine(c));
                     entrySeg = segs.Count;
-                    segs.Add(SegTurn(Math.PI - htgt, 1, kIn));
+                    entryTurn = SegTurn(Math.PI - htgt, 1, kIn);
                 }
                 else
                 {
@@ -2579,14 +2631,15 @@ namespace AgOpenGPS
                         }
                         kDip = (lo + hi) / 2;
                     }
-                    segs.Add(SegDip(Math.PI, 1, kT, kDip));
+                    entryTurn = SegDip(Math.PI, 1, kT, kDip);
                     eT = CurvEndX(new[] { SegDip(Math.PI, 1, kT, kDip) }, sigma);   // where it really ends (no room -> wider)
                 }
 
                 // back onto the row from wherever the entry was aimed, parallel at the end
-                tailSeg = segs.Count;
+                int entryAt = segs.Count;
                 dOff = eT - o;
-                segs.AddRange(RowReturnSegs(dOff, kIn, sigma, speed, out gam));
+                segs.AddRange(EntryOntoRow(entryTurn, dOff, sigma, speed, out gam, out int tIdx));
+                tailSeg = entryAt + tIdx;
                 return segs;
             }
 
@@ -2767,7 +2820,7 @@ namespace AgOpenGPS
 
             //REQ 2026-11-16-1: the slant no longer runs across the row for the line guidance to
             //sort out. It ends in the entry every row entry shares: a turn onto the row with
-            //transitions, the return from the side offset and a short straight (RowReturnSegs).
+            //transitions, the return from the side offset and a short straight (EntryOntoRow).
             //And the slant itself is reached by a TURN from the connector's direction, not by a
             //kink (sim 16.11.: the ~50 deg kink at E0, smoothed, asked for far more lock than the
             //tractor has and the wheels oscillated through the entry).
@@ -2775,8 +2828,7 @@ namespace AgOpenGPS
             double kSpeed = Math.Max(turnPlanSpeed, Math.Min(6.0, Math.Abs(mf.avgSpeed))) / 3.6;
             double kSigma = TurnSigma(kSpeed);
             double kEnt = 1.0 / Math.Max(R, MinTurnRadius() / turnCurvReserve);
-            var tailSegs = new List<CurvSeg> { SegTurn(alpha, 1, kEnt) };
-            tailSegs.AddRange(RowReturnSegs(kOff, kEnt, kSigma, kSpeed, out _));
+            List<CurvSeg> tailSegs = EntryOntoRow(SegTurn(alpha, 1, kEnt), kOff, kSigma, kSpeed, out _, out _);
             List<vec2> tailFirst = BuildCurvPath(new[] { SegTurn(alpha, 1, kEnt) }, kSigma, ps, null);
             List<vec2> entryTail = BuildCurvPath(tailSegs, kSigma, ps, null);
             double sinE = Math.Sin(hEnt), cosE = Math.Cos(hEnt);
@@ -4393,9 +4445,15 @@ namespace AgOpenGPS
             //room for the entry arc: the fillet eats d*sin(delta) of lateral offset, plus
             //half a machine width the driver asked for (2026-08-15) - that margin doubles
             //as the hysteresis that keeps this from flapping right at the threshold
-            double need = d * Math.Sin(absDelta) + 0.5 * mf.tool.width;
+            //user 16.11.: the entry onto the row gets the learned side offset of the side it turns to,
+            //like the U - a pulled implement cuts this corner just the same. The turn then ends that far
+            //beyond the row (it starts later on the line by dOff / sin(delta)) and comes back over the
+            //counter-turn of EntryOntoRow.
+            double apOff = sinDelta > 0.05 ? UOffsetForSide(delta < 0) : 0;
+            double dStart = sinDelta > 0.05 ? d - apOff / sinDelta : d;
+            double need = dStart * Math.Sin(absDelta) + 0.5 * mf.tool.width;
 
-            vec2 tanPar = new vec2(cross.easting - tx * d, cross.northing - ty * d);
+            vec2 tanPar = new vec2(cross.easting - tx * dStart, cross.northing - ty * dStart);
             vec2 tanRow = new vec2(cross.easting + rowX * d, cross.northing + rowY * d);
 
             double alongToEntry = (tanPar.easting - piv.easting) * tx + (tanPar.northing - piv.northing) * ty;
@@ -4500,15 +4558,14 @@ namespace AgOpenGPS
             }
 
             //the entry onto the row - the same part every row entry uses (REQ 2026-11-16-1): the
-            //turn onto the row, then the straight on it; the row takes over at its end. No side
-            //offset here (nothing is learned from an approach).
+            //turn onto the row with the side offset, the counter-turn back, then the straight on it;
+            //the row takes over at its end. Applied only - nothing is learned from an approach.
             double turnSign = delta > 0 ? 1.0 : -1.0;
             double fwdE = Math.Sin(parHead), fwdN = Math.Cos(parHead);     // along the parallel
-            var apSegs = new List<CurvSeg> { SegTurn(absDelta, 1, 1.0 / R) };
-            apSegs.AddRange(RowReturnSegs(0, 1.0 / R, apSigma, turnPlanSpeed / 3.6, out _));
+            List<CurvSeg> apSegs = EntryOntoRow(SegTurn(absDelta, 1, 1.0 / R), apOff, apSigma, turnPlanSpeed / 3.6, out _, out int apTail);
             var apMarks = new List<int>();
             List<vec2> entryAll = BuildCurvPath(apSegs, apSigma, 0.2, apMarks);
-            int rowFrom = path.Count + apMarks[1] - 1;
+            int rowFrom = path.Count + apMarks[apTail] - 1;
             for (int i = 1; i < entryAll.Count; i++)
             {
                 double lx = entryAll[i].easting * turnSign, ly = entryAll[i].northing;

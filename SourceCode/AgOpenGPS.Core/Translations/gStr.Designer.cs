@@ -6012,6 +6012,30 @@ public static string gsOrchPlanterBehind {
             }
         }
         
+        public static string gsSGroup {
+            get {
+                return ResourceManager.GetString("gsSGroup", resourceCulture);
+            }
+        }
+        
+        public static string gsSMaxAngle {
+            get {
+                return ResourceManager.GetString("gsSMaxAngle", resourceCulture);
+            }
+        }
+        
+        public static string gsSSteerRate {
+            get {
+                return ResourceManager.GetString("gsSSteerRate", resourceCulture);
+            }
+        }
+        
+        public static string gsSMinOffset {
+            get {
+                return ResourceManager.GetString("gsSMinOffset", resourceCulture);
+            }
+        }
+        
         public static string gsLearnReset {
             get {
                 return ResourceManager.GetString("gsLearnReset", resourceCulture);
