@@ -1566,38 +1566,38 @@ namespace AgOpenGPS
         private void BuildTailControls()
         {
             lblOvershootU.Text = gStr.gsOffsetRight;
-            lblHintU.Location = new Point(4, 336);
-            lblHintU.Size = new Size(500, 92);
+            lblHintU.Location = new Point(4, 350);
+            lblHintU.Size = new Size(500, 80);
             lblHintU.Text = gStr.gsTurnHintU2;
 
             nudOffsetLeft = new NumericUpDown
             {
                 DecimalPlaces = 2, Increment = 0.05M, Minimum = -1, Maximum = 10,
-                Font = new Font("Tahoma", 12F), Location = new Point(330, 160), Size = new Size(130, 34)
+                Font = new Font("Tahoma", 12F), Location = new Point(330, 184), Size = new Size(130, 34)
             };
             nudSteerRate = new NumericUpDown
             {
                 DecimalPlaces = 0, Increment = 1, Minimum = 5, Maximum = 60,
-                Font = new Font("Tahoma", 12F), Location = new Point(330, 200), Size = new Size(130, 34)
+                Font = new Font("Tahoma", 12F), Location = new Point(330, 224), Size = new Size(130, 34)
             };
             nudLeadTime = new NumericUpDown
             {
                 DecimalPlaces = 2, Increment = 0.05M, Minimum = 0, Maximum = 1,
-                Font = new Font("Tahoma", 12F), Location = new Point(330, 240), Size = new Size(130, 34)
+                Font = new Font("Tahoma", 12F), Location = new Point(330, 264), Size = new Size(130, 34)
             };
             lblTurnInfoU = new Label
             {
                 Text = "",
                 Font = new Font("Tahoma", 10F),
-                Location = new Point(4, 284),
-                Size = new Size(500, 48),
+                Location = new Point(4, 304),
+                Size = new Size(500, 44),
                 TextAlign = ContentAlignment.TopLeft
             };
-            pnlU.Controls.Add(RowLabelU(gStr.gsOffsetLeft, 164));
+            pnlU.Controls.Add(RowLabelU(gStr.gsOffsetLeft, 188));
             pnlU.Controls.Add(nudOffsetLeft);
-            pnlU.Controls.Add(RowLabelU(gStr.gsSteerRate, 204));
+            pnlU.Controls.Add(RowLabelU(gStr.gsSteerRate, 228));
             pnlU.Controls.Add(nudSteerRate);
-            pnlU.Controls.Add(RowLabelU(gStr.gsLeadTime, 244));
+            pnlU.Controls.Add(RowLabelU(gStr.gsLeadTime, 268));
             pnlU.Controls.Add(nudLeadTime);
             pnlU.Controls.Add(lblTurnInfoU);
         }
@@ -3308,8 +3308,17 @@ namespace AgOpenGPS
             if (nud.Controls.Count > 0) nud.Controls[0].Visible = false;   // hide built-in spinner
             nud.ReadOnly = true;
             nud.Width = 84;
-            nud.Click += (s, e) => OpenKeypad(nud);
-            if (nud.Controls.Count > 1) nud.Controls[1].Click += (s, e) => OpenKeypad(nud);
+            //a tap on the value opens the keypad. Sim 2026-11-16: Click alone did not arrive from
+            //the inner edit box, so the mouse-up of both the field and its edit box is hooked too.
+            nud.Click += (s, e) => OpenKeypadSoon(nud);
+            nud.MouseUp += (s, e) => OpenKeypadSoon(nud);
+            foreach (System.Windows.Forms.Control ch in nud.Controls)
+            {
+                if (!ch.Visible) continue;
+                ch.Click += (s, e) => OpenKeypadSoon(nud);
+                ch.MouseUp += (s, e) => OpenKeypadSoon(nud);
+                ch.Cursor = System.Windows.Forms.Cursors.Hand;
+            }
 
             var p = nud.Parent;
             if (p == null) return;
@@ -3349,6 +3358,21 @@ namespace AgOpenGPS
             if (v < nud.Minimum) v = nud.Minimum;
             if (v > nud.Maximum) v = nud.Maximum;
             nud.Value = v;
+        }
+
+        private bool keypadBusy;
+        private DateTime keypadClosed = DateTime.MinValue;
+
+        /// <summary>One tap raises several events - open once, after the tap has finished.</summary>
+        private void OpenKeypadSoon(System.Windows.Forms.NumericUpDown nud)
+        {
+            if (keypadBusy || (DateTime.UtcNow - keypadClosed).TotalMilliseconds < 400) return;
+            keypadBusy = true;
+            BeginInvoke((Action)(() =>
+            {
+                try { OpenKeypad(nud); }
+                finally { keypadBusy = false; keypadClosed = DateTime.UtcNow; }
+            }));
         }
 
         private void OpenKeypad(System.Windows.Forms.NumericUpDown nud)
