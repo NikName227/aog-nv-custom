@@ -1561,84 +1561,79 @@ namespace AgOpenGPS
             lblMinRadiusNoteU.BringToFront();
         }
 
-        // REQ 2026-11-06-1: straight on the new row after the U's entry arc. The two values are
-        // adjustable in this test version; the two lines below them show what the last U did.
+        // REQ 2026-11-16-1: the side offset has a value per turn side, and the two numbers that
+        // describe the tractor's steering sit below it. The last lines show what the last U was built with.
         private void BuildTailControls()
         {
-            lblHintU.Location = new Point(4, 330);
-            lblHintU.Size = new Size(452, 96);
+            lblOvershootU.Text = gStr.gsOffsetRight;
+            lblHintU.Location = new Point(4, 336);
+            lblHintU.Size = new Size(500, 92);
+            lblHintU.Text = gStr.gsTurnHintU2;
 
-            lblTailExtraU = new Label
+            nudOffsetLeft = new NumericUpDown
             {
-                Text = gStr.gsTailExtra,
-                Font = new Font("Tahoma", 11.25F, FontStyle.Bold),
-                Location = new Point(4, 194),
-                Size = new Size(320, 30),
-                TextAlign = ContentAlignment.MiddleLeft
+                DecimalPlaces = 2, Increment = 0.05M, Minimum = -1, Maximum = 10,
+                Font = new Font("Tahoma", 12F), Location = new Point(330, 160), Size = new Size(130, 34)
             };
-            nudTailExtra = new NumericUpDown
+            nudSteerRate = new NumericUpDown
             {
-                DecimalPlaces = 1,
-                Increment = 0.5M,
-                Minimum = -1,
-                Maximum = 10,
-                Font = new Font("Tahoma", 12F),
-                Location = new Point(330, 190),
-                Size = new Size(130, 34)
+                DecimalPlaces = 0, Increment = 1, Minimum = 5, Maximum = 60,
+                Font = new Font("Tahoma", 12F), Location = new Point(330, 200), Size = new Size(130, 34)
             };
-            lblTailAngleU = new Label
+            nudLeadTime = new NumericUpDown
             {
-                Text = gStr.gsTailAngle,
-                Font = new Font("Tahoma", 11.25F, FontStyle.Bold),
-                Location = new Point(4, 234),
-                Size = new Size(320, 30),
-                TextAlign = ContentAlignment.MiddleLeft
-            };
-            nudTailAngle = new NumericUpDown
-            {
-                DecimalPlaces = 0,
-                Increment = 5,
-                Minimum = 15,
-                Maximum = 75,
-                Font = new Font("Tahoma", 12F),
-                Location = new Point(330, 230),
-                Size = new Size(130, 34)
+                DecimalPlaces = 2, Increment = 0.05M, Minimum = 0, Maximum = 1,
+                Font = new Font("Tahoma", 12F), Location = new Point(330, 240), Size = new Size(130, 34)
             };
             lblTurnInfoU = new Label
             {
                 Text = "",
                 Font = new Font("Tahoma", 10F),
-                Location = new Point(4, 274),
+                Location = new Point(4, 284),
                 Size = new Size(500, 48),
                 TextAlign = ContentAlignment.TopLeft
             };
-            pnlU.Controls.Add(lblTailExtraU);
-            pnlU.Controls.Add(nudTailExtra);
-            pnlU.Controls.Add(lblTailAngleU);
-            pnlU.Controls.Add(nudTailAngle);
+            pnlU.Controls.Add(RowLabelU(gStr.gsOffsetLeft, 164));
+            pnlU.Controls.Add(nudOffsetLeft);
+            pnlU.Controls.Add(RowLabelU(gStr.gsSteerRate, 204));
+            pnlU.Controls.Add(nudSteerRate);
+            pnlU.Controls.Add(RowLabelU(gStr.gsLeadTime, 244));
+            pnlU.Controls.Add(nudLeadTime);
             pnlU.Controls.Add(lblTurnInfoU);
         }
 
-        private Label lblTailExtraU, lblTailAngleU, lblTurnInfoU;
-        private NumericUpDown nudTailExtra, nudTailAngle;
+        private static Label RowLabelU(string text, int y)
+        {
+            return new Label
+            {
+                Text = text,
+                Font = new Font("Tahoma", 11.25F, FontStyle.Bold),
+                Location = new Point(4, y),
+                Size = new Size(320, 30),
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+        }
 
-        /// <summary>What the last U-turn was built with: overshoot asked / applied and the straight.</summary>
+        private Label lblTurnInfoU;
+        private NumericUpDown nudOffsetLeft, nudSteerRate, nudLeadTime;
+
+        /// <summary>What the last U-turn was built with: offset asked / applied, transition, width a clean U needs.</summary>
         private void UpdateTurnInfoU()
         {
             if (lblTurnInfoU == null) return;
             var yt = mf.yt;
-            if (yt.lastTailLen <= 0 && Math.Abs(yt.lastOvershootAsked) < 0.001 && yt.lastOvershootApplied == 0)
+            if (yt.lastTransitionLen <= 0)
             {
-                lblTurnInfoU.Text = gStr.gsLastUNone;
+                lblTurnInfoU.Text = gStr.gsLastUNone + Environment.NewLine
+                    + gStr.gsLastUWidth + " " + yt.UTurnMinWidth(5.0).ToString("N1") + " m (5 km/h)";
                 lblTurnInfoU.ForeColor = Color.DimGray;
                 return;
             }
-            bool capped = yt.lastOvershootAsked < 0 && Math.Abs(yt.lastOvershootApplied - yt.lastOvershootAsked) > 0.005;
+            bool capped = Math.Abs(yt.lastOvershootApplied - yt.lastOvershootAsked) > 0.02;
             lblTurnInfoU.Text = gStr.gsLastUApplied + " " + yt.lastOvershootApplied.ToString("N2")
                 + " m (" + gStr.gsLastUAsked + " " + yt.lastOvershootAsked.ToString("N2") + ")"
-                + Environment.NewLine + gStr.gsLastUTail + " " + (yt.lastTailLen > 0
-                    ? yt.lastTailLen.ToString("N1") + " m / " + yt.lastTailAngle.ToString("N0") + "°"
-                    : "-");
+                + Environment.NewLine + gStr.gsLastUInfo2 + " " + yt.lastTransitionLen.ToString("N1") + " m, "
+                + gStr.gsLastUWidth + " " + yt.lastTurnWidthNeeded.ToString("N1") + " m";
             lblTurnInfoU.ForeColor = capped ? Color.Firebrick : Color.Black;
         }
 
@@ -3191,8 +3186,9 @@ namespace AgOpenGPS
             SetNud(nudOutU, v.setTurn_U_exitRadius);
             SetNud(nudInU, v.setTurn_U_entryRadius);
             SetNud(nudOvershootU, v.setTurn_U_overshootDist);
-            SetNud(nudTailExtra, v.setTurn_U_tailExtra);
-            SetNud(nudTailAngle, v.setTurn_U_tailMaxAngle);
+            SetNud(nudOffsetLeft, v.setTurn_U_overshootLeft <= -900 ? v.setTurn_U_overshootDist : v.setTurn_U_overshootLeft);
+            SetNud(nudSteerRate, Properties.VehicleSettings.Default.setTurn_steerRate);
+            SetNud(nudLeadTime, Properties.VehicleSettings.Default.setTurn_leadTime);
             SetNud(nudTolerance, t.setTurn_triggerTolerance);
             SetNud(nudToleranceAfter, t.setTurn_triggerToleranceAfter);
 
@@ -3243,7 +3239,7 @@ namespace AgOpenGPS
             var nuds = new System.Windows.Forms.NumericUpDown[]
             {
                 nudExitK, nudDistK, nudAngleK, nudTransK, nudOutU, nudInU,
-                nudOvershootU, nudTolerance, nudToleranceAfter, nudTailExtra, nudTailAngle
+                nudOvershootU, nudTolerance, nudToleranceAfter, nudOffsetLeft, nudSteerRate, nudLeadTime
             };
             foreach (var n in nuds) n.ValueChanged += (s, e) => MarkParamsDirty();
 
@@ -3263,9 +3259,14 @@ namespace AgOpenGPS
             v.setTurn_U_exitRadius = (double)nudOutU.Value;
             v.setTurn_U_entryRadius = (double)nudInU.Value;
             v.setTurn_U_overshootDist = (double)nudOvershootU.Value;
-            v.setTurn_U_tailExtra = (double)nudTailExtra.Value;
-            v.setTurn_U_tailMaxAngle = (double)nudTailAngle.Value;
+            v.setTurn_U_overshootLeft = (double)nudOffsetLeft.Value;
             v.Save();
+
+            //the two steering numbers describe the tractor, so they go to the vehicle profile
+            var veh = Properties.VehicleSettings.Default;
+            veh.setTurn_steerRate = (double)nudSteerRate.Value;
+            veh.setTurn_leadTime = (double)nudLeadTime.Value;
+            veh.Save();
 
             var t = Properties.ToolSettings.Default;
             t.setTurn_triggerTolerance = (double)nudTolerance.Value;
@@ -3291,8 +3292,9 @@ namespace AgOpenGPS
             MakeKeypadField(nudOutU, 0.2);
             MakeKeypadField(nudInU, 0.2);
             MakeKeypadField(nudOvershootU, 0.05);
-            MakeKeypadField(nudTailExtra, 0.5);
-            MakeKeypadField(nudTailAngle, 5);
+            MakeKeypadField(nudOffsetLeft, 0.05);
+            MakeKeypadField(nudSteerRate, 1);
+            MakeKeypadField(nudLeadTime, 0.05);
             MakeKeypadField(nudTolerance, 0.2);
             MakeKeypadField(nudToleranceAfter, 0.2);
             MakeKeypadField(nudZones, 1, zoneSteppers);   //wizard step 2 shows/hides these

@@ -1949,4 +1949,25 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsLastUTail" xml:space="preserve">
     <value>Ravni dio na novom redu:</value>
   </data>
+  <data name="gsOffsetRight" xml:space="preserve">
+    <value>Bočni pomak, desni okret (m)</value>
+  </data>
+  <data name="gsOffsetLeft" xml:space="preserve">
+    <value>Bočni pomak, lijevi okret (m)</value>
+  </data>
+  <data name="gsSteerRate" xml:space="preserve">
+    <value>Brzina zakreta volana (°/s)</value>
+  </data>
+  <data name="gsLeadTime" xml:space="preserve">
+    <value>Vrijeme pretkazivanja (s)</value>
+  </data>
+  <data name="gsLastUInfo2" xml:space="preserve">
+    <value>prijelaz</value>
+  </data>
+  <data name="gsLastUWidth" xml:space="preserve">
+    <value>čisti U treba</value>
+  </data>
+  <data name="gsTurnHintU2" xml:space="preserve">
+    <value>Bočni pomak iznad 0: ulaz cilja preko novog reda, ispod 0: unutar njega; putanja se zatim vraća na red. Brzina volana i vrijeme pretkazivanja opisuju traktor: iz njih se gradi putanja okreta i vođenje u okretu.</value>
+  </data>
 </root>

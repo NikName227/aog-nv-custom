@@ -2316,4 +2316,25 @@ USE AT OWN RISK.</value>
   <data name="gsLastUTail" xml:space="preserve">
     <value>Straight on the new row:</value>
   </data>
+  <data name="gsOffsetRight" xml:space="preserve">
+    <value>Side offset, right turns (m)</value>
+  </data>
+  <data name="gsOffsetLeft" xml:space="preserve">
+    <value>Side offset, left turns (m)</value>
+  </data>
+  <data name="gsSteerRate" xml:space="preserve">
+    <value>Steering speed (°/s)</value>
+  </data>
+  <data name="gsLeadTime" xml:space="preserve">
+    <value>Lead time (s)</value>
+  </data>
+  <data name="gsLastUInfo2" xml:space="preserve">
+    <value>transition</value>
+  </data>
+  <data name="gsLastUWidth" xml:space="preserve">
+    <value>clean U needs</value>
+  </data>
+  <data name="gsTurnHintU2" xml:space="preserve">
+    <value>Side offset above 0: the entry aims past the new row, below 0: inside it; the path then returns onto the row. Steering speed and lead time describe the tractor: the turn path and the steering in the turn are built from them.</value>
+  </data>
 </root>
