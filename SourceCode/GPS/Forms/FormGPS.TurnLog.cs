@@ -17,7 +17,7 @@ namespace AgOpenGPS
         private bool tlActive, tlAfter, tlFailed;
         private double tlDistAfter;
         private vec3 tlLastPos;
-        private DateTime tlStart;
+        private DateTime tlStart, tlLastFlush = DateTime.MinValue;
         private int tlTurnId;
         private readonly StringBuilder tlBuf = new StringBuilder();
 
@@ -85,7 +85,8 @@ namespace AgOpenGPS
                     .Append(!tlAfter && yt.turnCurvActive ? 1 : 0).Append(',')
                     .Append(Tl(!tlAfter && yt.turnCurvActive ? yt.turnCurvCmd : 0, "0.0000")).Append('\n');
 
-                if (tlBuf.Length > 60000) TurnLogFlush();
+                //on disk every 5 s as well: a report taken right after a turn holds that turn (16.11.)
+                if (tlBuf.Length > 60000 || (DateTime.UtcNow - tlLastFlush).TotalSeconds > 5) TurnLogFlush();
             }
             catch (Exception ex)
             {
@@ -103,7 +104,7 @@ namespace AgOpenGPS
 
             var tool = Properties.ToolSettings.Default;
             tlBuf.Append("#turn ").Append(tlTurnId).Append(' ').Append(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture))
-                .Append(" style=").Append(yt.activeTurnStyle == 0 ? "U" : "K")
+                .Append(" style=").Append(yt.isLineApproach ? "A" : (yt.activeTurnStyle == 0 ? "U" : "K"))
                 .Append(" hold=").Append(Tl(vehicle.goalPointLookAheadHold, "0.00"))
                 .Append(" mult=").Append(Tl(vehicle.goalPointLookAheadMult, "0.00"))
                 .Append(" acquire=").Append(Tl(vehicle.goalPointAcquireFactor, "0.00"))
@@ -122,6 +123,7 @@ namespace AgOpenGPS
                 .Append(" trailing=").Append(this.tool.isToolTrailing ? 1 : 0)
                 .Append(" highPWM=").Append(p_252.pgn[p_252.highPWM])
                 .Append(" points=").Append(yt.ytList.Count)
+                .Append(" trailExtra=").Append(Tl(yt.lastTrailExtra, "0.00"))
                 .Append('\n');
 
             string dir = Path.Combine(RegistrySettings.fieldsDirectory, currentFieldDirectory ?? "");
@@ -138,6 +140,7 @@ namespace AgOpenGPS
 
         private void TurnLogFlush()
         {
+            tlLastFlush = DateTime.UtcNow;
             if (tlBuf.Length == 0) return;
             try
             {

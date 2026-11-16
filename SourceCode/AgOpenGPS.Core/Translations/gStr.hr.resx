@@ -2072,6 +2072,21 @@ KORIŠTENJE NA VLASTITU ODGOVORNOST.</value>
   <data name="gsSMinOffset" xml:space="preserve">
     <value>Bez S ispod pomaka (m)</value>
   </data>
+  <data name="gsTurnStyleUK" xml:space="preserve">
+    <value>U/K okret</value>
+  </data>
+  <data name="gsKPauseOpt" xml:space="preserve">
+    <value>K okret: primanje volana u izlazu / rikvercu = pauza</value>
+  </data>
+  <data name="gsKPauseHud" xml:space="preserve">
+    <value>PAUZA - ručno</value>
+  </data>
+  <data name="gsKManualRev" xml:space="preserve">
+    <value>RIKVERC RUČNO</value>
+  </data>
+  <data name="gsLastApproach" xml:space="preserve">
+    <value>Prilaz</value>
+  </data>
   <data name="gsLearnReset" xml:space="preserve">
     <value>Resetiraj učenje</value>
   </data>

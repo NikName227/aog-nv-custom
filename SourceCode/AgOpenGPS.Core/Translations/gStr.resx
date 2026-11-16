@@ -2439,6 +2439,21 @@ USE AT OWN RISK.</value>
   <data name="gsSMinOffset" xml:space="preserve">
     <value>No S under offset (m)</value>
   </data>
+  <data name="gsTurnStyleUK" xml:space="preserve">
+    <value>U/K turn</value>
+  </data>
+  <data name="gsKPauseOpt" xml:space="preserve">
+    <value>K turn: taking the wheel in exit / reverse pauses</value>
+  </data>
+  <data name="gsKPauseHud" xml:space="preserve">
+    <value>PAUSE - steer by hand</value>
+  </data>
+  <data name="gsKManualRev" xml:space="preserve">
+    <value>REVERSE BY HAND</value>
+  </data>
+  <data name="gsLastApproach" xml:space="preserve">
+    <value>Approach</value>
+  </data>
   <data name="gsLearnReset" xml:space="preserve">
     <value>Reset learning</value>
   </data>

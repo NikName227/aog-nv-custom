@@ -314,9 +314,10 @@ namespace AgOpenGPS
         // Per-vehicle turn-shape radii (Params tab). A stored 0 means "inherit the general
         // turn radius". Only consulted while the turn limit lines feature is on, so stock
         // youturn geometry is left exactly as it was.
+        // REQ 2026-11-16-1 (user 16.11.): K and U share their parameters - the K's own exit radius is gone
         private double KExitRadius
         {
-            get { double v = Properties.ToolSettings.Default.setTurn_K_exitRadius; return v > 0.5 ? TurnRadius(v) : youTurnRadius; }
+            get { PlanRadii(out double rOut, out _); return rOut; }
         }
         public double UOutRadius
         {
@@ -2016,6 +2017,35 @@ namespace AgOpenGPS
         public List<vec3> kPart2List = new List<vec3>();
         public int kTurnStage = 0;
         private bool kRevReached = false;   // reverse leg has reached the stop point
+        private double kRevUx, kRevUy;      // direction of the reverse leg (backing up), 0 = not set
+        private double apLastAsked, apLastExtra;
+
+        // ---- REQ 2026-11-16-1 (user 16.11.): K exit and reverse by hand ----
+        /// <summary>the driver took the wheel in the K's exit or reverse: AOG stops steering until the forward entry</summary>
+        public bool kDriverPaused;
+
+        private bool KSplitRunning
+        {
+            get { return isYouTurnTriggered && mf.tnl.IsFeatureOn && activeTurnStyle == 1 && (kTurnStage == 1 || kTurnStage == 2); }
+        }
+
+        /// <summary>a pulled implement cannot be backed up by the steering: the K's reverse is the driver's</summary>
+        public bool KManualReverse
+        {
+            get { return KSplitRunning && kTurnStage == 2 && mf.tool.isToolTrailing && !mf.tool.isToolTBT; }
+        }
+
+        /// <summary>taking the wheel now pauses instead of switching autosteer off (option in the U/K turn tab)</summary>
+        public bool KMayPause
+        {
+            get { return KSplitRunning && (Properties.ToolSettings.Default.setTurn_K_pauseOnTakeover || KManualReverse); }
+        }
+
+        /// <summary>AOG does not steer now (status 0 to the module); the forward entry takes over again by itself</summary>
+        public bool KSteerHold
+        {
+            get { return KSplitRunning && (kDriverPaused || KManualReverse); }
+        }
 
         // field fixes 2026-07-10:
         // forward meters held after the reverse leg - a power-shuttle reverser can
@@ -2038,6 +2068,8 @@ namespace AgOpenGPS
         public double lastTurnWidthNeeded, lastTransitionLen;
         /// <summary>how far past the row the tractor was sent on purpose for a pulled implement (m)</summary>
         public double lastTrailExtra;
+        /// <summary>which maneuver the last-turn numbers belong to: U, K or A (line approach)</summary>
+        public char lastTurnKind = ' ';
         /// <summary>true on the fixes where the curvature steering drove the turn; the curvature it asked for (1/m)</summary>
         public bool turnCurvActive;
         public double turnCurvCmd;
@@ -2551,6 +2583,73 @@ namespace AgOpenGPS
         }
 
         /// <summary>
+        /// Heading of the connector between the exit and the entry turn: along the limit line (a
+        /// headland that is not square to the rows), from the two circles fitted under it.
+        /// </summary>
+        private static double ConnectorHeading(List<vec2> eff, double Rout, double Rin, double cx3)
+        {
+            double htgt = glm.PIBy2;
+            double cx1 = Rout;
+            double y1 = FitCircleY(eff, cx1, Rout, 0.5);
+            double y3 = FitCircleY(eff, cx3, Rin, 0.5);
+            if (y1 != double.MaxValue && y3 != double.MaxValue)
+            {
+                double dvx = cx3 - cx1, dvy = y3 - y1, D = Math.Sqrt(dvx * dvx + dvy * dvy);
+                if (D > Math.Abs(Rout - Rin) + 1e-6)
+                {
+                    double k = (Rout - Rin) / D, s = Math.Sqrt(Math.Max(0, 1 - k * k));
+                    double dpx = -dvy / D, dpy = dvx / D;
+                    double nAx = dvx / D * k + dpx * s, nAy = dvy / D * k + dpy * s;
+                    double nBx = dvx / D * k - dpx * s, nBy = dvy / D * k - dpy * s;
+                    double nx = nAy > nBy ? nAx : nBx, ny = nAy > nBy ? nAy : nBy;
+                    double hh = Math.Atan2((cx3 + nx * Rin) - (cx1 + nx * Rout), (y3 + ny * Rin) - (y1 + ny * Rout));
+                    if (Math.Sin(hh) > 0.64) htgt = hh;   // within ~50 deg of square, else level
+                }
+            }
+            return htgt;
+        }
+
+        /// <summary>
+        /// A pulled implement only comes onto the row some metres after the tractor does; sent past
+        /// the row first, it is pulled across sooner. pathFor(extra) gives the entry for one amount
+        /// past the row; the implement is followed along it (hitch behind the rear axle + drawbar,
+        /// lined up behind the start) and the amount that puts it on the row (point + heading) for
+        /// good the earliest wins. 0 for anything that is not pulled.
+        /// </summary>
+        private double FindTrailExtra(Func<double, List<vec2>> pathFor, double rowE, double rowN, double rowHead)
+        {
+            if (!mf.tool.isToolTrailing || mf.tool.isToolTBT) return 0;
+            double hitch = Math.Abs(mf.tool.hitchLength), bar = Math.Abs(mf.tool.trailingHitchLength);
+            if (bar <= 0.5) return 0;
+            double nx = Math.Cos(rowHead), ny = -Math.Sin(rowHead);
+            double best = double.MaxValue, extra = 0;
+            for (double tryExtra = 0; tryExtra <= 3.001; tryExtra += 0.25)
+            {
+                List<vec2> tp = pathFor(tryExtra);
+                if (tp == null || tp.Count < 4) continue;
+                double sx = tp[1].easting - tp[0].easting, sy = tp[1].northing - tp[0].northing;
+                double sl = Math.Sqrt(sx * sx + sy * sy);
+                if (sl < 1e-6) continue;
+                double ix = tp[0].easting - (hitch + bar) * sx / sl, iy = tp[0].northing - (hitch + bar) * sy / sl;
+                double settle = 0, run = 0;
+                for (int i = 1; i < tp.Count; i++)
+                {
+                    double hx = tp[i].easting - tp[i - 1].easting, hy = tp[i].northing - tp[i - 1].northing;
+                    double hl = Math.Sqrt(hx * hx + hy * hy);
+                    if (hl < 1e-6) continue;
+                    run += hl;
+                    double qx = tp[i].easting - hitch * hx / hl, qy = tp[i].northing - hitch * hy / hl;   // hitch point
+                    double ddx = qx - ix, ddy = qy - iy, dl = Math.Sqrt(ddx * ddx + ddy * ddy);
+                    if (dl > 1e-6) { ix = qx - bar * ddx / dl; iy = qy - bar * ddy / dl; }
+                    if (Math.Abs(((ix - rowE) * nx) + ((iy - rowN) * ny)) > 0.05) settle = run;
+                }
+                if (settle >= run - 0.3) continue;                 // never settled inside this path
+                if (settle < best - 0.1) { best = settle; extra = tryExtra; }
+            }
+            return extra;
+        }
+
+        /// <summary>
         /// Rigid U-turn: exit turn, connector along the limit line, entry turn - each with curvature
         /// transitions - pushed up under the effective limit line. The end lies on the new row,
         /// parallel to it: an offset entry returns to the row over an S, then a short straight.
@@ -2576,26 +2675,7 @@ namespace AgOpenGPS
 
             // heading of the connector between the two turns: along the limit line (a headland that
             // is not square to the rows), taken from the two circles fitted under it as before
-            double htgt = glm.PIBy2;
-            {
-                double cx1 = Rout, cx3 = Math.Max(Rout + 0.5, o + asked - Rin);
-                double y1 = FitCircleY(eff, cx1, Rout, 0.5);
-                double y3 = FitCircleY(eff, cx3, Rin, 0.5);
-                if (y1 != double.MaxValue && y3 != double.MaxValue)
-                {
-                    double dvx = cx3 - cx1, dvy = y3 - y1, D = Math.Sqrt(dvx * dvx + dvy * dvy);
-                    if (D > Math.Abs(Rout - Rin) + 1e-6)
-                    {
-                        double k = (Rout - Rin) / D, s = Math.Sqrt(Math.Max(0, 1 - k * k));
-                        double dpx = -dvy / D, dpy = dvx / D;
-                        double nAx = dvx / D * k + dpx * s, nAy = dvy / D * k + dpy * s;
-                        double nBx = dvx / D * k - dpx * s, nBy = dvy / D * k - dpy * s;
-                        double nx = nAy > nBy ? nAx : nBx, ny = nAy > nBy ? nAy : nBy;
-                        double hh = Math.Atan2((cx3 + nx * Rin) - (cx1 + nx * Rout), (y3 + ny * Rin) - (y1 + ny * Rout));
-                        if (Math.Sin(hh) > 0.64) htgt = hh;   // within ~50 deg of square, else level
-                    }
-                }
-            }
+            double htgt = ConnectorHeading(eff, Rout, Rin, Math.Max(Rout + 0.5, o + asked - Rin));
 
             // the turn for one aim point (eT = where the entry turn ends, lateral): segments, and what they did
             double w0 = 0;
@@ -2677,6 +2757,7 @@ namespace AgOpenGPS
 
             List<CurvSeg> uSegs = MakeSegs(o + asked + extra, out int uEntry, out int uTail, out double uOff, out double uGam);
             lastTrailExtra = extra;
+            lastTurnKind = 'U';
 
             var marks = new List<int>(uSegs.Count);
             List<vec2> pl = BuildCurvPath(uSegs, sigma, ds, marks);
@@ -2733,8 +2814,13 @@ namespace AgOpenGPS
         }
 
         /// <summary>
-        /// Rigid K-turn: same construction, entry = straight slant (d, alpha), no entry
-        /// radius. Entry too close -> split into two forward parts + guided reverse leg.
+        /// Rigid K-turn (REQ 2026-11-16-1, user 16.11.: "the entry is the U's"): a U with a reverse in
+        /// the middle. Exit turn onto the connector along the limit line (the U's exit radius), then -
+        /// because a K is only built when the U does not fit - back along the connector to where the
+        /// U's entry turn starts, and forward the U's own entry onto the row: its entry radius, its side
+        /// offset (learned + the run past the row a pulled implement needs), the counter-turn and the
+        /// straight. Part 1 = lead-in + exit + 15 m on along the connector (somewhere to stop), part 2 =
+        /// 1.5 m behind the entry start + the entry. If the entry happens to fit forward, one path.
         /// </summary>
         private bool BuildRigidKTurn(vec3 rowPt, double head, double turnOffset)
         {
@@ -2744,197 +2830,104 @@ namespace AgOpenGPS
             SetTurnFrame(rowPt, head);
             if (!TryGetLocalEff(head, out List<vec2> eff)) { FailCreate(); return false; }
 
-            double ps = Math.Max(0.1, youTurnRadius * 0.1);
-            double R = KExitRadius; if (R < 1.0) R = 1.0;
-            double d = Properties.ToolSettings.Default.setTurn_K_entryStartDist;
-            if (d < 0.1) d = 0.1;
-            if (d > o - 0.2) d = Math.Max(0.1, o - 0.2);
-            double alpha = Properties.ToolSettings.Default.setTurn_K_entryAngle * Math.PI / 180.0;
-            if (alpha < 0.10) alpha = 0.10;
-            if (alpha > 1.40) alpha = 1.40;
+            PlanRadii(out double Rout, out double Rin);
+            double kOut = 1.0 / Rout, kIn = 1.0 / Rin;
+            double speed = turnPlanSpeed / 3.6;
+            double sigma = TurnSigma(speed);
+            const double ds = 0.2, fwdE = 15.0, revE = 1.5;
 
-            //REQ 2026-11-16-1: the entry leg ends in a turn onto the row (built further down). That
-            //turn needs lateral room before the row; an entry start distance smaller than that is
-            //raised to it, otherwise the turn would not fit and the old crossing would be used.
+            double asked = UOffsetForSide(isTurnLeft);
+            double htgt = ConnectorHeading(eff, Rout, Rin, Math.Max(Rout + 0.5, o + asked - Rin));
+            double dx = Math.Sin(htgt), dy = Math.Cos(htgt);              // along the connector
+            double cH = Math.Cos(htgt), sH = Math.Sin(htgt);
+
+            // exit: lead-in + exit turn, ends on the connector at P1
+            List<vec2> exitPath = BuildCurvPath(new[] { SegLine(2.6), SegTurn(htgt, 1, kOut) }, sigma, ds, null);
+            vec2 p1 = exitPath[exitPath.Count - 1];
+
+            // the plain entry turn (no offset), in the connector's frame: where it ends sideways
+            List<vec2> plain = BuildCurvPath(new[] { SegTurn(Math.PI - htgt, 1, kIn) }, sigma, ds, null);
+            double plainX = (cH * plain[plain.Count - 1].easting) + (sH * plain[plain.Count - 1].northing);
+
+            // the entry for one side offset: from 1.5 m behind its start on the connector, local coordinates
+            int entryTail = -1;
+            double entryGam = 0, entryS = 0;
+            List<vec2> EntryFor(double eOff, double step)
             {
-                double kE = 1.0 / Math.Max(R, MinTurnRadius() / turnCurvReserve);
-                double sp = Math.Max(turnPlanSpeed, Math.Min(6.0, Math.Abs(mf.avgSpeed))) / 3.6;
-                List<vec2> ft = BuildCurvPath(new[] { SegTurn(alpha, 1, kE) }, TurnSigma(sp), ps, null);
-                double hE = Math.PI - alpha;
-                double lat = (Math.Cos(hE) * ft[ft.Count - 1].easting) + (Math.Sin(hE) * ft[ft.Count - 1].northing);
-                double dNeed = lat - UOffsetForSide(isTurnLeft) + 0.05;
-                if (d < dNeed) d = Math.Min(dNeed, Math.Max(0.1, o - 0.2));
+                List<CurvSeg> segs = EntryOntoRow(SegTurn(Math.PI - htgt, 1, kIn), eOff, sigma, speed, out double g, out int tIdx);
+                var marks = new List<int>();
+                List<vec2> e = BuildCurvPath(segs, sigma, step, marks);
+                entryGam = g;
+                // the plain turn ends off beyond the row: its start sits where that works out
+                entryS = Math.Abs(dx) > 0.05 ? (o + eOff - plainX - p1.easting) / dx : 0;
+                double sx = p1.easting + (dx * entryS), sy = p1.northing + (dy * entryS);
+                var lst = new List<vec2>(e.Count + 16);
+                double rx = sx - (dx * revE), ry = sy - (dy * revE);
+                int nr = Math.Max(2, (int)Math.Round(revE / step));
+                for (int i = 0; i < nr; i++) lst.Add(new vec2(rx + (dx * revE * i / nr), ry + (dy * revE * i / nr)));
+                int at = lst.Count;
+                for (int i = 0; i < e.Count; i++)
+                    lst.Add(new vec2(sx + (cH * e[i].easting) + (sH * e[i].northing), sy - (sH * e[i].easting) + (cH * e[i].northing)));
+                entryTail = at + marks[tIdx];
+                return lst;
             }
 
-            double cx1 = R, cx3 = o - R;
-            double y1 = FitCircleY(eff, cx1, R, ps);
-            double y3 = FitCircleY(eff, cx3, R, ps);
-            if (y1 == double.MaxValue || y3 == double.MaxValue) { FailCreate(); return false; }
+            // a pulled implement: how far past the row it has to be sent, tried out on the entry itself
+            double extra = FindTrailExtra(x => EntryFor(asked + x, 0.25), o, 0, Math.PI);
+            double off = asked + extra;
+            List<vec2> entry = EntryFor(off, ds);
+            int tailIdx = entryTail;
+            bool split = entryS < 0.05;
 
-            // equal radii -> the common upper tangent is parallel to the center line; the
-            // (virtual) entry circle only sets the tangent-line slope
-            double dvx = cx3 - cx1, dvy = y3 - y1, D = Math.Sqrt(dvx * dvx + dvy * dvy);
-            double nx = 0, ny = 1;
-            if (D > 1e-6)
-            {
-                double dpx = -dvy / D, dpy = dvx / D;
-                if (dpy > 0) { nx = dpx; ny = dpy; } else { nx = -dpx; ny = -dpy; }
-            }
-            double tx = ny, ty = -nx;               // CW-consistent travel direction
-            double htgt = Math.Atan2(tx, ty);
-            double T1x = cx1 + nx * R, T1y = y1 + ny * R;
-
-            // E0 = entry start point: on the tangent line, lateral d before the new row
-            double E0x, E0y;
-            if (Math.Abs(tx) > 0.05)
-            {
-                double sE = (o - d - T1x) / tx;
-                E0x = T1x + tx * sE; E0y = T1y + ty * sE;
-            }
-            else { E0x = o - d; E0y = T1y; }
-            double proj = (E0x - T1x) * tx + (E0y - T1y) * ty;   // < 0 -> E0 is BEHIND T1
-
-            // lead-in + exit arc (0 -> htgt), ends at T1
-            var pl = new List<vec2>(512);
-            int nLead = Math.Max(3, (int)(2.5 / ps));
-            for (int i = nLead; i >= 1; i--) pl.Add(new vec2(0, y1 - ps * i));
-
-            double px = 0, py = y1, h = 0;
-            int g = 0;
-            while (Math.Abs(AngleDiff(h, htgt)) > ps / R && g++ < 4000)
-            {
-                px += ps * Math.Sin(h); py += ps * Math.Cos(h); h += ps / R;
-                pl.Add(new vec2(px, py));
-            }
-
-            void Dens(List<vec2> lst, double ax, double ay, double bx, double by)
-            {
-                double len = Math.Sqrt((bx - ax) * (bx - ax) + (by - ay) * (by - ay));
-                int mm = Math.Max(1, (int)Math.Round(len / ps));
-                for (int j = 1; j <= mm; j++) lst.Add(new vec2(ax + (bx - ax) * j / mm, ay + (by - ay) * j / mm));
-            }
-
-            double hEnt = Math.PI - alpha;          // slant heading onto the row (local)
+            var pl = new List<vec2>(exitPath);
             List<vec2> p2 = null;
-            int redStart = -1, p2Red = -1;
-
-            //REQ 2026-11-16-1: the slant no longer runs across the row for the line guidance to
-            //sort out. It ends in the entry every row entry shares: a turn onto the row with
-            //transitions, the return from the side offset and a short straight (EntryOntoRow).
-            //And the slant itself is reached by a TURN from the connector's direction, not by a
-            //kink (sim 16.11.: the ~50 deg kink at E0, smoothed, asked for far more lock than the
-            //tractor has and the wheels oscillated through the entry).
-            double kOff = UOffsetForSide(isTurnLeft);
-            double kSpeed = Math.Max(turnPlanSpeed, Math.Min(6.0, Math.Abs(mf.avgSpeed))) / 3.6;
-            double kSigma = TurnSigma(kSpeed);
-            double kEnt = 1.0 / Math.Max(R, MinTurnRadius() / turnCurvReserve);
-            List<CurvSeg> tailSegs = EntryOntoRow(SegTurn(alpha, 1, kEnt), kOff, kSigma, kSpeed, out _, out _);
-            List<vec2> tailFirst = BuildCurvPath(new[] { SegTurn(alpha, 1, kEnt) }, kSigma, ps, null);
-            List<vec2> entryTail = BuildCurvPath(tailSegs, kSigma, ps, null);
-            double sinE = Math.Sin(hEnt), cosE = Math.Cos(hEnt);
-            double firstDx = (cosE * tailFirst[tailFirst.Count - 1].easting) + (sinE * tailFirst[tailFirst.Count - 1].northing);
-
-            //the turn from the connector (htgt) into the slant (hEnt), in the connector's frame
-            double kinkAng = AngleDiff(hEnt, htgt);
-            List<vec2> kink = Math.Abs(kinkAng) > 0.02
-                ? BuildCurvPath(new[] { SegTurn(Math.Abs(kinkAng), kinkAng > 0 ? 1 : -1, kEnt) }, kSigma, ps, null)
-                : new List<vec2> { new vec2(0, 0) };
-            double cT = Math.Cos(htgt), sT = Math.Sin(htgt);
-            double kinkX = (cT * kink[kink.Count - 1].easting) + (sT * kink[kink.Count - 1].northing);
-            double kinkY = (-sT * kink[kink.Count - 1].easting) + (cT * kink[kink.Count - 1].northing);
-
-            //where on the connector that turn begins: the slant then starts d before the row, as before
-            double sStart = Math.Abs(tx) > 0.05 ? (o - d - T1x - kinkX) / tx : 0;
-            double Sx = T1x + (tx * sStart), Sy = T1y + (ty * sStart);
-            double Qx = Sx + kinkX, Qy = Sy + kinkY;
-            proj = sStart;                          // < 0 -> the turn would start BEHIND T1: split
-            E0x = Qx; E0y = Qy;
-            double slantRun = sinE > 0.05 ? (o + kOff - Qx - firstDx) / sinE : -1;   // slant length before the entry turn
-            bool kTail = slantRun >= 0;
             int tailStart = -1, p2Tail = -1;
-
-            // connector to S, the turn into the slant, the slant, the entry onto the row
-            void AddEntry(List<vec2> lst, ref double ex, ref double ey, out int tailIdx)
+            if (!split)
             {
-                for (int i = 1; i < kink.Count; i++)
-                    lst.Add(new vec2(Sx + (cT * kink[i].easting) + (sT * kink[i].northing),
-                                     Sy - (sT * kink[i].easting) + (cT * kink[i].northing)));
-                ex = Qx; ey = Qy;
-                double sx = ex + (sinE * slantRun), sy = ey + (cosE * slantRun);
-                if (slantRun > 0.05) Dens(lst, ex, ey, sx, sy);
-                tailIdx = lst.Count;
-                for (int i = 1; i < entryTail.Count; i++)
-                    lst.Add(new vec2(sx + (cosE * entryTail[i].easting) + (sinE * entryTail[i].northing),
-                                     sy - (sinE * entryTail[i].easting) + (cosE * entryTail[i].northing)));
-                ex = lst[lst.Count - 1].easting; ey = lst[lst.Count - 1].northing;
-            }
-
-            if (proj >= -0.01)
-            {
-                // fits forward: tangent line to S, the turn into the slant, the slant onto the row
-                if (kTail) { Dens(pl, px, py, Sx, Sy); px = Sx; py = Sy; AddEntry(pl, ref px, ref py, out tailStart); }
-                else
-                {
-                    Dens(pl, px, py, E0x, E0y);
-                    px = E0x; py = E0y; g = 0;
-                    while (px < o - 0.02 && g++ < 7000)
-                    {
-                        px += ps * Math.Sin(hEnt); py += ps * Math.Cos(hEnt);
-                        pl.Add(new vec2(px, py));
-                    }
-                    redStart = pl.Count;                 // crossing past the line draws red
-                    //field 2026-07-16: tail past the line cut to the 0.1 m minimum (user)
-                    //so even the end-of-path fallback completes AT the row, AB takes over
-                    int nCross = Math.Max(1, (int)Math.Round(0.1 / ps));
-                    for (int i = 0; i < nCross; i++)
-                    {
-                        px += ps * Math.Sin(hEnt); py += ps * Math.Cos(hEnt);
-                        pl.Add(new vec2(px, py));
-                    }
-                }
+                // fits forward after all: connector up to the entry, the entry - one path
+                int skip = (int)Math.Round(revE / ds);
+                vec2 sPt = entry[skip];
+                double gapLen = Math.Sqrt(((sPt.easting - p1.easting) * (sPt.easting - p1.easting)) + ((sPt.northing - p1.northing) * (sPt.northing - p1.northing)));
+                int ng = (int)Math.Round(gapLen / ds);
+                for (int i = 1; i < ng; i++) pl.Add(new vec2(p1.easting + ((sPt.easting - p1.easting) * i / ng), p1.northing + ((sPt.northing - p1.northing) * i / ng)));
+                int entryAt = pl.Count;
+                for (int i = skip; i < entry.Count; i++) pl.Add(entry[i]);
+                tailStart = entryAt + tailIdx - skip;
             }
             else
             {
-                // SPLIT: part 1 forward (+2 m past T1), guided reverse back along the
-                // line, part 2 = forward line + slant (pending until reversed enough)
-                const double fwdE = 15.0, revE = 1.5;  // 15 m safety tangent on the exit radius
-                Dens(pl, px, py, px + tx * fwdE, py + ty * fwdE);
-
-                //part 2 starts on the connector behind the turn into the slant (the vehicle reverses
-                //along the connector, then drives forward: the turn, the slant, the entry onto the row)
-                double bx = kTail ? Sx : E0x, by = kTail ? Sy : E0y;
-                double rsx = bx - tx * revE, rsy = by - ty * revE;
-                p2 = new List<vec2>(256) { new vec2(rsx, rsy) };
-                Dens(p2, rsx, rsy, bx, by);
-                px = bx; py = by; g = 0;
-                if (kTail) AddEntry(p2, ref px, ref py, out p2Tail);
-                else
-                {
-                    while (px < o - 0.02 && g++ < 7000)
-                    {
-                        px += ps * Math.Sin(hEnt); py += ps * Math.Cos(hEnt);
-                        p2.Add(new vec2(px, py));
-                    }
-                    p2Red = p2.Count;
-                    //field 2026-07-16: same 0.1 m minimum tail on the split part 2
-                    int nCross = Math.Max(1, (int)Math.Round(0.1 / ps));
-                    for (int i = 0; i < nCross; i++)
-                    {
-                        px += ps * Math.Sin(hEnt); py += ps * Math.Cos(hEnt);
-                        p2.Add(new vec2(px, py));
-                    }
-                }
+                int nf = (int)Math.Round(fwdE / ds);
+                for (int i = 1; i <= nf; i++) pl.Add(new vec2(p1.easting + (dx * fwdE * i / nf), p1.northing + (dy * fwdE * i / nf)));
+                p2 = entry;
+                p2Tail = tailIdx;
             }
 
-            ShiftUnderEff(pl, p2, eff);
-            //the tail indices must survive: drop close points only BEFORE them
-            if (tailStart > 0) { var hd = pl.GetRange(0, tailStart + 1); DropClose(hd, 0.3 * ps); pl.RemoveRange(0, tailStart + 1); tailStart = hd.Count - 1; hd.AddRange(pl); pl.Clear(); pl.AddRange(hd); }
-            if (p2 != null && p2Tail > 0) { var hd = p2.GetRange(0, p2Tail + 1); DropClose(hd, 0.3 * ps); p2.RemoveRange(0, p2Tail + 1); p2Tail = hd.Count - 1; hd.AddRange(p2); p2.Clear(); p2.AddRange(hd); }
-            SmoothLocal(pl, 15);
-            if (p2 != null) SmoothLocal(p2, 15);
-            if (!FinishRigidPath(pl, redStart, p2, p2Red, tailStart)) return false;
+            // the whole maneuver up under the effective limit line (0.2 m kept for tracking error)
+            double shift = double.MaxValue;
+            foreach (var lst in new[] { pl, p2 })
+            {
+                if (lst == null) continue;
+                for (int i = 0; i < lst.Count; i++)
+                    if (CrossTop(eff, lst[i].easting, out double yy)) shift = Math.Min(shift, yy - lst[i].northing);
+            }
+            if (shift == double.MaxValue) { FailCreate(); return false; }
+            shift -= 0.2;
+            for (int i = 0; i < pl.Count; i++) pl[i] = new vec2(pl[i].easting, pl[i].northing + shift);
+            if (p2 != null) for (int i = 0; i < p2.Count; i++) p2[i] = new vec2(p2[i].easting, p2[i].northing + shift);
+
+            lastOvershootAsked = asked;
+            lastOvershootApplied = off;
+            lastTrailExtra = extra;
+            lastTailAngle = entryGam * 180.0 / Math.PI;
+            lastTailLen = ((split ? p2.Count : pl.Count) - 1 - (split ? p2Tail : tailStart)) * ds;
+            lastTurnWidthNeeded = UTurnMinWidth(turnPlanSpeed);
+            lastTransitionLen = Math.Max(kOut, kIn) / sigma;
+            lastTurnKind = 'K';
+
+            //no red index: in a K's last part it would end the turn where the entry crosses the row
+            if (!FinishRigidPath(pl, -1, p2, -1, tailStart)) return false;
             part2TailStart = p2Tail;
-            FillTurnCurvature();        // the forward legs of the K are driven by the turn steering too
+            FillTurnCurvature();
             return true;
         }
 
@@ -3990,6 +3983,8 @@ namespace AgOpenGPS
             kPart2List?.Clear();
             kTurnStage = 0;
             kRevReached = false;
+            kRevUx = 0; kRevUy = 0;
+            kDriverPaused = false;
             kFwdHeldDist = 0;
             kRevExtraDist = 0;
             ytRedIndex = -1;
@@ -4284,6 +4279,10 @@ namespace AgOpenGPS
             youTurnPhase = 10;
 
             Log.EventWriter("LineApproach: " + why);
+            lastOvershootAsked = apLastAsked;
+            lastOvershootApplied = apLastAsked + apLastExtra;
+            lastTrailExtra = apLastExtra;
+            lastTurnKind = 'A';
 
             //the driver just asked for it by engaging autosteer - no trigger window to wait for
             YouTurnTrigger();
@@ -4449,7 +4448,21 @@ namespace AgOpenGPS
             //like the U - a pulled implement cuts this corner just the same. The turn then ends that far
             //beyond the row (it starts later on the line by dOff / sin(delta)) and comes back over the
             //counter-turn of EntryOntoRow.
-            double apOff = sinDelta > 0.05 ? UOffsetForSide(delta < 0) : 0;
+            //(16.11. evening: + the run past the row a pulled implement needs, tried out on this entry
+            //exactly as the U does - the learned part alone is near 0 for a pulled implement)
+            double apAsked = sinDelta > 0.05 ? UOffsetForSide(delta < 0) : 0;
+            double apExtra = sinDelta > 0.05
+                ? FindTrailExtra(x =>
+                {
+                    double ox = apAsked + x;
+                    List<vec2> tp = BuildCurvPath(EntryOntoRow(SegTurn(absDelta, 1, 1.0 / R), ox, apSigma, turnPlanSpeed / 3.6, out _, out _), apSigma, 0.25, null);
+                    double ds0 = d - (ox / sinDelta);       // the crossing with the row, from the turn start
+                    for (int i = 0; i < tp.Count; i++) tp[i] = new vec2(tp[i].easting, tp[i].northing - ds0);
+                    return tp;
+                }, 0, 0, absDelta)
+                : 0;
+            double apOff = apAsked + apExtra;
+            apLastAsked = apAsked; apLastExtra = apExtra;
             double dStart = sinDelta > 0.05 ? d - apOff / sinDelta : d;
             double need = dStart * Math.Sin(absDelta) + 0.5 * mf.tool.width;
 
@@ -4809,6 +4822,7 @@ namespace AgOpenGPS
                                 //extend the leg 15 m BEHIND the reverse stop point so
                                 //reversing too far never loses guidance
                                 double ux = dxr / lenR, uy = dyr / lenR;
+                                kRevUx = -ux; kRevUy = -uy;     // backing up = from the part 1 end towards the stop point
                                 double sx = rStop.easting - ux * 15.0, sy = rStop.northing - uy * 15.0;
                                 double tot = lenR + 15.0;
                                 double hR = Math.Atan2(dxr, dyr);
@@ -4828,7 +4842,12 @@ namespace AgOpenGPS
                         //full search each frame - the closest point walks BACK down the leg
                         maxProgressIndexReached = 0;
 
-                        if (!kRevReached && kPart2List.Count > 3 && glm.Distance(kPiv, kPart2List[0]) < 2.0)
+                        //REQ 2026-11-16-1: measured ALONG the reverse leg - a reverse driven by hand (pulled
+                        //implement, or the driver took the wheel) seldom passes within 2 m of the point
+                        bool passedStop = kRevUx != 0 || kRevUy != 0
+                            ? kPart2List.Count > 3 && ((kPiv.easting - kPart2List[0].easting) * kRevUx) + ((kPiv.northing - kPart2List[0].northing) * kRevUy) > -0.3
+                            : kPart2List.Count > 3 && glm.Distance(kPiv, kPart2List[0]) < 2.0;
+                        if (!kRevReached && passedStop)
                         {
                             kRevReached = true;
                             kRevExtraDist = 0;
@@ -4867,6 +4886,10 @@ namespace AgOpenGPS
                             part2TailStart = -1;
                             FillTurnCurvature();
                             kTurnStage = 3;
+                            //the forward entry is AOG's again: status back to 1 = the module engages (as the tablet button)
+                            if (kDriverPaused || mf.tool.isToolTrailing)
+                                Log.EventWriter("K turn: forward entry, autosteer takes over again");
+                            kDriverPaused = false;
                             A = 0; B = 1;
                             ptCount = ytList.Count;
                         }

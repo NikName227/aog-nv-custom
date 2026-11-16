@@ -58,7 +58,9 @@ namespace AgOpenGPS
                 //steerSwith is active low
                 if (steerSwitchHigh == mf.isBtnAutoSteerOn)
                 {
-                    mf.btnAutoSteer.PerformClick();
+                    //REQ 2026-11-16-1: in the K's exit / reverse taking the wheel only pauses
+                    if (steerSwitchHigh && (mf.yt.KMayPause || mf.yt.KSteerHold)) mf.yt.kDriverPaused = true;
+                    else mf.btnAutoSteer.PerformClick();
                 }
             }
 
