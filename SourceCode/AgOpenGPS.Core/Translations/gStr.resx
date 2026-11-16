@@ -2427,6 +2427,18 @@ USE AT OWN RISK.</value>
   <data name="gsFbFilter" xml:space="preserve">
     <value>Correction filter (s, 0 = off)</value>
   </data>
+  <data name="gsSGroup" xml:space="preserve">
+    <value>Back onto the row (S)</value>
+  </data>
+  <data name="gsSMaxAngle" xml:space="preserve">
+    <value>Wheel angle at most (°)</value>
+  </data>
+  <data name="gsSSteerRate" xml:space="preserve">
+    <value>Steering speed at most (°/s)</value>
+  </data>
+  <data name="gsSMinOffset" xml:space="preserve">
+    <value>No S under offset (m)</value>
+  </data>
   <data name="gsLearnReset" xml:space="preserve">
     <value>Reset learning</value>
   </data>
