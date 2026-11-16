@@ -1223,10 +1223,7 @@ namespace AgOpenGPS
                                 if (tolBefore < 0.2) tolBefore = 0.2;
                                 if (tolAfter < 0.2) tolAfter = 0.2;
                                 bool inTriggerWindow = fwd >= -tolBefore && fwd <= tolAfter;
-
-                                yt.turnOvershot = fwd > tolAfter && !yt.isYouTurnTriggered;
-                                //armed = pivot inside the window: turn is the next action (even stopped)
-                                yt.turnArmed = inTriggerWindow && !yt.isYouTurnTriggered;
+                                bool wasArmed = yt.turnArmed;
 
                                 //turn-after-stop: the STOP itself must happen inside the same
                                 //trigger window (field 2026-07-16: was "anywhere within 5 m
@@ -1255,21 +1252,38 @@ namespace AgOpenGPS
                                                                  : "back in force - autosteer on"));
                                 }
 
+                                //Sim 2026-11-16: a driver who overshot and backed up only as far
+                                //as the edge of the window was out of it again before the single
+                                //reverse->forward update and the speed condition could meet - green,
+                                //and nothing happened. Now a reverse HELD inside the window arms the
+                                //turn at once, and an armed turn may still fire a little past the
+                                //window: the exit arc starts late and misses its path slightly,
+                                //which is harmless - that is what the window is for.
+                                const double lateAfterStop = 1.5;
+                                bool lateZone = false;
                                 if (afterStopRule)
                                 {
-                                    if (inTriggerWindow && (avgSpeed < 0.3 || shuttledToForward))
+                                    if (fwd < -tolBefore - 0.5) yt.afterStopStopped = false;   // backed right out: start over
+                                    if (inTriggerWindow && (avgSpeed < 0.3 || shuttledToForward || yt.IsReverseHeld))
                                         yt.afterStopStopped = true;
                                     afterStopGate = yt.afterStopStopped && avgSpeed > 0.6 && !isReverse;
+                                    lateZone = yt.afterStopStopped && fwd > tolAfter && fwd <= tolAfter + lateAfterStop;
                                 }
+
+                                yt.turnOvershot = fwd > tolAfter && !lateZone && !yt.isYouTurnTriggered;
+                                //armed = pivot inside the window: turn is the next action (even stopped)
+                                yt.turnArmed = (inTriggerWindow || lateZone) && !yt.isYouTurnTriggered;
+                                if (yt.turnArmed && !wasArmed && sounds.isTurnSoundOn) sounds.sndTurnZone.Play();
 
                                 //fire as the pivot reaches the start (within tol, not overshot beyond);
                                 //only while driving FORWARD > 0.5 km/h - otherwise the trigger swaps
                                 //guidance to the new line while stopped/reversing (jerk + wrong line)
-                                if (inTriggerWindow && !yt.isYouTurnTriggered
+                                if ((inTriggerWindow || lateZone) && !yt.isYouTurnTriggered
                                     && afterStopGate && !isReverse && avgSpeed > 0.5)
                                 {
                                     yt.YouTurnTrigger();
                                     sounds.isBoundAlarming = false;
+                                    if (sounds.isTurnSoundOn) sounds.sndTurnStart.Play();
                                 }
                             }
                             //stock trigger (feature off): unchanged

@@ -70,7 +70,9 @@ namespace AgOpenGPS
                     .Append(Tl(vehicle.goalDistance, "0.00")).Append(',')
                     .Append(Tl(guidanceLineDistanceOff * 0.1, "0.0")).Append(',')
                     .Append(yt.onA).Append(',').Append(yt.ytList.Count).Append(',')
-                    .Append(Tl(toolPivotPos.easting)).Append(',').Append(Tl(toolPivotPos.northing)).Append('\n');
+                    .Append(Tl(toolPivotPos.easting)).Append(',').Append(Tl(toolPivotPos.northing)).Append(',')
+                    .Append(!tlAfter && yt.turnCurvActive ? 1 : 0).Append(',')
+                    .Append(Tl(!tlAfter && yt.turnCurvActive ? yt.turnCurvCmd : 0, "0.0000")).Append('\n');
 
                 if (tlBuf.Length > 60000) TurnLogFlush();
             }
@@ -104,7 +106,7 @@ namespace AgOpenGPS
                 .Append(" lead=").Append(Tl(Properties.VehicleSettings.Default.setTurn_leadTime, "0.00"))
                 .Append(" transition=").Append(Tl(yt.lastTransitionLen, "0.00"))
                 .Append(" uWidth=").Append(Tl(yt.lastTurnWidthNeeded, "0.00"))
-                .Append(" curv=").Append(yt.ytCurv.Count == yt.ytList.Count ? 1 : 0)
+                .Append(" curv=").Append(yt.HasTurnCurvature() ? 1 : 0)
                 .Append(" wheelbase=").Append(Tl(vehicle.VehicleConfig.Wheelbase, "0.00"))
                 .Append(" trailing=").Append(this.tool.isToolTrailing ? 1 : 0)
                 .Append(" highPWM=").Append(p_252.pgn[p_252.highPWM])
@@ -113,7 +115,7 @@ namespace AgOpenGPS
 
             string dir = Path.Combine(RegistrySettings.fieldsDirectory, currentFieldDirectory ?? "");
             if (!File.Exists(Path.Combine(dir, "TurnLog.csv")) && Directory.Exists(dir))
-                tlBuf.Insert(0, "t_s,state,pivot_e,pivot_n,heading_deg,speed_kmh,steer_set_deg,steer_actual_deg,goal_e,goal_n,goal_dist_m,xte_cm,idx,points,tool_e,tool_n\n");
+                tlBuf.Insert(0, "t_s,state,pivot_e,pivot_n,heading_deg,speed_kmh,steer_set_deg,steer_actual_deg,goal_e,goal_n,goal_dist_m,xte_cm,idx,points,tool_e,tool_n,curv_on,k_cmd\n");
         }
 
         private void TurnLogEnd()

@@ -2036,6 +2036,11 @@ namespace AgOpenGPS
         public List<double> ytCurv = new List<double>();
         private double ytCurvE0, ytCurvN0;
         public double lastTurnWidthNeeded, lastTransitionLen;
+        /// <summary>true on the fixes where the curvature steering drove the turn; the curvature it asked for (1/m)</summary>
+        public bool turnCurvActive;
+        public double turnCurvCmd;
+        /// <summary>a debounced reverse is being held right now (turn-after-stop arms on it)</summary>
+        public bool IsReverseHeld { get { return reverseHeld; } }
         public int part2RedIndex = -1;  // red index inside the pending part 2
 
         // local frame
@@ -2261,9 +2266,11 @@ namespace AgOpenGPS
         private const double turnGainOffset = 0.16;    // 1/m2 : curvature per metre off the path
         private const double turnGainHeading = 0.8;    // 1/m  : curvature per radian of heading error
 
-        private struct CurvSeg { public bool line; public double len, D, kmax; public int sgn; }
+        private struct CurvSeg { public bool line, dip; public double len, D, kmax, kdip; public int sgn; }
         private static CurvSeg SegLine(double len) { return new CurvSeg { line = true, len = len }; }
         private static CurvSeg SegTurn(double D, int sgn, double kmax) { return new CurvSeg { D = D, sgn = sgn, kmax = kmax }; }
+        /// <summary>One turn that eases off to kdip in its middle: kdip = kmax is a plain turn, 0 is two turns back to back.</summary>
+        private static CurvSeg SegDip(double D, int sgn, double kmax, double kdip) { return new CurvSeg { dip = true, D = D, sgn = sgn, kmax = kmax, kdip = kdip }; }
 
         /// <summary>
         /// Path from a list of straights and turns, start (0,0) heading +y, heading clockwise. A turn
@@ -2288,16 +2295,36 @@ namespace AgOpenGPS
                     continue;
                 }
                 if (sg.D < 1e-5 || sg.kmax < 1e-6) continue;
-                double kp = Math.Min(sg.kmax, Math.Sqrt(sg.D * sigma));
-                double Lc = kp / sigma;
-                double La = Math.Max(0, (sg.D - kp * Lc) / kp);
-                double tot = 2 * Lc + La;
+                double kp, Lc, La, Ld = 0, kd = 0;
+                if (sg.dip)
+                {
+                    // peak such that even the full dip (two turns of D/2) still reaches it
+                    kp = Math.Min(sg.kmax, Math.Sqrt(sg.D / 2 * sigma));
+                    kd = Math.Max(0, Math.Min(kp, sg.kdip));
+                    Lc = kp / sigma;
+                    Ld = (kp - kd) / sigma;
+                    La = Math.Max(0, (sg.D - kp * Lc - (kp + kd) * Ld) / (2 * kp));   // hold, each side
+                }
+                else
+                {
+                    kp = Math.Min(sg.kmax, Math.Sqrt(sg.D * sigma));
+                    Lc = kp / sigma;
+                    La = Math.Max(0, (sg.D - kp * Lc) / kp);
+                }
+                double tot = sg.dip ? 2 * Lc + 2 * La + 2 * Ld : 2 * Lc + La;
                 int m = Math.Max(2, (int)Math.Round(tot / ds));
                 double dm = tot / m;
                 for (int i = 0; i < m; i++)
                 {
                     double u = (i + 0.5) * dm;
-                    double k = u < Lc ? kp * u / Lc : (u < Lc + La ? kp : kp * (tot - u) / Lc);
+                    double k;
+                    if (!sg.dip) k = u < Lc ? kp * u / Lc : (u < Lc + La ? kp : kp * (tot - u) / Lc);
+                    else if (u < Lc) k = kp * u / Lc;
+                    else if (u < Lc + La) k = kp;
+                    else if (u < Lc + La + Ld) k = kp - sigma * (u - Lc - La);
+                    else if (u < Lc + La + 2 * Ld) k = kd + sigma * (u - Lc - La - Ld);
+                    else if (u < Lc + 2 * La + 2 * Ld) k = kp;
+                    else k = kp * (tot - u) / Lc;
                     k *= sg.sgn;
                     double hm = h + k * dm / 2;
                     x += Math.Sin(hm) * dm; y += Math.Cos(hm) * dm; h += k * dm;
@@ -2417,20 +2444,22 @@ namespace AgOpenGPS
             }
             else
             {
-                // one continuous turn; wider than its tightest form -> lower peak curvature
-                if (eT < w0) eT = w0;
-                double kPeak = kT;
-                if (eT > w0 + 0.01)
+                // one continuous turn. Wider than its tightest form: both ends stay at the full planned
+                // lock and only the middle eases off - that keeps the turn shallow (least room used)
+                double wTight = CurvEndX(new[] { SegDip(Math.PI, 1, kT, kT) }, sigma);
+                double kDip = kT;
+                if (eT > wTight + 0.01)
                 {
-                    double lo = kT * 0.1, hi = kT;
+                    double lo = 0, hi = kT;
                     for (int i = 0; i < 30; i++)
                     {
                         double mid = (lo + hi) / 2;
-                        if (CurvEndX(new[] { SegTurn(Math.PI, 1, mid) }, sigma) > eT) lo = mid; else hi = mid;
+                        if (CurvEndX(new[] { SegDip(Math.PI, 1, kT, mid) }, sigma) > eT) lo = mid; else hi = mid;
                     }
-                    kPeak = (lo + hi) / 2;
+                    kDip = (lo + hi) / 2;
                 }
-                segs.Add(SegTurn(Math.PI, 1, kPeak));
+                segs.Add(SegDip(Math.PI, 1, kT, kDip));
+                eT = CurvEndX(new[] { SegDip(Math.PI, 1, kT, kDip) }, sigma);   // where it really ends (no room -> wider)
             }
 
             // back onto the row from wherever the entry was aimed, parallel at the end
@@ -2497,7 +2526,7 @@ namespace AgOpenGPS
         }
 
         /// <summary>true while ytList is still the path ytCurv was worked out for</summary>
-        private bool HasTurnCurvature()
+        public bool HasTurnCurvature()
         {
             return ytCurv.Count == ytList.Count && ytList.Count > 4
                 && ytList[0].easting == ytCurvE0 && ytList[0].northing == ytCurvN0;
@@ -3416,6 +3445,10 @@ namespace AgOpenGPS
 
         public void SmoothYouTurn(int smPts)
         {
+            //REQ 2026-11-16-1: the U with transitions is smooth by construction, and its curvature
+            //list is tied to these exact points (the filter below drops the first and the last one -
+            //build0041 lost the curvature steering that way). Leave it as built.
+            if (HasTurnCurvature()) return;
             ytList = SmoothPathPoints(ytList, smPts);
         }
 
@@ -3588,6 +3621,8 @@ namespace AgOpenGPS
         {
             //safety: a completed turn must always end up on the new line
             if (turnLineSwapPending) { turnLineSwapPending = false; ApplyTriggerLineSwap(); }
+            if (isYouTurnTriggered && mf.tnl.IsFeatureOn && !isLineApproach && mf.sounds.isTurnSoundOn)
+                mf.sounds.sndTurnEnd.Play();
             isYouTurnTriggered = false;
 
             //orchard: land on the next pass's track
@@ -4911,9 +4946,11 @@ namespace AgOpenGPS
                     //of the path itself, read ahead by the lead time (the steering needs that long to
                     //get there); the offset from the path and the heading error only correct the rest.
                     //The pure pursuit above still places the goal point for the display.
+                    turnCurvActive = false;
                     if (mf.tnl.IsFeatureOn && activeTurnStyle == 0 && !isLineApproach && !mf.isReverse
                         && HasTurnCurvature())
                     {
+                        turnCurvActive = true;
                         double psi = mf.fixHeading - Math.Atan2(dx, dz);
                         while (psi > Math.PI) psi -= glm.twoPI;
                         while (psi < -Math.PI) psi += glm.twoPI;
@@ -4931,6 +4968,7 @@ namespace AgOpenGPS
                         double kff = ytCurv[i0] + ((ytCurv[i1] - ytCurv[i0]) * (fi - i0));
 
                         double kCmd = kff - (turnGainOffset * eLat) - (turnGainHeading * psi);
+                        turnCurvCmd = kCmd;
                         steerAngleYT = glm.toDegrees(Math.Atan(mf.vehicle.VehicleConfig.Wheelbase * kCmd));
                         ppRadiusYT = Math.Abs(kCmd) > 0.002 ? 1.0 / kCmd : 500;
                     }
