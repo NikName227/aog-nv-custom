@@ -15,6 +15,10 @@ namespace AgOpenGPS
         private readonly FormGPS mf;
         private readonly NumericUpDown nudRate, nudLead, nudAccel, nudFilter, nudSAngle, nudSRate, nudSMin;
         private readonly Button btnTeach, btnRadius;
+        //user 17.11.: one window size that fits a tablet - the three parts are sub-tabs
+        private readonly Button[] tabBtn = new Button[3];
+        private readonly GroupBox[] tabPage = new GroupBox[3];
+        private int tabActive;
         private readonly Label lblLive, lblTeach, lblRadius;
         private readonly ListBox lstRadius;
         private readonly Timer timer;
@@ -34,8 +38,7 @@ namespace AgOpenGPS
             ShowInTaskbar = false;
             TopMost = true;
             StartPosition = FormStartPosition.Manual;
-            ClientSize = new Size(520, 912);
-            AutoScroll = true;
+            ClientSize = new Size(520, 504);
             BackColor = Color.WhiteSmoke;
             Font = fText;
 
@@ -47,8 +50,20 @@ namespace AgOpenGPS
             };
             Controls.Add(lblLive);
 
+            // ---- sub-tab buttons under the live line
+            string[] tabText = { gStr.gsTeachStart, gStr.gsSGroup, gStr.gsRadiusTitle };
+            int[] tabX = { 10, 145, 360 }, tabW = { 130, 210, 150 };
+            for (int i = 0; i < 3; i++)
+            {
+                int idx = i;
+                tabBtn[i] = BigButton(tabText[i], tabX[i], 54, tabW[i]);
+                tabBtn[i].Font = new Font("Tahoma", 11F, FontStyle.Bold);
+                tabBtn[i].Click += (s, e) => ShowTab(idx);
+                Controls.Add(tabBtn[i]);
+            }
+
             // ---- steering: the two numbers + Teach
-            var gSteer = new GroupBox { Text = gStr.gsTeachStart, Font = fBold, Location = new Point(10, 54), Size = new Size(500, 332) };
+            var gSteer = new GroupBox { Text = gStr.gsTeachStart, Font = fBold, Location = new Point(10, 108), Size = new Size(500, 332) };
             Controls.Add(gSteer);
             nudRate = AddRow(gSteer, gStr.gsSteerRate, 30, 5, 60, 0, 1M);
             nudLead = AddRow(gSteer, gStr.gsLeadTime, 76, 0, 1, 2, 0.05M);
@@ -66,14 +81,14 @@ namespace AgOpenGPS
             gSteer.Controls.Add(lblTeach);
 
             // ---- the counter-turn back onto the row (user 16.11.)
-            var gS = new GroupBox { Text = gStr.gsSGroup, Font = fBold, Location = new Point(10, 394), Size = new Size(500, 168) };
+            var gS = new GroupBox { Text = gStr.gsSGroup, Font = fBold, Location = new Point(10, 108), Size = new Size(500, 332) };
             Controls.Add(gS);
             nudSAngle = AddRow(gS, gStr.gsSMaxAngle, 30, 3, 35, 0, 1M);
             nudSRate = AddRow(gS, gStr.gsSSteerRate, 76, 1, 60, 0, 1M);
             nudSMin = AddRow(gS, gStr.gsSMinOffset, 122, 0, 1, 2, 0.05M);
 
             // ---- radius check
-            var gRad = new GroupBox { Text = gStr.gsRadiusTitle, Font = fBold, Location = new Point(10, 570), Size = new Size(500, 272) };
+            var gRad = new GroupBox { Text = gStr.gsRadiusTitle, Font = fBold, Location = new Point(10, 108), Size = new Size(500, 332) };
             Controls.Add(gRad);
             btnRadius = BigButton(gStr.gsRadiusStart, 12, 30, 230);
             btnRadius.Click += (s, e) =>
@@ -92,9 +107,11 @@ namespace AgOpenGPS
             gRad.Controls.Add(lblRadius);
             gRad.Controls.Add(lstRadius);
             gRad.Controls.Add(note);
+            tabPage[0] = gSteer; tabPage[1] = gS; tabPage[2] = gRad;
+            ShowTab(0);
 
             // ---- OK / Cancel
-            var ok = BigButton("OK", 290, 852, 105);
+            var ok = BigButton("OK", 290, 448, 105);
             ok.BackColor = Color.LightGreen;
             ok.Click += (s, e) =>
             {
@@ -109,7 +126,7 @@ namespace AgOpenGPS
                 veh.Save();
                 Close();
             };
-            var cancel = BigButton(gStr.gsCancel, 405, 852, 105);
+            var cancel = BigButton(gStr.gsCancel, 405, 448, 105);
             cancel.Click += (s, e) => Close();
             Controls.Add(ok);
             Controls.Add(cancel);
@@ -128,7 +145,7 @@ namespace AgOpenGPS
             {
                 //left half of the main window, under its top row of buttons
                 Rectangle r = mf.Bounds;
-                //never taller than the screen (a small tablet): the rest scrolls
+                //never taller than the screen
                 Rectangle wa = Screen.FromControl(mf).WorkingArea;
                 if (Height > wa.Height - 20) Height = wa.Height - 20;
                 Location = new Point(r.Left + 6, Math.Max(wa.Top, Math.Min(r.Top + Math.Max(60, (r.Height - Height) / 2), wa.Bottom - Height)));
@@ -141,6 +158,16 @@ namespace AgOpenGPS
                 timer.Stop();
                 if (mf.turnCal.IsBusy) mf.turnCal.Stop();
             };
+        }
+
+        private void ShowTab(int idx)
+        {
+            tabActive = idx;
+            for (int i = 0; i < 3; i++)
+            {
+                tabPage[i].Visible = i == idx;
+                tabBtn[i].BackColor = i == idx ? Color.LightSkyBlue : Color.Gainsboro;
+            }
         }
 
         private static void SetNud(NumericUpDown nud, double v)
@@ -215,6 +242,8 @@ namespace AgOpenGPS
             btnRadius.Enabled = c.mode != CTurnCalib.Mode.Teach;
             btnTeach.BackColor = c.mode == CTurnCalib.Mode.Teach ? Color.Gold : Color.Gainsboro;
             btnRadius.BackColor = c.mode == CTurnCalib.Mode.Radius ? Color.Gold : Color.Gainsboro;
+            //a running Teach / radius check keeps its own sub-tab on screen
+            for (int i = 0; i < 3; i++) tabBtn[i].Enabled = !c.IsBusy || i == tabActive;
 
             if (c.mode == CTurnCalib.Mode.Teach)
                 lblTeach.Text = string.Format(gStr.gsTeachRunning, (c.TeachProgress * 100).ToString("N0"));
