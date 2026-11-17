@@ -2736,7 +2736,9 @@ namespace AgOpenGPS
                     double best = double.MaxValue;
                     for (double tryExtra = 0; tryExtra <= 3.001; tryExtra += 0.25)
                     {
-                        List<vec2> tp = BuildCurvPath(MakeSegs(o + asked + tryExtra, out _, out _, out _, out _), sigma, 0.25, null);
+                        //user 17.11.: tried on the geometry alone - the typed / learned offset goes on top and is
+                        //never taken back by this (it used to look for the total and undo every offset change)
+                        List<vec2> tp = BuildCurvPath(MakeSegs(o + tryExtra, out _, out _, out _, out _), sigma, 0.25, null);
                         double ix = 0, iy = -(hitch + bar), settle = 0, run = 0;
                         for (int i = 1; i < tp.Count; i++)
                         {
@@ -2873,7 +2875,8 @@ namespace AgOpenGPS
             }
 
             // a pulled implement: how far past the row it has to be sent, tried out on the entry itself
-            double extra = FindTrailExtra(x => EntryFor(asked + x, 0.25), o, 0, Math.PI);
+            //user 17.11.: on the geometry alone, the offset goes on top (never undone by this)
+            double extra = FindTrailExtra(x => EntryFor(x, 0.25), o, 0, Math.PI);
             double off = asked + extra;
             List<vec2> entry = EntryFor(off, ds);
             int tailIdx = entryTail;
@@ -4454,7 +4457,7 @@ namespace AgOpenGPS
             double apExtra = sinDelta > 0.05
                 ? FindTrailExtra(x =>
                 {
-                    double ox = apAsked + x;
+                    double ox = x;      // user 17.11.: geometry alone, the offset goes on top
                     List<vec2> tp = BuildCurvPath(EntryOntoRow(SegTurn(absDelta, 1, 1.0 / R), ox, apSigma, turnPlanSpeed / 3.6, out _, out _), apSigma, 0.25, null);
                     double ds0 = d - (ox / sinDelta);       // the crossing with the row, from the turn start
                     for (int i = 0; i < tp.Count; i++) tp[i] = new vec2(tp[i].easting, tp[i].northing - ds0);
