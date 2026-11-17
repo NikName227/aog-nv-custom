@@ -2104,6 +2104,15 @@ namespace AgOpenGPS
             return new vec3(frOx + frLx * x + frTx * y, frOy + frLy * x + frTy * y, 0);
         }
 
+        // user 17.11.: the new row of the last built U / K turn, for the self learning - it measures the
+        // implement against the row itself from the end of the entry arc on (the turn's own guidance
+        // only knows the distance from the turn path there)
+        public double learnRowOx, learnRowOy, learnRowLx, learnRowLy, learnRowDist;
+        private void SetLearnRow(double o)
+        {
+            learnRowOx = frOx; learnRowOy = frOy; learnRowLx = frLx; learnRowLy = frLy; learnRowDist = o;
+        }
+
         // last effective-line pick, logged with every build result (field 2026-07-28
         // diag: says WHICH line the forward ray chose for the wrong-end reports)
         public string lastRayDiag = "";
@@ -2712,7 +2721,29 @@ namespace AgOpenGPS
                         kDip = (lo + hi) / 2;
                     }
                     entryTurn = SegDip(Math.PI, 1, kT, kDip);
-                    eT = CurvEndX(new[] { SegDip(Math.PI, 1, kT, kDip) }, sigma);   // where it really ends (no room -> wider)
+                    double wDip = CurvEndX(new[] { SegDip(Math.PI, 1, kT, kDip) }, sigma);
+                    // user 17.11.: wider than the widest continuous turn but narrower than the two turns at
+                    // their own radii - two turns whose curvature eases from the tighter one towards their
+                    // own, so the width grows on without a gap (the offset used to get lost here)
+                    if (eT > wDip + 0.01 && Math.Abs(kOut - kIn) > 1e-6)
+                    {
+                        CurvSeg[] Two(double s) => new[] { SegTurn(htgt, 1, kT + s * (kOut - kT)), SegTurn(Math.PI - htgt, 1, kT + s * (kIn - kT)) };
+                        double lo = 0, hi = 1;
+                        for (int i = 0; i < 30; i++)
+                        {
+                            double mid = (lo + hi) / 2;
+                            if (CurvEndX(Two(mid), sigma) < eT) lo = mid; else hi = mid;
+                        }
+                        CurvSeg[] two = Two((lo + hi) / 2);
+                        if (CurvEndX(two, sigma) > wDip)
+                        {
+                            segs.Add(two[0]);
+                            entrySeg = segs.Count;
+                            entryTurn = two[1];
+                            wDip = CurvEndX(two, sigma);
+                        }
+                    }
+                    eT = wDip;   // where it really ends (no room -> wider)
                 }
 
                 // back onto the row from wherever the entry was aimed, parallel at the end
@@ -2772,6 +2803,7 @@ namespace AgOpenGPS
             shift -= 0.2;
             for (int i = 0; i < pl.Count; i++) pl[i] = new vec2(pl[i].easting, pl[i].northing + shift);
 
+            SetLearnRow(o);
             lastOvershootAsked = asked;
             lastOvershootApplied = uOff;
             lastTailAngle = uGam * 180.0 / Math.PI;
@@ -2918,6 +2950,7 @@ namespace AgOpenGPS
             for (int i = 0; i < pl.Count; i++) pl[i] = new vec2(pl[i].easting, pl[i].northing + shift);
             if (p2 != null) for (int i = 0; i < p2.Count; i++) p2[i] = new vec2(p2[i].easting, p2[i].northing + shift);
 
+            SetLearnRow(o);
             lastOvershootAsked = asked;
             lastOvershootApplied = off;
             lastTrailExtra = extra;

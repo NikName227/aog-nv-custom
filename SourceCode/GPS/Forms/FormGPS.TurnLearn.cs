@@ -25,6 +25,10 @@ namespace AgOpenGPS
         private bool lnTracking, lnValid, lnMeasuring, lnLeft;
         private double lnDist, lnSum; private int lnCount;
         private vec3 lnLastPos;
+        //user 17.11.: the new row of the running turn (local frame of the turn: origin, lateral unit,
+        //distance of the row along it) and a result that waits for the turn's end
+        private double lnRowOx, lnRowOy, lnRowLx, lnRowLy, lnRowDist, lnResult;
+        private bool lnDone;
 
         private sealed class LearnSide
         {
@@ -70,7 +74,7 @@ namespace AgOpenGPS
             {
                 s.hist.Clear(); s.firstDone = false; s.rejected = false; s.outCount = 0; s.outSign = 0;
             }
-            lnTracking = false; lnMeasuring = false;
+            lnTracking = false; lnMeasuring = false; lnDone = false;
         }
 
         /// <summary>Once per position update.</summary>
@@ -85,14 +89,28 @@ namespace AgOpenGPS
 
                 if (uTurn)
                 {
-                    if (!lnTracking) { lnTracking = true; lnValid = true; lnLeft = yt.TriggerSideLeft; }
-                    lnMeasuring = false;        // a new turn ends any measurement still running
+                    if (!lnTracking)
+                    {
+                        lnTracking = true; lnValid = true; lnLeft = yt.TriggerSideLeft;
+                        lnMeasuring = false; lnDone = false;     // a new turn ends any measurement still running
+                        //the new row of this turn (the next turn may be built before the measurement is over)
+                        lnRowOx = yt.learnRowOx; lnRowOy = yt.learnRowOy;
+                        lnRowLx = yt.learnRowLx; lnRowLy = yt.learnRowLy; lnRowDist = yt.learnRowDist;
+                    }
                     bool judged = yt.activeTurnStyle == 0 || yt.kTurnStage == 0 || yt.kTurnStage == 3;
                     bool gpsOk = timerSim.Enabled || pn.fixQuality == 4;
                     //after a reverse by hand the K's entry may start off its path: there the curvature steering
                     //is only asked for from the way back onto the row on
-                    bool curvNeeded = yt.activeTurnStyle == 0 || (yt.ytTailStart > 0 && yt.onA >= yt.ytTailStart);
+                    bool onTail = yt.ytTailStart > 0 && yt.onA >= yt.ytTailStart;
+                    bool curvNeeded = yt.activeTurnStyle == 0 || onTail;
                     if (judged && (!isBtnAutoSteerOn || !gpsOk || isReverse || (curvNeeded && !yt.turnCurvActive))) lnValid = false;
+
+                    //user 17.11.: measured from the end of the entry arc on - that is where the implement is
+                    //off the row; at the end of the path it has mostly come back already
+                    bool lastPart = yt.activeTurnStyle == 0 || yt.kTurnStage == 3;
+                    if (lnValid && lastPart && onTail && !lnMeasuring && !lnDone) LearnStart();
+                    if (!lnValid) { lnMeasuring = false; lnDone = false; return; }
+                    if (lnMeasuring) LearnSample();
                     return;
                 }
 
@@ -102,44 +120,49 @@ namespace AgOpenGPS
                     //only a turn driven to the end of its path counts - not one cut short
                     if (lnValid && yt.lastEndAtPathEnd && !yt.isYouTurnTriggered)
                     {
-                        lnMeasuring = true; lnDist = 0; lnSum = 0; lnCount = 0; lnLastPos = pivotAxlePos;
+                        if (lnDone) { lnDone = false; TurnLearnApply(lnLeft, lnResult); return; }
+                        if (!lnMeasuring) LearnStart();     // no tail seen (should not happen): from here on
                     }
+                    else { lnMeasuring = false; lnDone = false; return; }
                 }
 
                 if (!lnMeasuring) return;
-
-                if (!isBtnAutoSteerOn || isReverse || guidanceLineDistanceOff > 29000 || Math.Abs(avgSpeed) < 1.0)
-                {
-                    lnMeasuring = false;        // interrupted: this turn teaches nothing
-                    return;
-                }
-
-                //offset of the implement from the line, + = to the right of travel
-                double xte = guidanceLineDistanceOff * 0.001;
-                if (trk.idx > -1 && trk.idx < trk.gArr.Count && trk.gArr[trk.idx].mode == TrackMode.AB)
-                {
-                    double hT = ABLine.abHeading + (ABLine.isHeadingSameWay ? 0 : Math.PI);
-                    xte += (toolPivotPos.easting - pivotAxlePos.easting) * Math.Cos(hT)
-                         - (toolPivotPos.northing - pivotAxlePos.northing) * Math.Sin(hT);
-                }
-
-                //after a right turn the pass just left lies to the right, so "beyond the new row" is left
-                lnSum += lnLeft ? xte : -xte;
-                lnCount++;
-                lnDist += glm.Distance(lnLastPos, pivotAxlePos);
-                lnLastPos = pivotAxlePos;
-
-                if (lnDist >= learnDistance && lnCount > 5)
-                {
-                    lnMeasuring = false;
-                    TurnLearnApply(lnLeft, lnSum / lnCount);
-                }
+                if (LearnSample() && lnDone) { lnDone = false; TurnLearnApply(lnLeft, lnResult); }
             }
             catch (Exception ex)
             {
                 lnTracking = false; lnMeasuring = false;
                 Log.EventWriter("Turn learning skipped: " + ex.Message);
             }
+        }
+
+        private void LearnStart()
+        {
+            lnMeasuring = true; lnDone = false; lnDist = 0; lnSum = 0; lnCount = 0; lnLastPos = pivotAxlePos;
+        }
+
+        /// <summary>One fix of the measurement; false = interrupted (this turn teaches nothing).
+        /// lnDone + lnResult once the distance is covered.</summary>
+        private bool LearnSample()
+        {
+            if (!isBtnAutoSteerOn || isReverse || Math.Abs(avgSpeed) < 1.0)
+            {
+                lnMeasuring = false; lnDone = false;
+                return false;
+            }
+            //the implement against the new row itself, + = past it (away from the pass just left) -
+            //the same on an AB line and a curve
+            double beyond = ((toolPivotPos.easting - lnRowOx) * lnRowLx) + ((toolPivotPos.northing - lnRowOy) * lnRowLy) - lnRowDist;
+            lnSum += beyond;
+            lnCount++;
+            lnDist += glm.Distance(lnLastPos, pivotAxlePos);
+            lnLastPos = pivotAxlePos;
+            if (lnDist >= learnDistance && lnCount > 5)
+            {
+                lnMeasuring = false; lnDone = true;
+                lnResult = lnSum / lnCount;
+            }
+            return true;
         }
 
         /// <summary>beyond = how far past the new row the implement ran on average (m, negative = short of it)</summary>
