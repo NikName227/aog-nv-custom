@@ -1860,7 +1860,8 @@ namespace AgOpenGPS
                 ? ScreenTextures.Turn : ScreenTextures.TurnCancel;
             //int bottom = 90;
             int two3 = oglMain.Width / 5;
-            XyCoord turnTextureCenter = new XyCoord(two3, 120);
+            //user 17.11.: half a digit higher so it clears the metres below
+            XyCoord turnTextureCenter = new XyCoord(two3, 104);
             turnTexture.DrawCentered(turnTextureCenter, !yt.isTurnLeft ? new XyDelta(62, 30) : new XyDelta(-62, 30));
 
             //draw K turn/ normal turn button
@@ -1925,7 +1926,8 @@ namespace AgOpenGPS
             {
                 if (driveDir > 0) GL.Color3(0.25f, 0.97f, 0.3f);
                 else GL.Color3(0.97f, 0.55f, 0.15f);
-                font.DrawText(-40 + two3, 85,
+                //user 17.11.: under the SKIP button (box 202..238) - rare, keeps the arrow clear
+                font.DrawText(-40 + two3, 248,
                     driveDir > 0 ? gStr.gsDriveForward : gStr.gsDriveReverse, 1.2);
             }
             if (driveDir != 0 && driveDir != lastGuidedDriveDir && sounds.isTurnSoundOn)
@@ -2001,7 +2003,8 @@ namespace AgOpenGPS
                 double offRight = two3 + 136 - 78;          // the plan badge sits at two3 + 136
                 GL.Enable(EnableCap.Texture2D);
                 GL.Color4(0.96f, 0.96f, 0.96f, 0.95f);
-                font.DrawText((int)(offRight - offTxt.Length * 0.9 * 22 * offSc), 50, offTxt, offSc);
+                //user 17.11.: two digit heights up, clear of the cross-track bar
+                font.DrawText((int)(offRight - offTxt.Length * 0.9 * 22 * offSc), 12, offTxt, offSc);
             }
 
             //REQ 2026-11-16-1: the K's exit / reverse is the driver's now - say so, big, until the forward entry
